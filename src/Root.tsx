@@ -14,6 +14,7 @@ export const Root = memo(() => {
 
 type ReglProps = {
   videoTex: Texture2D;
+  prevTex: Texture2D;
 };
 
 export const Canvas = memo(() => {
@@ -57,10 +58,13 @@ export const Canvas = memo(() => {
       frag: `
         precision mediump float;
         uniform sampler2D videoTex;
+        uniform sampler2D prevTex;
         varying vec2 uv;
         void main() {
-          vec3 color = texture2D(videoTex, uv).rgb;
-          gl_FragColor = vec4(color.grb, 1.0); // simple shader: invert R/B
+          vec3 curr = texture2D(videoTex, uv).rgb;
+          vec3 prev = texture2D(prevTex, uv).rgb;
+          vec3 diff = abs(curr - prev);
+          gl_FragColor = vec4(diff, 1.0);
         }
       `,
       vert: `
@@ -81,23 +85,28 @@ export const Canvas = memo(() => {
       ],
       uniforms: {
         videoTex: regl.prop<ReglProps, "videoTex">("videoTex"),
+        prevTex: regl.prop<ReglProps, "prevTex">("prevTex"),
       },
     });
 
-    let videoTex = null as Texture2D | null;
+    let texA: Texture2D | null = null;
+    let texB: Texture2D | null = null;
 
     const cancelAnimation = animate(() => {
       if (video.readyState >= 2) {
-        const textureOptions: Texture2DOptions = {
-          data: video,
-          flipY: true,
-        };
-        if (!videoTex) {
-          videoTex = regl.texture(textureOptions);
+        const texOpts: Texture2DOptions = { data: video, flipY: true };
+
+        if (!texA) {
+          texA = regl.texture(texOpts);
+          texB = regl.texture(texOpts); // initialize to same
         } else {
-          videoTex(textureOptions);
+          texA(texOpts); // update current frame
         }
-        draw({ videoTex });
+
+        draw({ videoTex: texA!, prevTex: texB! });
+
+        // Swap A and B for next frame
+        [texA, texB] = [texB, texA];
       }
     });
 

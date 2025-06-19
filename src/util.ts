@@ -32,3 +32,18 @@ export function animate(callback: () => void) {
     cancelAnimationFrame(requestId);
   };
 }
+
+export function onVideoFrame(video: HTMLVideoElement, callback: () => void) {
+  let requestId: number;
+
+  const loop = () => {
+    callback();
+    requestId = video.requestVideoFrameCallback(loop);
+  };
+
+  video.requestVideoFrameCallback(loop);
+
+  return () => {
+    video.cancelVideoFrameCallback(requestId);
+  };
+}

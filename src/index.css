@@ -83,3 +83,7 @@
       "calt" 1;
   }
 }
+
+body {
+  overflow: hidden;
+}

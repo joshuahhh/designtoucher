@@ -1,13 +1,8 @@
-import {
-  ChangeEvent,
-  memo,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import { FpsView } from "react-fps";
 import reglConstructor, { Texture2D, Texture2DOptions } from "regl";
 import { onVideoFrame } from "./util.js";
+import { useWebcam, WebcamSelect } from "./webcam.js";
 
 type ReglProps = { texCurr: Texture2D; texPrev: Texture2D };
 
@@ -19,10 +14,6 @@ export const Root = memo(() => (
 
 const Canvas = memo(() => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [deviceId, setDeviceId] = useState<string | null>(null);
   const [windowSize, setWindowSize] = useState<{
     width: number;
     height: number;
@@ -30,69 +21,8 @@ const Canvas = memo(() => {
     width: window.innerWidth,
     height: window.innerHeight,
   });
-  const [videoSize, setVideoSize] = useState<{
-    width: number;
-    height: number;
-  } | null>(null);
 
-  const stopStream = useCallback(() => {
-    if (videoRef.current?.srcObject instanceof MediaStream) {
-      for (const track of videoRef.current.srcObject.getTracks()) {
-        track.stop();
-      }
-    }
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.srcObject = null;
-    }
-  }, []);
-
-  const startStream = useCallback((deviceId: string) => {
-    const video = document.createElement("video");
-    video.autoplay = true;
-    video.playsInline = true;
-    videoRef.current = video;
-
-    const constraints: MediaStreamConstraints = {
-      video: {
-        deviceId: { exact: deviceId },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    };
-
-    navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
-      video.srcObject = stream;
-      video.play();
-      // get size, once available
-      video.onloadedmetadata = () => {
-        setVideoSize({
-          width: video.videoWidth,
-          height: video.videoHeight,
-        });
-      };
-    });
-  }, []);
-
-  useEffect(() => {
-    // enumerate cameras
-    navigator.mediaDevices.enumerateDevices().then((all) => {
-      const cams = all.filter((d) => d.kind === "videoinput");
-      setDevices(cams);
-      if (cams.length && !deviceId) setDeviceId(cams[0].deviceId);
-    });
-  }, [deviceId]);
-
-  useEffect(() => {
-    if (deviceId !== null) {
-      stopStream();
-      startStream(deviceId);
-    }
-  }, [deviceId, startStream, stopStream]);
-
-  const handleChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    setDeviceId(e.target.value);
-  };
+  const webcam = useWebcam();
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -137,13 +67,18 @@ const Canvas = memo(() => {
     let cancel = () => {};
 
     const initFrameLoop = () => {
-      const video = videoRef.current;
+      const video = webcam.stream?.video;
       if (!video) return;
 
       cancel = onVideoFrame(video, () => {
         if (video.readyState >= 2) {
           const opts: Texture2DOptions = { data: video, flipY: true };
-          [texCurr, texPrev] = [texPrev, texCurr];
+          const beEconomical = true; // true to reuse textures, false to always create new ones
+          if (beEconomical) {
+            [texCurr, texPrev] = [texPrev, texCurr];
+          } else {
+            [texCurr, texPrev] = [null, texCurr];
+          }
           if (!texCurr) {
             texCurr = regl.texture(opts);
           } else {
@@ -162,9 +97,8 @@ const Canvas = memo(() => {
     return () => {
       cancel();
       regl.destroy();
-      stopStream();
     };
-  }, [deviceId, stopStream]);
+  }, [webcam]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -185,38 +119,29 @@ const Canvas = memo(() => {
     if (!canvas) return;
 
     // scale canvas to window size, keeping aspect ratio of video
-    if (!videoSize) return;
+    if (!webcam.stream) return;
     const dpr = window.devicePixelRatio || 1;
     const scale = Math.min(
-      windowSize.width / videoSize.width,
-      windowSize.height / videoSize.height,
+      windowSize.width / webcam.stream.width,
+      windowSize.height / webcam.stream.height,
     );
-    const w = videoSize.width * scale;
-    const h = videoSize.height * scale;
+    const w = webcam.stream.width * scale;
+    const h = webcam.stream.height * scale;
     canvas.style.width = w + "px";
     canvas.style.height = h + "px";
     canvas.width = w * dpr;
     canvas.height = h * dpr;
 
     // regl._gl.viewport(0, 0, canvas.width, canvas.height);
-  }, [videoSize, windowSize]);
+  }, [webcam.stream, windowSize]);
 
   return (
     <>
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-        <select
-          className="mb-2 p-1 text-sm"
-          value={deviceId ?? ""}
-          onChange={handleChange}
-        >
-          {devices.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || "Unnamed camera"}
-            </option>
-          ))}
-        </select>
+        <WebcamSelect webcam={webcam} className="mb-2 p-1 text-sm" />
       </div>
       <canvas ref={canvasRef} className="block" />
+      <FpsView />
     </>
   );
 });

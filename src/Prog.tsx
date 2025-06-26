@@ -12,7 +12,7 @@ import { onVideoFrame } from "./util.js";
 import { useWebcam, WebcamSelect } from "./webcam.js";
 
 export const Prog = () => {
-  const [code, setCode] = useState<string>("blur 10\n");
+  const [code, setCode] = useState<string>("delay 40\n");
   const [result, setResult] = useState<ProgramResult | null>(null);
 
   const shouldUseTestVideo = true;
@@ -122,8 +122,7 @@ function ResultView({
 }) {
   if (!result) {
     return <div>result missing</div>;
-  }
-  if (result.type === "image") {
+  } else if (result.type === "image") {
     return (
       <>
         <DomNode
@@ -133,6 +132,8 @@ function ResultView({
         />
       </>
     );
+  } else if (result.type === "error") {
+    return <div style={{ color: "red" }}>{result.message}</div>;
   } else {
     return <div>not implemented</div>;
   }

@@ -73,16 +73,12 @@ export abstract class CommandRunnerGlfx extends CommandRunner {
 
     const glfxResources = this.updateGlfxResources(input.source);
     glfxResources.canvas.draw(glfxResources.texture);
-    this.apply(glfxResources.canvas, this.parameterValues);
+    this.apply(glfxResources.canvas);
     glfxResources.canvas.update();
     return { type: "image", source: glfxResources.canvas };
   }
 
-  abstract apply(
-    this: this,
-    canvas: GlfxCanvas,
-    parameterValues: { [parameterName: string]: any },
-  ): void;
+  abstract apply(this: this, canvas: GlfxCanvas): void;
 
   updateGlfxResources(
     textureSource: HTMLVideoElement | HTMLCanvasElement,
@@ -109,17 +105,49 @@ export abstract class CommandRunnerGlfx extends CommandRunner {
 }
 
 class CommandRunnerBlur extends CommandRunnerGlfx {
-  apply(canvas: GlfxCanvas, parameterValues: ParameterValues) {
-    canvas.triangleBlur(parameterValues["Distance"]);
+  apply(canvas: GlfxCanvas) {
+    canvas.triangleBlur(this.parameterValues["Distance"]);
   }
 }
 
 class CommandRunnerBC extends CommandRunnerGlfx {
-  apply(canvas: GlfxCanvas, parameterValues: ParameterValues) {
+  apply(canvas: GlfxCanvas) {
     canvas.brightnessContrast(
-      parameterValues["Brightness"],
-      parameterValues["Contrast"],
+      this.parameterValues["Brightness"],
+      this.parameterValues["Contrast"],
     );
+  }
+}
+
+class CommandRunnerDelay extends CommandRunner {
+  canvas = glfx.canvas();
+  textures: GlfxTexture[] = [];
+
+  run(input: Value): Value {
+    assert(input.type === "image");
+    const delayLength = this.parameterValues["Length"];
+    assert(delayLength > 0, "length 0 not impl");
+    if (this.textures.length < delayLength) {
+      const newTexture = this.canvas.texture(input.source);
+      this.textures.push(newTexture);
+      throw new Error("still loading");
+    } else {
+      // get rid of extraneous textures
+      while (this.textures.length > delayLength) {
+        this.textures.shift()!.destroy();
+      }
+
+      // draw onto the canvas
+      const oldTexture = this.textures.shift()!;
+      this.canvas.draw(oldTexture);
+      this.canvas.update();
+
+      // update with new info
+      oldTexture.loadContentsOf(input.source);
+      this.textures.push(oldTexture);
+
+      return { type: "image", source: this.canvas };
+    }
   }
 }
 
@@ -178,6 +206,11 @@ export function parseToProgramRunner(code: string): ParseResult {
             { Brightness: args[0], Contrast: args[1] },
             line,
           ),
+        );
+      } else if (command === "delay") {
+        assert(args.length === 1, "'delay' requires one argument");
+        programRunner.push(
+          new CommandRunnerDelay(id, { Length: args[0] }, line),
         );
       } else {
         throw new Error(`I don't understand '${command}'`);

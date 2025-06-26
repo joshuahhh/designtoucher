@@ -1,5 +1,4 @@
 import * as cv from "@techstark/opencv-js";
-import { v4 as uuidv4 } from "uuid";
 import dims from "./dims.js";
 import { GlfxCanvas } from "./glfx/lib.js";
 
@@ -447,17 +446,18 @@ export interface FilterUse {
   id: string;
   specName: string;
   parameterValues: { [parameterName: string]: any };
+  originalCode: string;
 }
 
-export function newFilterUse(specName: string): FilterUse {
-  const spec = filterSpecByName(specName);
-  return {
-    id: uuidv4(),
-    specName: spec.name,
-    parameterValues: Object.fromEntries(
-      spec.parameters.map((parameter) => [parameter.name, parameter.default]),
-    ),
-  };
-}
+// export function newFilterUse(specName: string): FilterUse {
+//   const spec = filterSpecByName(specName);
+//   return {
+//     id: uuidv4(),
+//     specName: spec.name,
+//     parameterValues: Object.fromEntries(
+//       spec.parameters.map((parameter) => [parameter.name, parameter.default]),
+//     ),
+//   };
+// }
 
 export type FilterChain = FilterUse[];

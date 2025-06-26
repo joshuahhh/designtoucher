@@ -64,35 +64,29 @@ const Canvas = memo(() => {
     let texCurr: Texture2D | null = null;
     let texPrev: Texture2D | null = null;
 
-    let cancel = () => {};
+    const video = webcam.stream?.video;
+    if (!video) return;
 
-    const initFrameLoop = () => {
-      const video = webcam.stream?.video;
-      if (!video) return;
-
-      cancel = onVideoFrame(video, () => {
-        if (video.readyState >= 2) {
-          const opts: Texture2DOptions = { data: video, flipY: true };
-          const beEconomical = true; // true to reuse textures, false to always create new ones
-          if (beEconomical) {
-            [texCurr, texPrev] = [texPrev, texCurr];
-          } else {
-            [texCurr, texPrev] = [null, texCurr];
-          }
-          if (!texCurr) {
-            texCurr = regl.texture(opts);
-          } else {
-            texCurr(opts);
-          }
-          if (texPrev) {
-            regl.poll();
-            draw({ texCurr, texPrev });
-          }
+    const cancel = onVideoFrame(video, () => {
+      if (video.readyState >= 2) {
+        const opts: Texture2DOptions = { data: video, flipY: true };
+        const beEconomical = true; // true to reuse textures, false to always create new ones
+        if (beEconomical) {
+          [texCurr, texPrev] = [texPrev, texCurr];
+        } else {
+          [texCurr, texPrev] = [null, texCurr];
         }
-      });
-    };
-
-    initFrameLoop();
+        if (!texCurr) {
+          texCurr = regl.texture(opts);
+        } else {
+          texCurr(opts);
+        }
+        if (texPrev) {
+          regl.poll();
+          draw({ texCurr, texPrev });
+        }
+      }
+    });
 
     return () => {
       cancel();

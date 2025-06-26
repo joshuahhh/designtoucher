@@ -59,7 +59,7 @@ function stopStream(stream: WebcamStream) {
   }
 }
 
-export const useWebcam = (): Webcam => {
+export const useWebcam = (enabled = true): Webcam => {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [stream, setStream] = useState<WebcamStream | null>(null);
@@ -83,14 +83,14 @@ export const useWebcam = (): Webcam => {
       stopStream(streamRef.current);
     }
 
-    if (deviceId) {
+    if (deviceId && enabled) {
       startStream(deviceId).then((stream) => {
         setStream(stream);
       });
     } else {
       setStream(null);
     }
-  }, [deviceId, streamRef]);
+  }, [deviceId, enabled, streamRef]);
 
   return {
     stream,

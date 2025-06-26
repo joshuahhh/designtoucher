@@ -34,6 +34,8 @@ export function animate(callback: () => void) {
 }
 
 export function onVideoFrame(video: HTMLVideoElement, callback: () => void) {
+  (window as any).video = video;
+
   let requestId: number;
 
   const loop = () => {
@@ -44,6 +46,7 @@ export function onVideoFrame(video: HTMLVideoElement, callback: () => void) {
   video.requestVideoFrameCallback(loop);
 
   return () => {
+    console.warn("Cancelling video frame callback in onVideoFrame");
     video.cancelVideoFrameCallback(requestId);
   };
 }

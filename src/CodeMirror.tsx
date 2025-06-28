@@ -43,7 +43,6 @@ export const CodeMirror = memo(
     // Initialize the editor
     useEffect(() => {
       if (div && initialDoc && !viewRef.current) {
-        console.log("Initializing CodeMirror with extensions", extensions);
         // This body will only run once in the component's lifetime
         viewRef.current = new EditorView({
           parent: div,

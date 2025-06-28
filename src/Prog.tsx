@@ -1,10 +1,11 @@
 import { basicSetup } from "codemirror";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import {
   CommandResult,
   parseToProgramRunner,
-  ProgramResult,
+  ProgramRunner,
+  ProgramState,
   runProgramRunner,
 } from "./commands.js";
 import DomNode from "./DomNode.js";
@@ -13,9 +14,9 @@ import { useWebcam, WebcamSelect } from "./webcam.js";
 
 export const Prog = () => {
   const [code, setCode] = useState<string>("delay 40\n");
-  const [result, setResult] = useState<ProgramResult | null>(null);
+  const [finalState, setFinalState] = useState<ProgramState | null>(null);
 
-  const shouldUseTestVideo = true;
+  const shouldUseTestVideo = false;
   const webcam = useWebcam(!shouldUseTestVideo);
   const video = useMemo(() => {
     if (shouldUseTestVideo) {
@@ -34,10 +35,26 @@ export const Prog = () => {
 
   // for now, persistence of the runner is very weak; any code change
   // re-constructs the runner
+  const programRunnerRef = useRef<ProgramRunner | undefined>(undefined);
   const { programRunner, error } = useMemo(
-    () => parseToProgramRunner(code),
+    () => parseToProgramRunner(code, programRunnerRef.current),
     [code],
   );
+  programRunnerRef.current = programRunner;
+
+  // const [programRunner, setProgramRunner] = useState<ProgramRunner | null>(
+  //   null,
+  // );
+  // const programRunnerRef = useRefForCallback(programRunner);
+  // const [error, setError] = useState<unknown>(null);
+  // useEffect(() => {
+  //   const { programRunner, error } = parseToProgramRunner(
+  //     code,
+  //     programRunnerRef.current ?? undefined,
+  //   );
+  //   setProgramRunner(programRunner);
+  //   setError(error);
+  // }, [code, programRunnerRef]);
 
   useEffect(() => {
     if (!video) {
@@ -45,21 +62,19 @@ export const Prog = () => {
     }
 
     const cancel = onVideoFrame(video, () => {
-      console.log("Processing video frame");
-
       if (video.readyState < 2) {
         console.log("Video not ready yet, skipping frame");
         return;
       }
 
-      const results = runProgramRunner(programRunner, {
+      const finalState = runProgramRunner(programRunner, {
         type: "image",
         source: video,
       });
 
-      setResult(results);
+      setFinalState(finalState);
 
-      console.log("Results:", results);
+      // console.log("Results:", finalState);
     });
     return () => {
       console.log("Stopping video frame processing");
@@ -96,15 +111,15 @@ export const Prog = () => {
           </>
         )}
         {programRunner.map((commandRunner) => (
-          <>
+          <Fragment key={commandRunner.id}>
             <div>{commandRunner.originalLine}</div>
             <div>
               <ResultView
-                result={result?.intermediate[commandRunner.id]}
+                result={finalState?.intermediate[commandRunner.id]}
                 isMirrored={isMirrored}
               />
             </div>
-          </>
+          </Fragment>
         ))}
       </div>
       <WebcamSelect webcam={webcam} className="mt-4" />

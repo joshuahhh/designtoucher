@@ -9,6 +9,7 @@ import {
   runProgramRunner,
 } from "./commands.js";
 import DomNode from "./DomNode.js";
+import { numericSlider } from "./numericSlider.js";
 import { onVideoFrame } from "./util.js";
 import { useWebcam, WebcamSelect } from "./webcam.js";
 
@@ -16,7 +17,7 @@ export const Prog = () => {
   const [code, setCode] = useState<string>("delay 40\n");
   const [finalState, setFinalState] = useState<ProgramState | null>(null);
 
-  const shouldUseTestVideo = false;
+  const shouldUseTestVideo = true;
   const webcam = useWebcam(!shouldUseTestVideo);
   const video = useMemo(() => {
     if (shouldUseTestVideo) {
@@ -41,20 +42,6 @@ export const Prog = () => {
     [code],
   );
   programRunnerRef.current = programRunner;
-
-  // const [programRunner, setProgramRunner] = useState<ProgramRunner | null>(
-  //   null,
-  // );
-  // const programRunnerRef = useRefForCallback(programRunner);
-  // const [error, setError] = useState<unknown>(null);
-  // useEffect(() => {
-  //   const { programRunner, error } = parseToProgramRunner(
-  //     code,
-  //     programRunnerRef.current ?? undefined,
-  //   );
-  //   setProgramRunner(programRunner);
-  //   setError(error);
-  // }, [code, programRunnerRef]);
 
   useEffect(() => {
     if (!video) {
@@ -82,13 +69,17 @@ export const Prog = () => {
     };
   }, [programRunner, video]);
 
+  const extensions = useMemo(() => [basicSetup, numericSlider()], []);
+
+  const lineClassName = "text-right pr-2 text-gray-400 w-[100px]";
+
   return (
     <div className="flex flex-col justify-center text-gray-300">
       {/* <div className="bg-gray-400"> */}
       <CodeMirrorControlled
         value={code}
         setValue={setCode}
-        extensions={basicSetup}
+        extensions={extensions}
       />
       {/* </div> */}
       {error ? (
@@ -98,10 +89,10 @@ export const Prog = () => {
         </div>
       ) : undefined}
       {/* <CodeMirror initialDoc="hello there" extensions={codeMirrorSetup} /> */}
-      <div className="grid grid-cols-2">
+      <div className="grid grid-cols-[max-content_1fr]">
         {video && (
           <>
-            <div>input</div>
+            <div className={lineClassName}>input</div>
             <div>
               <ResultView
                 result={{ type: "image", source: video }}
@@ -112,7 +103,7 @@ export const Prog = () => {
         )}
         {programRunner.map((commandRunner) => (
           <Fragment key={commandRunner.id}>
-            <div>{commandRunner.originalLine}</div>
+            <div className={lineClassName}>{commandRunner.originalLine}</div>
             <div>
               <ResultView
                 result={finalState?.intermediate[commandRunner.id]}
@@ -152,131 +143,4 @@ function ResultView({
   } else {
     return <div>not implemented</div>;
   }
-  // if (result.type === "contours") {
-  //   return (
-  //     <>
-  //       {originalImage && dims(originalImage)[0] > 0 && (
-  //         <DomNode
-  //           node={(() => {
-  //             const canvas = document.createElement("canvas");
-  //             canvas.classList.toggle("mirrored", isMirrored);
-  //             [canvas.width, canvas.height] = dims(originalImage);
-  //             const ctx = canvas.getContext("2d")!;
-  //             ctx.drawImage(originalImage, 0, 0);
-  //             let dst = cv.imread(canvas);
-  //             for (
-  //               let i = 0;
-  //               i < (result.contours.size() as any as number);
-  //               i++
-  //             ) {
-  //               let color = new cv.Scalar(0, 255, 0, 255);
-  //               cv.drawContours(
-  //                 dst,
-  //                 result.contours,
-  //                 i,
-  //                 color,
-  //                 3,
-  //                 cv.LINE_8,
-  //                 result.hierarchy,
-  //                 100,
-  //               );
-  //             }
-  //             cv.imshow(canvas, dst);
-  //             dst.delete();
-  //             return canvas;
-  //           })()}
-  //         />
-  //       )}
-  //       <div className="output-desc">{result.contours.size()} contour(s)</div>
-  //     </>
-  //   );
-  // }
-  // if (result.type === "contour") {
-  //   return (
-  //     <>
-  //       {originalImage && dims(originalImage)[0] > 0 && (
-  //         <DomNode
-  //           node={(() => {
-  //             const canvas = document.createElement("canvas");
-  //             canvas.classList.toggle("mirrored", isMirrored);
-  //             [canvas.width, canvas.height] = dims(originalImage);
-  //             const ctx = canvas.getContext("2d")!;
-  //             ctx.drawImage(originalImage, 0, 0);
-  //             let dst = cv.imread(canvas);
-  //             let color = new cv.Scalar(0, 255, 0, 255);
-  //             let matVec = new cv.MatVector();
-  //             matVec.push_back(result.contour);
-  //             cv.drawContours(dst, matVec, 0, color, 3, cv.LINE_8);
-  //             cv.imshow(canvas, dst);
-  //             dst.delete();
-  //             matVec.delete();
-  //             return canvas;
-  //           })()}
-  //         />
-  //       )}
-  //       <div className="output-desc">a contour</div>
-  //     </>
-  //   );
-  // }
-  // if (result.type === "point") {
-  //   return (
-  //     <>
-  //       {originalImage && dims(originalImage)[0] > 0 && (
-  //         <DomNode
-  //           node={(() => {
-  //             const canvas = document.createElement("canvas");
-  //             canvas.classList.toggle("mirrored", isMirrored);
-  //             [canvas.width, canvas.height] = dims(originalImage);
-  //             const ctx = canvas.getContext("2d")!;
-  //             ctx.drawImage(originalImage, 0, 0);
-  //             ctx.beginPath();
-  //             ctx.arc(
-  //               result.point.x,
-  //               result.point.y,
-  //               10,
-  //               0 * Math.PI,
-  //               2 * Math.PI,
-  //             );
-  //             ctx.fillStyle = "rgb(0, 255, 0)";
-  //             ctx.fill();
-  //             ctx.strokeStyle = "rgb(0, 0, 0)";
-  //             ctx.stroke();
-  //             return canvas;
-  //           })()}
-  //         />
-  //       )}
-  //       <div className="output-desc">
-  //         a point: (
-  //         {(() => {
-  //           let x = result.point.x;
-  //           if (isMirrored && originalImage) {
-  //             x = dims(originalImage)[0] - x;
-  //           }
-  //           return x.toFixed(3);
-  //         })()}
-  //         , {result.point.y.toFixed(3)})
-  //       </div>
-  //     </>
-  //   );
-  // }
-  // if (result.type === "raw") {
-  //   return <pre>{JSON.stringify(result.data, undefined, 2)}</pre>;
-  // } else if (result.type === "error") {
-  //   return <div style={{ color: "red" }}>{result.message}</div>;
-  // }
 }
-
-/*
-  -> img
-  brightness(0.5)
-  contrast(1.2)
-  glsl(tex) {
-    vec3 new = texture2D(tex, uv).rgb;
-    vec3 old = texture2D(tex[-1], uv).rgb;
-    vec3 diff = abs(new - old);
-    gl_FragColor = vec4(diff * 9.0, 1.0);
-  }
-  blur(5)
-  <- img
-  glsl()
-*/

@@ -123,7 +123,6 @@ export class CommandRunnerBlend extends CommandRunnerFromStack {
       const canvas = document.createElement("canvas");
       console.log(dims(input1.source));
       [canvas.width, canvas.height] = dims(input1.source);
-      canvas.height = 1280;
       const regl = reglConstructor({ canvas });
       const draw = regl({
         frag: `

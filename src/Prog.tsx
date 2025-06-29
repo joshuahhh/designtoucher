@@ -9,15 +9,14 @@ import {
   runProgramRunner,
 } from "./commands.js";
 import DomNode from "./DomNode.js";
-import { numericSlider } from "./numericSlider.js";
 import { onVideoFrame } from "./util.js";
 import { useWebcam, WebcamSelect } from "./webcam.js";
 
 export const Prog = () => {
-  const [code, setCode] = useState<string>("delay 40\n");
+  const [code, setCode] = useState<string>("delay 40\nblend 0.5\n");
   const [finalState, setFinalState] = useState<ProgramState | null>(null);
 
-  const shouldUseTestVideo = true;
+  const shouldUseTestVideo = false;
   const webcam = useWebcam(!shouldUseTestVideo);
   const video = useMemo(() => {
     if (shouldUseTestVideo) {
@@ -69,7 +68,13 @@ export const Prog = () => {
     };
   }, [programRunner, video]);
 
-  const extensions = useMemo(() => [basicSetup, numericSlider()], []);
+  const extensions = useMemo(
+    () => [
+      basicSetup,
+      // numericSlider()
+    ],
+    [],
+  );
 
   const lineClassName = "text-right pr-2 text-gray-400 w-[100px]";
 

@@ -1,9 +1,5 @@
-import reglConstructor, {
-  DrawCommand,
-  Regl,
-  Texture2D,
-  Texture2DOptions,
-} from "regl";
+import _ from "lodash";
+import reglConstructor, { DrawCommand, Regl, Texture2D } from "regl";
 import { assert } from "./assert.js";
 import dims from "./dims.js";
 import * as glfx from "./glfx/lib.js";
@@ -92,49 +88,36 @@ export abstract class CommandRunnerFromStack extends CommandRunner {
   }
 }
 
-type BlendProps = { texture1: Texture2D; texture2: Texture2D; alpha: number };
+function props(regl: Regl, names: string[]): { [name: string]: any } {
+  return Object.fromEntries(
+    names.map((name) => [name, regl.prop<any, any>(name)]),
+  );
+}
 
-export class CommandRunnerBlend extends CommandRunnerFromStack {
+export abstract class CommandRunnerRegl extends CommandRunnerFromStack {
   resources:
     | {
         canvas: HTMLCanvasElement;
-        texture1: Texture2D;
-        texture2: Texture2D;
+        textures: Texture2D[];
         draw: DrawCommand;
         regl: Regl;
       }
     | undefined = undefined;
 
-  runFromStack(stack: Value[]): Value {
-    const input1 = stack[stack.length - 1];
-    const input2 = stack[stack.length - 2];
-    const alpha = this.parameterValues["Alpha"];
+  abstract get arity(): number;
+  abstract get frag(): string;
+  abstract get params(): string[];
 
-    const texture1Opts: Texture2DOptions = {
-      data: input1.source,
-      flipY: true,
-    };
-    const texture2Opts: Texture2DOptions = {
-      data: input2.source,
-      flipY: true,
-    };
+  runFromStack(stack: Value[]): Value {
+    const arity = this.arity;
+    const inputs = stack.slice(-arity);
 
     if (!this.resources) {
       const canvas = document.createElement("canvas");
-      console.log(dims(input1.source));
-      [canvas.width, canvas.height] = dims(input1.source);
+      [canvas.width, canvas.height] = dims(inputs[0].source);
       const regl = reglConstructor({ canvas });
       const draw = regl({
-        frag: `
-          precision mediump float;
-          uniform sampler2D texture1, texture2;
-          uniform float alpha;
-          varying vec2 uv;
-          void main () {
-            vec3 col1 = texture2D(texture1, uv).rgb;
-            vec3 col2 = texture2D(texture2, uv).rgb;
-            gl_FragColor = vec4(col1 * alpha + col2 * (1.0 - alpha), 1.0);
-          }`,
+        frag: this.frag,
         vert: `
           precision mediump float;
           attribute vec2 position;
@@ -149,31 +132,75 @@ export class CommandRunnerBlend extends CommandRunnerFromStack {
           [2, 1, 3],
         ],
         uniforms: {
-          texture1: regl.prop<BlendProps, "texture1">("texture1"),
-          texture2: regl.prop<BlendProps, "texture2">("texture2"),
-          alpha: regl.prop<BlendProps, "alpha">("alpha"),
+          ...props(
+            regl,
+            _.range(arity).map((i) => `tex${i + 1}`),
+          ),
+          ...props(regl, this.params),
         },
       });
-      const texture1 = regl.texture(texture1Opts);
-      const texture2 = regl.texture(texture2Opts);
+      const textures = inputs.map((input, i) =>
+        regl.texture({
+          data: input.source,
+          flipY: true,
+        }),
+      );
       this.resources = {
         canvas,
-        texture1,
-        texture2,
+        textures,
         draw,
         regl,
       };
     } else {
-      this.resources.texture1(texture1Opts);
-      this.resources.texture2(texture2Opts);
+      this.resources.textures.forEach((texture, i) => {
+        texture({
+          data: inputs[i].source,
+          flipY: true,
+        });
+      });
     }
 
-    const { canvas, texture1, texture2, draw, regl } = this.resources;
+    const { canvas, textures, draw, regl } = this.resources;
 
     regl.poll();
-    draw({ texture1, texture2, alpha });
+    draw({
+      ...this.parameterValues,
+      ...Object.fromEntries(textures.map((tex, i) => [`tex${i + 1}`, tex])),
+    });
     return { type: "image", source: canvas };
   }
+}
+
+export class CommandRunnerBlend extends CommandRunnerRegl {
+  arity = 2;
+  frag = `
+    precision mediump float;
+    uniform sampler2D tex1, tex2;
+    uniform float alpha;
+    varying vec2 uv;
+    void main () {
+      vec3 col1 = texture2D(tex1, uv).rgb;
+      vec3 col2 = texture2D(tex2, uv).rgb;
+      gl_FragColor = vec4(col1 * alpha + col2 * (1.0 - alpha), 1.0);
+    }
+  `;
+  params = ["alpha"];
+}
+
+export class CommandRunnerMinus extends CommandRunnerRegl {
+  arity = 2;
+  frag = `
+    precision mediump float;
+    uniform sampler2D tex1, tex2;
+    uniform float alpha;
+    varying vec2 uv;
+    void main () {
+      vec3 col1 = texture2D(tex1, uv).rgb;
+      vec3 col2 = texture2D(tex2, uv).rgb;
+      gl_FragColor = vec4(abs(col1 - col2), 1.0);
+    }
+  `;
+  params = [];
 }
 
 interface GlfxResources {
@@ -343,8 +370,11 @@ export function parseToProgramRunner(
       } else if (command === "blend") {
         assert(args.length === 1, "'blend' requires one argument");
         programRunner.push(
-          new CommandRunnerBlend(id, { Alpha: args[0] }, line),
+          new CommandRunnerBlend(id, { alpha: args[0] }, line),
         );
+      } else if (command === "-") {
+        assert(args.length === 0, "'minus' does not take arguments");
+        programRunner.push(new CommandRunnerMinus(id, {}, line));
       } else {
         throw new Error(`I don't understand '${command}'`);
       }

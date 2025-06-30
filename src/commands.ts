@@ -52,11 +52,62 @@ export type ProgramState = {
 export abstract class CommandRunner {
   constructor(
     public id: string,
+    public lineNum: number,
     public parameterValues: ParameterValues,
     public originalLine: string,
   ) {}
 
   abstract run(state: ProgramState): ProgramState;
+}
+
+function cloneCanvas(
+  source: HTMLCanvasElement | HTMLVideoElement,
+): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("could not get canvas context");
+  ctx.drawImage(source, 0, 0);
+  return canvas;
+}
+
+export class CommandRunnerSaveToVar extends CommandRunner {
+  glfxResources: GlfxResources | undefined = undefined;
+
+  run(state: ProgramState): ProgramState {
+    const varName = this.parameterValues["varName"];
+    if (state.type === "error") return state;
+    const value = state.stack[state.stack.length - 1];
+    const glfxResources = (this.glfxResources = updateGlfxResources(
+      this.glfxResources,
+      value.source,
+    ));
+    glfxResources.canvas.draw(glfxResources.texture);
+    glfxResources.canvas.update();
+    return {
+      ...state,
+      vars: {
+        ...state.vars,
+        [varName]: { type: "image", source: glfxResources.canvas },
+      },
+    };
+  }
+}
+
+export class CommandRunnerLoadFromVar extends CommandRunner {
+  run(state: ProgramState): ProgramState {
+    const varName = this.parameterValues["varName"];
+    if (state.type === "error") return state;
+    return {
+      ...state,
+      stack: [...state.stack, state.vars[varName]],
+      intermediate: {
+        ...state.intermediate,
+        [this.id]: state.vars[varName],
+      },
+    };
+  }
 }
 
 export abstract class CommandRunnerFromStack extends CommandRunner {
@@ -109,6 +160,7 @@ export abstract class CommandRunnerRegl extends CommandRunnerFromStack {
   abstract get params(): string[];
 
   runFromStack(stack: Value[]): Value {
+    // console.log("running regl command, lineNum = ", this.lineNum);
     const arity = this.arity;
     const inputs = stack.slice(-arity);
 
@@ -139,7 +191,7 @@ export abstract class CommandRunnerRegl extends CommandRunnerFromStack {
           ...props(regl, this.params),
         },
       });
-      const textures = inputs.map((input, i) =>
+      const textures = inputs.map((input) =>
         regl.texture({
           data: input.source,
           flipY: true,
@@ -197,15 +249,54 @@ export class CommandRunnerMinus extends CommandRunnerRegl {
     void main () {
       vec3 col1 = texture2D(tex1, uv).rgb;
       vec3 col2 = texture2D(tex2, uv).rgb;
-      gl_FragColor = vec4(abs(col1 - col2), 1.0);
+      gl_FragColor = vec4(4.0*abs(col1 - col2), 1.0);
     }
   `;
   params = [];
 }
 
-interface GlfxResources {
+export class CommandRunnerTimes extends CommandRunnerRegl {
+  arity = 1;
+  frag = `
+    precision mediump float;
+    uniform sampler2D tex1;
+    uniform float alpha;
+    varying vec2 uv;
+    void main () {
+      vec3 col1 = texture2D(tex1, uv).rgb;
+      gl_FragColor = vec4(col1 * alpha, 1.0);
+    }
+  `;
+  params = ["alpha"];
+}
+
+export interface GlfxResources {
   canvas: GlfxCanvas;
   texture: GlfxTexture;
+}
+
+export function updateGlfxResources(
+  glfxResources: GlfxResources | undefined,
+  textureSource: HTMLVideoElement | HTMLCanvasElement,
+): GlfxResources {
+  // set to "true" means we always create new resources; a way to
+  // test how important persistence / keys are
+  const alwaysRecreate = false;
+  if (!glfxResources || alwaysRecreate) {
+    const canvas = glfx.canvas();
+    const texture = canvas.texture(textureSource);
+    glfxResources = { canvas, texture };
+  } else {
+    try {
+      glfxResources.texture.loadContentsOf(textureSource);
+    } catch {
+      console.warn("trouble loading texture; let's try again");
+      glfxResources.texture.destroy();
+      glfxResources = undefined;
+      return updateGlfxResources(glfxResources, textureSource);
+    }
+  }
+  return glfxResources;
 }
 
 export abstract class CommandRunnerGlfx extends CommandRunnerFromStack {
@@ -217,7 +308,11 @@ export abstract class CommandRunnerGlfx extends CommandRunnerFromStack {
       throw new Error(`needs image input, not ${input.type}`);
     }
 
-    const glfxResources = this.updateGlfxResources(input.source);
+    const glfxResources = (this.glfxResources = updateGlfxResources(
+      this.glfxResources,
+      input.source,
+    ));
+
     glfxResources.canvas.draw(glfxResources.texture);
     this.apply(glfxResources.canvas);
     glfxResources.canvas.update();
@@ -225,29 +320,6 @@ export abstract class CommandRunnerGlfx extends CommandRunnerFromStack {
   }
 
   abstract apply(this: this, canvas: GlfxCanvas): void;
-
-  updateGlfxResources(
-    textureSource: HTMLVideoElement | HTMLCanvasElement,
-  ): GlfxResources {
-    // set to "true" means we always create new resources; a way to
-    // test how important persistence / keys are
-    const alwaysRecreate = false;
-    if (!this.glfxResources || alwaysRecreate) {
-      const canvas = glfx.canvas();
-      const texture = canvas.texture(textureSource);
-      this.glfxResources = { canvas, texture };
-    } else {
-      try {
-        this.glfxResources.texture.loadContentsOf(textureSource);
-      } catch {
-        console.warn("trouble loading texture; let's try again");
-        this.glfxResources.texture.destroy();
-        this.glfxResources = undefined;
-        return this.updateGlfxResources(textureSource);
-      }
-    }
-    return this.glfxResources;
-  }
 }
 
 class CommandRunnerBlur extends CommandRunnerGlfx {
@@ -334,10 +406,13 @@ export function parseToProgramRunner(
 ): ParseResult {
   let programRunner: ProgramRunner = [];
   try {
-    for (const line of code.split("\n")) {
+    for (const [lineIdx, line] of code.split("\n").entries()) {
+      const lineNum = lineIdx + 1; // 1-based line numbers
+
       if (oldProgramRunner) {
         const oldCommandRunner = oldProgramRunner[programRunner.length];
         if (oldCommandRunner && line === oldCommandRunner.originalLine) {
+          oldCommandRunner.lineNum = lineNum; // TODO: sucks
           programRunner.push(oldCommandRunner);
           continue;
         }
@@ -346,35 +421,72 @@ export function parseToProgramRunner(
       if (trimmed.length === 0) continue;
       const parts = trimmed.split(/\s+/);
       const command = parts[0].toLowerCase();
-      const args = parts.slice(1).map((arg) => parseFloat(arg));
+      const args = parts.slice(1);
       const id = programRunner.length.toString();
-      if (command === "blur") {
+      if (command === "->") {
+        assert(args.length === 1, "'save' requires one argument");
+        programRunner.push(
+          new CommandRunnerSaveToVar(id, lineNum, { varName: args[0] }, line),
+        );
+      }
+      if (command === "<-") {
+        assert(args.length === 1, "'load' requires one argument");
+        programRunner.push(
+          new CommandRunnerLoadFromVar(id, lineNum, { varName: args[0] }, line),
+        );
+      } else if (command === "blur") {
         assert(args.length === 1, "'blur' requires one argument");
         programRunner.push(
-          new CommandRunnerBlur(id, { Distance: args[0] }, line),
+          new CommandRunnerBlur(
+            id,
+            lineNum,
+            { Distance: parseFloat(args[0]) },
+            line,
+          ),
         );
       } else if (command === "bc") {
         assert(args.length === 2, "'bc' requires two arguments");
         programRunner.push(
           new CommandRunnerBC(
             id,
-            { Brightness: args[0], Contrast: args[1] },
+            lineNum,
+            { Brightness: parseFloat(args[0]), Contrast: parseFloat(args[1]) },
             line,
           ),
         );
       } else if (command === "delay") {
         assert(args.length === 1, "'delay' requires one argument");
         programRunner.push(
-          new CommandRunnerDelay(id, { Length: args[0] }, line),
+          new CommandRunnerDelay(
+            id,
+            lineNum,
+            { Length: parseFloat(args[0]) },
+            line,
+          ),
         );
       } else if (command === "blend") {
         assert(args.length === 1, "'blend' requires one argument");
         programRunner.push(
-          new CommandRunnerBlend(id, { alpha: args[0] }, line),
+          new CommandRunnerBlend(
+            id,
+            lineNum,
+            { alpha: parseFloat(args[0]) },
+            line,
+          ),
         );
       } else if (command === "-") {
         assert(args.length === 0, "'minus' does not take arguments");
-        programRunner.push(new CommandRunnerMinus(id, {}, line));
+        programRunner.push(new CommandRunnerMinus(id, lineNum, {}, line));
+      } else if (command === "*") {
+        assert(args.length === 1, "'minus' requires one argument");
+        programRunner.push(
+          new CommandRunnerTimes(
+            id,
+            lineNum,
+            { alpha: parseFloat(args[0]) },
+            line,
+          ),
+        );
       } else {
         throw new Error(`I don't understand '${command}'`);
       }

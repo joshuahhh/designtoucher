@@ -59,11 +59,21 @@ function stopStream(stream: WebcamStream) {
   }
 }
 
-export const useWebcam = (enabled = true): Webcam => {
+export const useWebcam = ({
+  enabled,
+  preference,
+}: {
+  enabled?: boolean;
+  preference?: string;
+} = {}): Webcam => {
+  enabled = enabled ?? true;
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [stream, setStream] = useState<WebcamStream | null>(null);
   const streamRef = useRefForCallback(stream);
+
+  // not used reactively
+  const preferenceRef = useRefForCallback(preference);
 
   useEffect(() => {
     // enumerate cameras
@@ -72,9 +82,15 @@ export const useWebcam = (enabled = true): Webcam => {
       const allDevices = await navigator.mediaDevices.enumerateDevices();
       const cams = allDevices.filter((d) => d.kind === "videoinput");
       setDevices(cams);
-      if (cams.length && !deviceId) setDeviceId(cams[0].deviceId);
+      const preference = preferenceRef.current;
+      const preferredCamera =
+        (preference && cams.find((cam) => cam.label.includes(preference))) ||
+        cams[0];
+      if (preferredCamera) {
+        setDeviceId(preferredCamera.deviceId);
+      }
     })();
-  }, [deviceId]);
+  }, [deviceId, preferenceRef]);
 
   useEffect(() => {
     // update stream when deviceId changes

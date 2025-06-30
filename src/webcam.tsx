@@ -25,6 +25,8 @@ async function startStream(deviceId: string): Promise<WebcamStream> {
       deviceId: { exact: deviceId },
       width: { ideal: 1280 },
       height: { ideal: 720 },
+      // width: { ideal: 1920 },
+      // height: { ideal: 1080 },
     },
   };
 

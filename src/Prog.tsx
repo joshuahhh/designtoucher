@@ -28,8 +28,9 @@ export const Prog = () => {
   const shouldUseTestVideo = false;
   const webcam = useWebcam({
     enabled: !shouldUseTestVideo,
-    preference: "BRIO",
-    // preference: "FaceTime",
+    // preference: "Iriun",
+    width: 1920,
+    preference: "FaceTime",
   });
   const video = useMemo(() => {
     if (shouldUseTestVideo) {

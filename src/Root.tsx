@@ -22,7 +22,7 @@ const Canvas = memo(() => {
     height: window.innerHeight,
   });
 
-  const webcam = useWebcam();
+  const webcam = useWebcam({ width: 1280 });
 
   useEffect(() => {
     const canvas = canvasRef.current!;

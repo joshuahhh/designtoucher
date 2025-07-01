@@ -15,18 +15,41 @@ type WebcamStream = {
   height: number;
 };
 
-async function startStream(deviceId: string): Promise<WebcamStream> {
+async function startStream(
+  deviceId: string,
+  width: number,
+): Promise<WebcamStream> {
   const video = document.createElement("video");
   video.autoplay = true;
   video.playsInline = true;
 
+  // const track = (
+  //   await navigator.mediaDevices.getUserMedia({ video: true })
+  // ).getVideoTracks()[0];
+  // const caps = track.getCapabilities();
+  // console.log(
+  //   "we should be able to do:",
+  //   caps.width!.max,
+  //   "x",
+  //   caps.height!.max,
+  // );
+  // track.stop();
+
+  // const constraints: MediaStreamConstraints = {
+  //   video: {
+  //     width: { min: 1280, ideal: 1920, max: 1920 },
+  //     height: { min: 720, ideal: 1080, max: 1080 },
+  //   },
+  // };
+
   const constraints: MediaStreamConstraints = {
     video: {
       deviceId: { exact: deviceId },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      // width: { ideal: 1920 },
-      // height: { ideal: 1080 },
+      width: { exact: width }, // ask for the 720 p preset
+      // height: { exact: 1080 }, // ask for the 1080 p preset
+      // frameRate: { max: 30 }, // tell the solver “30 fps is enough”
+      // leave height alone or pin aspectRatio, but DON’T make height exact
+      // height will come back as 720 automatically
     },
   };
 
@@ -40,6 +63,8 @@ async function startStream(deviceId: string): Promise<WebcamStream> {
       resolve();
     };
   });
+
+  console.log("loaded vid at", video.videoWidth, "x", video.videoHeight);
 
   return {
     video,
@@ -64,10 +89,12 @@ function stopStream(stream: WebcamStream) {
 export const useWebcam = ({
   enabled,
   preference,
+  width,
 }: {
   enabled?: boolean;
   preference?: string;
-} = {}): Webcam => {
+  width: number;
+}): Webcam => {
   enabled = enabled ?? true;
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -102,7 +129,7 @@ export const useWebcam = ({
     }
 
     if (deviceId && enabled) {
-      startStream(deviceId).then((stream) => {
+      startStream(deviceId, width).then((stream) => {
         setStream(stream);
       });
     } else {

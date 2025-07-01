@@ -311,7 +311,6 @@ export class Demo {
   run() {
     var imageData = this.ctx.getImageData(0, 0, this.vidWidth, this.vidHeight);
     this.img_pyr.fromRGBA(imageData);
-    console.log("img_pyr", this.img_pyr);
 
     this.img_pyr.pyrDown();
     this.img_ryp.pyrUp(this.img_pyr);

@@ -33,7 +33,18 @@ export function animate(callback: () => void) {
   };
 }
 
-export function onVideoFrame(video: HTMLVideoElement, callback: () => void) {
+export function onVideoFrame(
+  video: HTMLVideoElement | HTMLImageElement,
+  callback: () => void,
+) {
+  if (video instanceof HTMLImageElement) {
+    let intervalId = setInterval(callback, 33);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }
+
   let requestId: number;
 
   const loop = () => {

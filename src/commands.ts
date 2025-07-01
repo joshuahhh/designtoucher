@@ -249,7 +249,7 @@ export class CommandRunnerMinus extends CommandRunnerRegl {
     void main () {
       vec3 col1 = texture2D(tex1, uv).rgb;
       vec3 col2 = texture2D(tex2, uv).rgb;
-      gl_FragColor = vec4(4.0*abs(col1 - col2), 1.0);
+      gl_FragColor = vec4(2.0*abs(col1 - col2), 1.0);
     }
   `;
   params = [];

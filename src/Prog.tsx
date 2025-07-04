@@ -31,6 +31,9 @@ export const Prog = () => {
     // preference: "Iriun",
     width: 1920,
     preference: "FaceTime",
+    // vidOverrideExt: "/IMG_0110.MOV",
+    // vidOverrideExt: "/IMG-0110-stable.mp4",
+    vidOverrideExt: "/IMG_0110.stable.MOV",
   });
   const video = useMemo(() => {
     if (shouldUseTestVideo) {
@@ -176,7 +179,10 @@ export const Prog = () => {
       {selectedProgramRunner && (
         <DomNode
           node={selectedCanvas}
-          style={isMirrored ? { transform: "scaleX(-1)" } : {}}
+          style={{
+            ...(isMirrored ? { transform: "scaleX(-1)" } : {}),
+            zoom: 0.5,
+          }}
         />
       )}
     </div>

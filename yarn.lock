@@ -284,6 +284,13 @@
   dependencies:
     tslib "^2.0.0"
 
+"@engraft/update-proxy@^0.0.9":
+  version "0.0.9"
+  resolved "https://registry.yarnpkg.com/@engraft/update-proxy/-/update-proxy-0.0.9.tgz#4921c021e8516dbdbccc9f514277b0c9b12a171a"
+  integrity sha512-mYdIbh93y9lXnzkMXqero8s16n0y3nFZfgFzltasGEtS5btZLi6Q+EVKgQ7EWFDzFpVmqDmgw/F6RXRFB+TbFg==
+  dependencies:
+    immutability-helper "^3.1.1"
+
 "@esbuild/aix-ppc64@0.21.5":
   version "0.21.5"
   resolved "https://registry.yarnpkg.com/@esbuild/aix-ppc64/-/aix-ppc64-0.21.5.tgz#c7184a326533fcdf1b8ee0733e21c713b975575f"
@@ -2003,6 +2010,11 @@ ignore@^7.0.0:
   version "7.0.5"
   resolved "https://registry.yarnpkg.com/ignore/-/ignore-7.0.5.tgz#4cb5f6cd7d4c7ab0365738c7aea888baa6d7efd9"
   integrity sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==
+
+immutability-helper@^3.1.1:
+  version "3.1.1"
+  resolved "https://registry.yarnpkg.com/immutability-helper/-/immutability-helper-3.1.1.tgz#2b86b2286ed3b1241c9e23b7b21e0444f52f77b7"
+  integrity sha512-Q0QaXjPjwIju/28TsugCHNEASwoCcJSyJV3uO1sOIQGI0jKgm9f41Lvz0DZj3n46cNCyAZTsEYoY4C2bVRUzyQ==
 
 import-fresh@^3.2.1:
   version "3.3.1"

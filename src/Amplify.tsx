@@ -15,7 +15,7 @@ export function Amplify() {
     // preference: "Iriun",
     width: 640,
     preference: "FaceTime",
-    vidOverrideExt: "/IMG_0110.stable.MOV",
+    // vidOverrideExt: "/IMG_0110.stable.MOV",
   });
   const video = useMemo(() => {
     if (shouldUseTestVideo) {

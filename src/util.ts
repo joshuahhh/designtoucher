@@ -45,17 +45,17 @@ export function onVideoFrame(
     };
   }
 
-  let requestId: number;
+  let cancelled = false;
 
   const loop = () => {
+    if (cancelled) return;
     callback();
-    requestId = video.requestVideoFrameCallback(loop);
+    video.requestVideoFrameCallback(loop);
   };
 
   video.requestVideoFrameCallback(loop);
 
   return () => {
-    console.warn("Cancelling video frame callback in onVideoFrame");
-    video.cancelVideoFrameCallback(requestId);
+    cancelled = true;
   };
 }

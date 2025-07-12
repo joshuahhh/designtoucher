@@ -1,15 +1,16 @@
 import _ from "lodash";
-import reglConstructor, { DrawCommand, Regl, Texture2D } from "regl";
+import { DrawCommand, Framebuffer2D, Regl, Texture2D } from "regl";
 import { assert } from "./assert.js";
-import dims from "./dims.js";
-import * as glfx from "./glfx/lib.js";
-import { GlfxCanvas, GlfxTexture } from "./glfx/lib.js";
+import { Fbo } from "./fbo.js";
+import { OmniCanvasContext } from "./OmniCanvas.js";
 
 export type ParameterValues = { [parameterName: string]: any };
 
 export type Value = {
-  type: "image";
-  source: HTMLCanvasElement | HTMLVideoElement;
+  type: "texture";
+  // the rule is that you can't rely on this texture being immutable
+  // for more than the current tick; copy it if you care
+  texture: Texture2D;
 };
 // | {
 //     type: "contours";
@@ -33,7 +34,7 @@ export type CommandResult =
   | Value
   | {
       type: "error";
-      message: string;
+      error: Error;
     };
 
 export type ProgramState = {
@@ -55,41 +56,36 @@ export abstract class CommandRunner {
     public lineNum: number,
     public parameterValues: ParameterValues,
     public originalLine: string,
+    public ctx: OmniCanvasContext,
   ) {}
 
   abstract run(state: ProgramState): ProgramState;
 }
 
-function cloneCanvas(
-  source: HTMLCanvasElement | HTMLVideoElement,
-): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = source.width;
-  canvas.height = source.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("could not get canvas context");
-  ctx.drawImage(source, 0, 0);
-  return canvas;
-}
-
 export class CommandRunnerSaveToVar extends CommandRunner {
-  glfxResources: GlfxResources | undefined = undefined;
+  resources: { texture: Texture2D; fbo: Framebuffer2D } | undefined = undefined;
 
   run(state: ProgramState): ProgramState {
     const varName = this.parameterValues["varName"];
     if (state.type === "error") return state;
     const value = state.stack[state.stack.length - 1];
-    const glfxResources = (this.glfxResources = updateGlfxResources(
-      this.glfxResources,
-      value.source,
-    ));
-    glfxResources.canvas.draw(glfxResources.texture);
-    glfxResources.canvas.update();
+
+    if (!this.resources) {
+      const texture = this.ctx.regl.texture();
+      this.resources = {
+        texture,
+        fbo: this.ctx.regl.framebuffer({ color: texture }),
+      };
+    }
+    const { texture, fbo } = this.resources;
+
+    this.ctx.copy({ tex1: value.texture });
+
     return {
       ...state,
       vars: {
         ...state.vars,
-        [varName]: { type: "image", source: glfxResources.canvas },
+        [varName]: { type: "texture", texture } satisfies Value,
       },
     };
   }
@@ -104,7 +100,7 @@ export class CommandRunnerLoadFromVar extends CommandRunner {
       stack: [...state.stack, state.vars[varName]],
       intermediate: {
         ...state.intermediate,
-        [this.id]: state.vars[varName],
+        [this.id]: state.vars[varName] satisfies CommandResult,
       },
     };
   }
@@ -122,15 +118,11 @@ export abstract class CommandRunnerFromStack extends CommandRunner {
         intermediate: { ...state.intermediate, [this.id]: value },
         stack: [...state.stack, value],
       };
-    } catch (e) {
-      let message: string;
-      if (e instanceof Error) {
-        message = e.message;
-      } else {
-        message = "unknown error; logging";
-        console.error(e);
-      }
-      const result: CommandResult = { type: "error", message };
+    } catch (error) {
+      const result: CommandResult = {
+        type: "error",
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
       return {
         type: "error",
         intermediate: { ...state.intermediate, [this.id]: result },
@@ -147,12 +139,7 @@ function props(regl: Regl, names: string[]): { [name: string]: any } {
 
 export abstract class CommandRunnerRegl extends CommandRunnerFromStack {
   resources:
-    | {
-        canvas: HTMLCanvasElement;
-        textures: Texture2D[];
-        draw: DrawCommand;
-        regl: Regl;
-      }
+    | { draw: DrawCommand; texture: Texture2D; fbo: Framebuffer2D }
     | undefined = undefined;
 
   abstract get arity(): number;
@@ -164,10 +151,9 @@ export abstract class CommandRunnerRegl extends CommandRunnerFromStack {
     const arity = this.arity;
     const inputs = stack.slice(-arity);
 
+    const { regl } = this.ctx;
+
     if (!this.resources) {
-      const canvas = document.createElement("canvas");
-      [canvas.width, canvas.height] = dims(inputs[0].source);
-      const regl = reglConstructor({ canvas });
       const draw = regl({
         frag: this.frag,
         vert: `
@@ -191,36 +177,56 @@ export abstract class CommandRunnerRegl extends CommandRunnerFromStack {
           ...props(regl, this.params),
         },
       });
-      const textures = inputs.map((input) =>
-        regl.texture({
-          data: input.source,
-          flipY: true,
-        }),
-      );
-      this.resources = {
-        canvas,
-        textures,
-        draw,
-        regl,
-      };
-    } else {
-      this.resources.textures.forEach((texture, i) => {
-        texture({
-          data: inputs[i].source,
-          flipY: true,
-        });
-      });
-    }
 
-    const { canvas, textures, draw, regl } = this.resources;
+      const texture = this.ctx.regl.texture();
+      this.resources = {
+        draw,
+        texture,
+        fbo: this.ctx.regl.framebuffer({ color: texture }),
+      };
+    }
+    const { draw, texture, fbo } = this.resources;
 
     regl.poll();
-    draw({
-      ...this.parameterValues,
-      ...Object.fromEntries(textures.map((tex, i) => [`tex${i + 1}`, tex])),
+
+    fbo.resize(inputs[0].texture.width, inputs[0].texture.height);
+
+    regl
+      .framebuffer({
+        color: inputs[0].texture,
+      })
+      .use(() => {
+        console.log("input", _.sum(regl.read()));
+      });
+
+    fbo.use(() => {
+      // regl.poll();
+      draw({
+        ...this.parameterValues,
+        ...Object.fromEntries(
+          inputs.map((input, i) => [`tex${i + 1}`, input.texture]),
+        ),
+      });
+      regl.poll();
+      console.log("fbo", _.sum(regl.read()));
     });
-    return { type: "image", source: canvas };
+
+    return { type: "texture", texture };
   }
+}
+
+export class CommandRunnerIden extends CommandRunnerRegl {
+  arity = 1;
+  frag = `
+    precision mediump float;
+    uniform sampler2D tex1, tex2;
+    uniform float alpha;
+    varying vec2 uv;
+    void main () {
+      gl_FragColor = texture2D(tex1, uv);
+    }
+  `;
+  params = [];
 }
 
 export class CommandRunnerBlend extends CommandRunnerRegl {
@@ -270,110 +276,93 @@ export class CommandRunnerTimes extends CommandRunnerRegl {
   params = ["alpha"];
 }
 
-export interface GlfxResources {
-  canvas: GlfxCanvas;
-  texture: GlfxTexture;
-}
-
-export function updateGlfxResources(
-  glfxResources: GlfxResources | undefined,
-  textureSource: HTMLVideoElement | HTMLCanvasElement,
-): GlfxResources {
-  // set to "true" means we always create new resources; a way to
-  // test how important persistence / keys are
-  const alwaysRecreate = false;
-  if (!glfxResources || alwaysRecreate) {
-    const canvas = glfx.canvas();
-    const texture = canvas.texture(textureSource);
-    glfxResources = { canvas, texture };
-  } else {
-    try {
-      glfxResources.texture.loadContentsOf(textureSource);
-    } catch {
-      console.warn("trouble loading texture; let's try again");
-      glfxResources.texture.destroy();
-      glfxResources = undefined;
-      return updateGlfxResources(glfxResources, textureSource);
-    }
-  }
-  return glfxResources;
-}
-
-export abstract class CommandRunnerGlfx extends CommandRunnerFromStack {
-  glfxResources: GlfxResources | undefined;
+class CommandRunnerCopy extends CommandRunnerFromStack {
+  fbo: Fbo | undefined = undefined;
 
   runFromStack(stack: Value[]): Value {
+    const { regl } = this.ctx;
     const input = stack[stack.length - 1];
-    if (input.type !== "image") {
-      throw new Error(`needs image input, not ${input.type}`);
+    assert(input.type === "texture");
+    // omg why doesn't this work
+    if (!this.fbo) this.fbo = Fbo(regl);
+    // this crashes everything
+    // this.fbo = Fbo(regl);
+    if (
+      input.texture.width !== this.fbo.texture.width ||
+      input.texture.height !== this.fbo.texture.height
+    ) {
+      console.log("resizing");
+      this.fbo.resize(input.texture.width, input.texture.height);
     }
 
-    const glfxResources = (this.glfxResources = updateGlfxResources(
-      this.glfxResources,
-      input.source,
-    ));
-
-    glfxResources.canvas.draw(glfxResources.texture);
-    this.apply(glfxResources.canvas);
-    glfxResources.canvas.update();
-    return { type: "image", source: glfxResources.canvas };
-  }
-
-  abstract apply(this: this, canvas: GlfxCanvas): void;
-}
-
-class CommandRunnerBlur extends CommandRunnerGlfx {
-  apply(canvas: GlfxCanvas) {
-    canvas.triangleBlur(this.parameterValues["Distance"]);
-  }
-}
-
-class CommandRunnerBC extends CommandRunnerGlfx {
-  apply(canvas: GlfxCanvas) {
-    canvas.brightnessContrast(
-      this.parameterValues["Brightness"],
-      this.parameterValues["Contrast"],
-    );
+    this.fbo.use(() => {
+      const passthrough = regl({
+        frag: `
+          precision mediump float;
+          uniform sampler2D tex1;
+          varying vec2 uv;
+          void main() {
+            gl_FragColor = texture2D(tex1, uv);
+          }
+        `,
+        vert: `
+          precision mediump float;
+          attribute vec2 position;
+          varying vec2 uv;
+          void main() {
+            uv = 0.5 * (position + 1.0);
+            gl_Position = vec4(position, 0, 1);
+          }
+        `,
+        attributes: {
+          position: [-1, -1, 1, -1, -1, 1, 1, 1],
+        },
+        elements: [
+          [0, 1, 2],
+          [2, 1, 3],
+        ],
+        uniforms: {
+          tex1: input.texture,
+        },
+      });
+      passthrough();
+    });
+    return { type: "texture", texture: this.fbo.texture };
   }
 }
 
 class CommandRunnerDelay extends CommandRunnerFromStack {
-  canvas = glfx.canvas();
-  textures: GlfxTexture[] = [];
+  fbos: Fbo[] = [];
 
   runFromStack(stack: Value[]): Value {
+    const { regl, copy } = this.ctx;
     const input = stack[stack.length - 1];
-    assert(input.type === "image");
+    assert(input.type === "texture");
     const delayLength = this.parameterValues["Length"];
     assert(delayLength > 0, "length 0 not impl");
-    if (this.textures.length < delayLength) {
-      const newTexture = this.canvas.texture(input.source);
-      this.textures.push(newTexture);
-      throw new Error("still loading");
+    if (this.fbos.length < delayLength) {
+      const newFBO = Fbo(regl);
+      this.fbos.push(newFBO);
+      throw new Error("not ready yet");
     } else {
       // get rid of extraneous textures
-      while (this.textures.length > delayLength) {
-        this.textures.shift()!.destroy();
+      while (this.fbos.length > delayLength) {
+        this.fbos.shift()!.destroy();
       }
 
-      // draw onto the canvas
-      const oldTexture = this.textures.shift()!;
-      this.canvas.draw(oldTexture);
-      this.canvas.update();
+      // cycle the ring
+      const oldFbo = this.fbos.shift()!; // we've already returned this one! re-use it
+      oldFbo.resize(input.texture.width, input.texture.height);
+      copy({
+        tex1: input.texture,
+        framebuffer: oldFbo,
+      });
+      this.fbos.push(oldFbo);
 
-      // update with new info
-      oldTexture.loadContentsOf(input.source);
-      this.textures.push(oldTexture);
-
-      return { type: "image", source: this.canvas };
+      return { type: "texture", texture: this.fbos.at(-1)!.texture };
     }
   }
 }
-
-export const commandRunners: { [name: string]: typeof CommandRunner } = {
-  blur: CommandRunnerBlur,
-  bc: CommandRunnerBC,
-};
 
 export type ProgramRunner = CommandRunner[];
 
@@ -402,7 +391,8 @@ export type ParseResult = { programRunner: ProgramRunner; error?: unknown };
 
 export function parseToProgramRunner(
   code: string,
-  oldProgramRunner?: ProgramRunner,
+  oldProgramRunner: ProgramRunner | undefined,
+  ctx: OmniCanvasContext,
 ): ParseResult {
   let programRunner: ProgramRunner = [];
   try {
@@ -426,32 +416,24 @@ export function parseToProgramRunner(
       if (command === "->") {
         assert(args.length === 1, "'save' requires one argument");
         programRunner.push(
-          new CommandRunnerSaveToVar(id, lineNum, { varName: args[0] }, line),
+          new CommandRunnerSaveToVar(
+            id,
+            lineNum,
+            { varName: args[0] },
+            line,
+            ctx,
+          ),
         );
       }
       if (command === "<-") {
         assert(args.length === 1, "'load' requires one argument");
         programRunner.push(
-          new CommandRunnerLoadFromVar(id, lineNum, { varName: args[0] }, line),
-        );
-      } else if (command === "blur") {
-        assert(args.length === 1, "'blur' requires one argument");
-        programRunner.push(
-          new CommandRunnerBlur(
+          new CommandRunnerLoadFromVar(
             id,
             lineNum,
-            { Distance: parseFloat(args[0]) },
+            { varName: args[0] },
             line,
-          ),
-        );
-      } else if (command === "bc") {
-        assert(args.length === 2, "'bc' requires two arguments");
-        programRunner.push(
-          new CommandRunnerBC(
-            id,
-            lineNum,
-            { Brightness: parseFloat(args[0]), Contrast: parseFloat(args[1]) },
-            line,
+            ctx,
           ),
         );
       } else if (command === "delay") {
@@ -462,6 +444,7 @@ export function parseToProgramRunner(
             lineNum,
             { Length: parseFloat(args[0]) },
             line,
+            ctx,
           ),
         );
       } else if (command === "blend") {
@@ -472,11 +455,18 @@ export function parseToProgramRunner(
             lineNum,
             { alpha: parseFloat(args[0]) },
             line,
+            ctx,
           ),
         );
       } else if (command === "-") {
-        assert(args.length === 0, "'minus' does not take arguments");
-        programRunner.push(new CommandRunnerMinus(id, lineNum, {}, line));
+        assert(args.length === 0, "'-' does not take arguments");
+        programRunner.push(new CommandRunnerMinus(id, lineNum, {}, line, ctx));
+      } else if (command === "iden") {
+        assert(args.length === 0, "'iden' does not take arguments");
+        programRunner.push(new CommandRunnerIden(id, lineNum, {}, line, ctx));
+      } else if (command === "copy") {
+        assert(args.length === 0, "'copy' does not take arguments");
+        programRunner.push(new CommandRunnerCopy(id, lineNum, {}, line, ctx));
       } else if (command === "*") {
         assert(args.length === 1, "'minus' requires one argument");
         programRunner.push(
@@ -485,12 +475,14 @@ export function parseToProgramRunner(
             lineNum,
             { alpha: parseFloat(args[0]) },
             line,
+            ctx,
           ),
         );
       } else {
         throw new Error(`I don't understand '${command}'`);
       }
     }
+    console.log("programRunner", programRunner);
     return { programRunner };
   } catch (e) {
     console.error("Error parsing code to filter chain:", e);

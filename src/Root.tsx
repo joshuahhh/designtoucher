@@ -68,23 +68,21 @@ const Canvas = memo(() => {
     if (!video) return;
 
     const cancel = onVideoFrame(video, () => {
-      if (video.readyState >= 2) {
-        const opts: Texture2DOptions = { data: video, flipY: true };
-        const beEconomical = true; // true to reuse textures, false to always create new ones
-        if (beEconomical) {
-          [texCurr, texPrev] = [texPrev, texCurr];
-        } else {
-          [texCurr, texPrev] = [null, texCurr];
-        }
-        if (!texCurr) {
-          texCurr = regl.texture(opts);
-        } else {
-          texCurr(opts);
-        }
-        if (texPrev) {
-          regl.poll();
-          draw({ texCurr, texPrev });
-        }
+      const opts: Texture2DOptions = { data: video, flipY: true };
+      const beEconomical = true; // true to reuse textures, false to always create new ones
+      if (beEconomical) {
+        [texCurr, texPrev] = [texPrev, texCurr];
+      } else {
+        [texCurr, texPrev] = [null, texCurr];
+      }
+      if (!texCurr) {
+        texCurr = regl.texture(opts);
+      } else {
+        texCurr(opts);
+      }
+      if (texPrev) {
+        regl.poll();
+        draw({ texCurr, texPrev });
       }
     });
 

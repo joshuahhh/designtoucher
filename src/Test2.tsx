@@ -6,7 +6,7 @@ import {
   OmniCanvasHost,
 } from "./OmniCanvas.js";
 
-const boxes = _.range(300).map((i) => ({
+const boxes = _.range(300).map(() => ({
   width: 640 * Math.random(),
   height: 480 * Math.random(),
   h: Math.random(),
@@ -89,9 +89,9 @@ export const Test2Inner = () => {
 
       attributes: {
         position: [
-          [-1, 0],
-          [0, -1],
-          [1, 1],
+          [-1.1, 0],
+          [0, -1.1],
+          [1.1, 1.1],
         ],
       },
 

@@ -6,12 +6,22 @@ import {
   useRef,
   useState,
 } from "react";
-import reglConstructor, { Regl } from "regl";
-import { animate } from "./util.js";
+import reglConstructor, {
+  DefaultContext,
+  DrawCommand,
+  Framebuffer2D,
+  Regl,
+  Texture2D,
+} from "regl";
 
 export type OmniCanvasContext = {
   regl: Regl;
   setDrawCommand: (div: HTMLDivElement, command: null | (() => void)) => void;
+  draw: DrawCommand<DefaultContext, { tex1: Texture2D }>;
+  copy: DrawCommand<
+    DefaultContext,
+    { tex1: Texture2D; framebuffer: Framebuffer2D }
+  >;
 };
 export const OmniCanvasContext = createContext<OmniCanvasContext>(null as any);
 
@@ -29,6 +39,12 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
 
       return reglConstructor({
         canvas: fullScreenCanvas,
+        pixelRatio: 2,
+        attributes: {
+          stencil: false,
+          antialias: true,
+          depth: false,
+        },
       });
     });
   }, [fullScreenCanvas]);
@@ -36,18 +52,18 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
   const drawCommandsRef = useRef<Map<HTMLDivElement, () => void>>(new Map());
 
   useEffect(() => {
-    return animate(() => {
-      if (!regl || !fullScreenCanvas) return;
+    if (!regl || !fullScreenCanvas) return;
 
+    const frame = regl.frame(() => {
       fullScreenCanvas.width = fullScreenCanvas.clientWidth;
       fullScreenCanvas.height = fullScreenCanvas.clientHeight;
       fullScreenCanvas.style.transform = `translateY(${window.scrollY}px)`;
 
-      const gl = regl._gl;
-
       drawCommandsRef.current.forEach((command, div) => {
         const rect = div.getBoundingClientRect();
         const bottom = fullScreenCanvas.offsetHeight - rect.bottom;
+
+        // console.log("drawing command for div", div, rect);
 
         // check if it's offscreen. If so skip it
         if (
@@ -59,12 +75,31 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
           return; // it's off screen
         }
 
-        gl.scissor(rect.left, bottom, rect.width, rect.height);
-        gl.viewport(rect.left, bottom, rect.width, rect.height);
-        command();
+        regl({
+          viewport: {
+            x: rect.left,
+            y: bottom,
+            width: rect.width,
+            height: rect.height,
+          },
+          scissor: {
+            enable: true,
+            box: {
+              x: rect.left,
+              y: bottom,
+              width: rect.width,
+              height: rect.height,
+            },
+          },
+        })(() => {
+          command();
+        });
       });
     });
-  });
+    return () => {
+      frame.cancel();
+    };
+  }, [fullScreenCanvas, regl]);
 
   const contextValue: OmniCanvasContext | null = useMemo(() => {
     if (!regl) return null;
@@ -77,6 +112,75 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
           drawCommandsRef.current.delete(div);
         }
       },
+      draw: regl({
+        frag: `
+          precision mediump float;
+          uniform sampler2D tex1;
+          varying vec2 uv;
+          void main () {
+            gl_FragColor = texture2D(tex1, uv);
+          }
+        `,
+        vert: `
+          precision mediump float;
+          attribute vec2 position;
+          varying vec2 uv;
+          void main () {
+            uv = 0.5 * (position + 1.0);
+            gl_Position = vec4(position, 0, 1);
+          }
+        `,
+        attributes: {
+          position: [
+            [-1, -1],
+            [1, -1],
+            [1, 1],
+            [-1, 1],
+          ],
+        },
+        elements: [
+          [0, 1, 2],
+          [2, 3, 0],
+        ],
+        uniforms: {
+          tex1: regl.prop<any, any>("tex1"),
+        },
+      }),
+      copy: regl({
+        frag: `
+          precision mediump float;
+          uniform sampler2D tex1;
+          varying vec2 uv;
+          void main () {
+            gl_FragColor = texture2D(tex1, uv);
+          }
+        `,
+        vert: `
+          precision mediump float;
+          attribute vec2 position;
+          varying vec2 uv;
+          void main () {
+            uv = 0.5 * (position + 1.0);
+            gl_Position = vec4(position, 0, 1);
+          }
+        `,
+        attributes: {
+          position: [
+            [-1, -1],
+            [1, -1],
+            [1, 1],
+            [-1, 1],
+          ],
+        },
+        elements: [
+          [0, 1, 2],
+          [2, 3, 0],
+        ],
+        uniforms: {
+          tex1: regl.prop<any, any>("tex1"),
+        },
+        framebuffer: regl.prop<any, any>("framebuffer"),
+      }),
     };
   }, [regl]);
 

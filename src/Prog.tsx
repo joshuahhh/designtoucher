@@ -1,27 +1,52 @@
 import { oneDark } from "@codemirror/theme-one-dark";
 import { basicSetup, EditorView } from "codemirror";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Texture2D } from "regl";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import {
   CommandResult,
-  GlfxResources,
   parseToProgramRunner,
   ProgramRunner,
   ProgramState,
   runProgramRunner,
-  updateGlfxResources,
 } from "./commands.js";
-import DomNode from "./DomNode.js";
-import { useRefForCallback } from "./useRefForCallback.js";
-import { animate, onVideoFrame } from "./util.js";
-import { useWebcam, WebcamSelect } from "./webcam.js";
+import {
+  OmniCanvasContext,
+  OmniCanvasGuest,
+  OmniCanvasHost,
+} from "./OmniCanvas.js";
+import { onWebcamFrame, useWebcam, WebcamSelect } from "./webcam.js";
 
 // const initialCode = `-> cam\nbc 1 1\n<- cam`;
 // "delay 40\n-\n"
 // const initialCode = `bc 0 0\n* 1\nbc 0 0`;
-const initialCode = `bc 0 0\ndelay 10\n-`;
+const initialCode = `copy`;
+// const initialCode = ``;
+// const initialCode = `bc 0 0\ndelay 10\n-`;
+// const initialCode = `bc 0 0`;
 
 export const Prog = () => {
+  return (
+    <div className="min-w-full min-h-full p-10 prose box-border">
+      <OmniCanvasHost>
+        <ProgInner />
+      </OmniCanvasHost>
+    </div>
+  );
+};
+
+const ProgInner = () => {
+  const ctx = useContext(OmniCanvasContext);
+  const { regl } = ctx;
+
   const [code, setCode] = useState<string>(initialCode);
   const [finalState, setFinalState] = useState<ProgramState | null>(null);
 
@@ -33,46 +58,59 @@ export const Prog = () => {
     preference: "FaceTime",
     // vidOverrideExt: "/IMG_0110.MOV",
     // vidOverrideExt: "/IMG-0110-stable.mp4",
-    vidOverrideExt: "/IMG_0110.stable.MOV",
+    // vidOverrideExt: "/IMG_0110.stable.MOV",
+    vidOverrideExt: "/train-cut.webm",
   });
-  const video = useMemo(() => {
-    if (shouldUseTestVideo) {
-      const video = document.createElement("video");
-      video.autoplay = true;
-      video.src = "/train-cut.webm";
-      video.volume = 0;
-      video.loop = true;
-      video.play();
-      return video;
-    } else {
-      return webcam.stream?.video;
-    }
-  }, [shouldUseTestVideo, webcam.stream?.video]);
   const [isMirrored, setIsMirrored] = useState<boolean>(!shouldUseTestVideo);
 
   // for now, persistence of the runner is very weak; any code change
   // re-constructs the runner
   const programRunnerRef = useRef<ProgramRunner | undefined>(undefined);
   const { programRunner, error } = useMemo(
-    () => parseToProgramRunner(code, programRunnerRef.current),
-    [code],
+    () => parseToProgramRunner(code, programRunnerRef.current, ctx),
+    [code, ctx],
   );
   programRunnerRef.current = programRunner;
 
+  const webcamTextureRef = useRef<Texture2D | null>(null);
+
   useEffect(() => {
-    if (!video) {
+    const stream = webcam.stream;
+
+    if (!stream) {
       return;
     }
 
-    const cancel = onVideoFrame(video, () => {
-      if (video.readyState < 2) {
-        console.log("Video not ready yet, skipping frame");
-        return;
+    const cancel = onWebcamFrame(stream, () => {
+      regl.poll();
+
+      // update texture
+      if (!webcamTextureRef.current) {
+        console.log("initing webcam texture", stream.width, stream.height);
+        webcamTextureRef.current = regl.texture({
+          width: stream.width,
+          height: stream.height,
+          type: "uint8",
+          data: stream.video,
+          flipY: true,
+        });
+        console.log(
+          "inited",
+          webcamTextureRef.current.width,
+          webcamTextureRef.current.height,
+        );
+      } else {
+        // console.log("updating webcam texture");
+        webcamTextureRef.current.subimage({
+          data: stream.video,
+          flipY: true,
+        });
       }
 
+      // run program
       const finalState = runProgramRunner(programRunner, {
-        type: "image",
-        source: video,
+        type: "texture",
+        texture: webcamTextureRef.current,
       });
 
       setFinalState(finalState);
@@ -81,10 +119,12 @@ export const Prog = () => {
       // console.log("Results:", finalState);
     });
     return () => {
-      console.log("Stopping video frame processing");
+      console.log(
+        "Stopping video frame processing; we expect a onVideoFrame cancellation",
+      );
       cancel();
     };
-  }, [programRunner, video]);
+  }, [programRunner, regl, webcam.stream]);
 
   const [selectedLineNum, setSelectedLineNum] = useState<number>(1);
 
@@ -111,8 +151,8 @@ export const Prog = () => {
   );
   const selectedResult =
     selectedProgramRunner && finalState?.intermediate[selectedProgramRunner.id];
-  const selectedCanvas =
-    selectedResult?.type === "image" ? selectedResult.source : undefined;
+  const selectedTexture =
+    selectedResult?.type === "texture" ? selectedResult.texture : undefined;
 
   return (
     <div className="flex flex-row items-start">
@@ -132,14 +172,19 @@ export const Prog = () => {
         ) : undefined}
         {/* <CodeMirror initialDoc="hello there" extensions={codeMirrorSetup} /> */}
         <div className="grid grid-cols-[max-content_1fr]">
-          {video && (
+          {webcam.stream && (
             <>
               <div className={lineClassName}>input</div>
-              <div>
-                <ResultView
-                  result={{ type: "image", source: video }}
-                  isMirrored={isMirrored}
-                />
+              <div
+                style={{
+                  ...(isMirrored ? { transform: "scaleX(-1)" } : {}),
+                  width: "100%",
+                  height: "auto",
+                }}
+              >
+                {webcamTextureRef.current && (
+                  <Monitor texture={webcamTextureRef.current} />
+                )}
               </div>
             </>
           )}
@@ -176,14 +221,15 @@ export const Prog = () => {
           />
         </div>
       </div>
-      {selectedProgramRunner && (
-        <DomNode
-          node={selectedCanvas}
+      {selectedTexture && (
+        <div
           style={{
             ...(isMirrored ? { transform: "scaleX(-1)" } : {}),
             zoom: 0.5,
           }}
-        />
+        >
+          {/* <Monitor texture={selectedTexture} /> */}
+        </div>
       )}
     </div>
   );
@@ -198,7 +244,7 @@ function ResultView({
 }) {
   if (!result) {
     return <div>result missing</div>;
-  } else if (result.type === "image") {
+  } else if (result.type === "texture") {
     // return (
     //   <>
     //     <DomNode
@@ -208,72 +254,46 @@ function ResultView({
     //     />
     //   </>
     // );
-    return <Monitor source={result.source} />;
-    // return null;
+    return <Monitor texture={result.texture} />;
   } else if (result.type === "error") {
-    return <div style={{ color: "red" }}>{result.message}</div>;
+    return (
+      <div style={{ color: "red" }}>
+        {result.error.message}{" "}
+        <button
+          onClick={() => {
+            console.log(result.error);
+          }}
+        >
+          Log
+        </button>
+      </div>
+    );
   } else {
     return <div>not implemented</div>;
   }
 }
 
-function Monitor({ source }: { source: HTMLCanvasElement | HTMLVideoElement }) {
-  // const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  // const canvasRef = useRef<HTMLCanvasElement | null>(null);
+function Monitor({ texture }: { texture: Texture2D }) {
+  const { copy, draw } = useContext(OmniCanvasContext);
 
-  const glfxResourcesRef = useRef<GlfxResources | undefined>(undefined);
-
-  // useEffect(() => {
-  //   if (!canvasRef.current) return;
-
-  //   const observer = new ResizeObserver((entries) => {
-  //     for (let entry of entries) {
-  //       if (entry.target === canvasRef.current) {
-  //         const rect = entry.contentRect;
-  //         setDimensions({
-  //           width: rect.width,
-  //           height: rect.height,
-  //         });
-  //       }
-  //     }
-  //   });
-
-  //   observer.observe(canvasRef.current);
-
-  //   return () => {
-  //     observer.disconnect();
-  //   };
-  // }, []);
-
-  const sourceRef = useRefForCallback(source);
-
-  useEffect(() => {
-    return animate(() => {
-      const source = sourceRef.current;
-      const glfxResources = (glfxResourcesRef.current = updateGlfxResources(
-        glfxResourcesRef.current,
-        source,
-      ));
-      glfxResources.canvas.draw(glfxResources.texture);
-      glfxResources.canvas.update();
+  const command = useCallback(() => {
+    // console.log(
+    //   "gonna draw",
+    //   texture.width,
+    //   texture.height,
+    //   texture.format,
+    //   texture.type,
+    // );
+    draw({
+      tex1: texture,
     });
-  });
-
-  // return (
-  //   <canvas
-  //     ref={canvasRef}
-  //     width={dimensions.width}
-  //     height={dimensions.height}
-  //     style={{ width: "100%", display: "block" }}
-  //   />
-  // );
+  }, [draw, texture]);
 
   return (
-    glfxResourcesRef.current && (
-      <DomNode
-        node={glfxResourcesRef.current.canvas}
-        apply={(node) => (node.style.width = "100%")}
-      />
-    )
+    <OmniCanvasGuest
+      command={command}
+      className="w-full"
+      style={{ aspectRatio: texture.width / texture.height }}
+    />
   );
 }

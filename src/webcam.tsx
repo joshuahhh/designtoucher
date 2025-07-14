@@ -169,6 +169,7 @@ export const useWebcam = ({
       video.playsInline = true;
       video.src = vidOverrideExt;
       video.loop = true;
+      video.muted = true;
       video.onloadeddata = () => {
         setStream({
           video,
@@ -180,8 +181,10 @@ export const useWebcam = ({
       return;
     }
 
-    if (streamRef.current) {
-      stopStream(streamRef.current);
+    const stream = streamRef.current;
+
+    if (stream) {
+      stopStream(stream);
     }
 
     if (deviceId && enabled) {
@@ -191,7 +194,13 @@ export const useWebcam = ({
     } else {
       setStream(null);
     }
-  }, [deviceId, enabled, imgOverride, streamRef, width]);
+
+    return () => {
+      if (stream) {
+        stopStream(stream);
+      }
+    };
+  }, [deviceId, enabled, imgOverride, streamRef, vidOverrideExt, width]);
 
   return {
     stream,
@@ -242,6 +251,14 @@ function togglePlay(video: HTMLVideoElement | HTMLImageElement) {
 
 export const Webcam = ({ webcam }: { webcam: Webcam }) => {
   const stream = webcam.stream;
+
+  useEffect(() => {
+    if (stream && stream.video instanceof HTMLVideoElement) {
+      if (stream.video.paused) {
+        stream.video.play();
+      }
+    }
+  }, [stream]);
 
   if (!stream) {
     return <div className="text-2xl">No webcam stream available</div>;
@@ -333,4 +350,13 @@ export function onWebcamFrame(
   }
 
   return onVideoFrame(stream.video, callback);
+}
+
+export function screenshotAsCanvas(stream: WebcamStream) {
+  const canvas = document.createElement("canvas");
+  canvas.width = stream.width;
+  canvas.height = stream.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(stream.video, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }

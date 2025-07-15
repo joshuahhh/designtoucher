@@ -8,6 +8,7 @@ import { Root } from "./Root.js";
 import { Test } from "./Test.js";
 import { Test2 } from "./Test2.js";
 import { Test3 } from "./Test3.js";
+import { Test4 } from "./Test4.js";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -18,6 +19,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/test" element={<Test />} />
         <Route path="/test2" element={<Test2 />} />
         <Route path="/test3" element={<Test3 />} />
+        <Route path="/test4" element={<Test4 />} />
         <Route path="/amplify" element={<Amplify />} />
       </Routes>
     </HashRouter>

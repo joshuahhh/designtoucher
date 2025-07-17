@@ -1,4 +1,4 @@
-import {
+import React, {
   createContext,
   useContext,
   useEffect,
@@ -6,190 +6,239 @@ import {
   useRef,
   useState,
 } from "react";
-import reglConstructor, {
-  DefaultContext,
-  DrawCommand,
-  Framebuffer2D,
-  Regl,
-  Texture2D,
-} from "regl";
 
-export type OmniCanvasContext = {
-  regl: Regl;
-  setDrawCommand: (div: HTMLDivElement, command: null | (() => void)) => void;
-  draw: DrawCommand<DefaultContext, { tex1: Texture2D }>;
-  copy: DrawCommand<
-    DefaultContext,
-    { tex1: Texture2D; framebuffer: Framebuffer2D }
-  >;
+/* ------------------------------------------------------------------
+ * Tiny WebGL helper utilities (no external deps)
+ * ---------------------------------------------------------------- */
+function createShader(gl: WebGLRenderingContext, src: string, type: number) {
+  const shader = gl.createShader(type)!;
+  gl.shaderSource(shader, src);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(shader) || "Shader compile error");
+  }
+  return shader;
+}
+
+export function createProgram(
+  gl: WebGLRenderingContext,
+  vert: string,
+  frag: string,
+) {
+  const program = gl.createProgram()!;
+  gl.attachShader(program, createShader(gl, vert, gl.VERTEX_SHADER));
+  gl.attachShader(program, createShader(gl, frag, gl.FRAGMENT_SHADER));
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(program) || "Program link error");
+  }
+  return program;
+}
+
+/* ------------------------------------------------------------------
+ * Public types
+ * ---------------------------------------------------------------- */
+export interface DrawArgs {
+  texture: WebGLTexture;
+}
+
+export interface CopyArgs extends DrawArgs {
+  framebuffer: WebGLFramebuffer;
+}
+
+export type OmniCanvasContextType = {
+  gl: WebGLRenderingContext;
+  setDrawCommand(div: HTMLDivElement, command: null | (() => void)): void;
+  draw(args: DrawArgs): void;
+  copy(args: CopyArgs): void;
 };
-export const OmniCanvasContext = createContext<OmniCanvasContext>(null as any);
 
+export const OmniCanvasContext = createContext<OmniCanvasContextType>(
+  null as any,
+);
+
+/* ------------------------------------------------------------------
+ * OmniCanvasHost – provides the GL context & render loop
+ * ---------------------------------------------------------------- */
 export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
-  const [fullScreenCanvas, setFullScreenCanvas] =
-    useState<HTMLCanvasElement | null>(null);
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [gl, setGl] = useState<WebGLRenderingContext | null>(null);
 
-  const [regl, setRegl] = useState<Regl | null>(null);
+  // Map each guest <div> to its draw callback
+  const drawCommandsRef = useRef(new Map<HTMLDivElement, () => void>());
 
+  /* ------------------------ initialize WebGL --------------------- */
   useEffect(() => {
-    if (!fullScreenCanvas) return;
+    if (!canvas) return;
 
-    setRegl((regl: Regl | null) => {
-      if (regl) regl.destroy();
-
-      return reglConstructor({
-        canvas: fullScreenCanvas,
-        pixelRatio: 2,
-        attributes: {
-          stencil: false,
-          antialias: true,
-          depth: false,
-        },
-      });
+    const ctx = canvas.getContext("webgl", {
+      antialias: true,
+      depth: false,
+      stencil: false,
+      alpha: true,
+      premultipliedAlpha: true,
     });
-  }, [fullScreenCanvas]);
 
-  const drawCommandsRef = useRef<Map<HTMLDivElement, () => void>>(new Map());
+    if (!ctx) throw new Error("WebGL not supported");
+    setGl(ctx);
+  }, [canvas]);
 
+  /* -------------------- programs, buffers, state ------------------ */
+  const resources = useMemo(() => {
+    if (!gl) return null;
+
+    const vertSrc = `
+      attribute vec2 position;
+      varying vec2 uv;
+      void main() {
+        uv = 0.5 * (position + 1.0);
+        gl_Position = vec4(position, 0.0, 1.0);
+      }
+    `;
+
+    const fragSrc = `
+      precision mediump float;
+      uniform sampler2D tex1;
+      varying vec2 uv;
+      void main() {
+        gl_FragColor = texture2D(tex1, uv);
+      }
+    `;
+
+    const program = createProgram(gl, vertSrc, fragSrc);
+
+    const positionLoc = gl.getAttribLocation(program, "position");
+    const texLoc = gl.getUniformLocation(program, "tex1");
+
+    // fullscreen quad geometry
+    const quadBuffer = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]),
+      gl.STATIC_DRAW,
+    );
+
+    const indexBuffer = gl.createBuffer()!;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(
+      gl.ELEMENT_ARRAY_BUFFER,
+      new Uint16Array([0, 1, 2, 2, 3, 0]),
+      gl.STATIC_DRAW,
+    );
+
+    const bindQuad = () => {
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.enableVertexAttribArray(positionLoc);
+      gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    };
+
+    return { program, texLoc, bindQuad } as const;
+  }, [gl]);
+
+  /* ------------------------ draw helpers ------------------------- */
+  const contextValue: OmniCanvasContextType | null = useMemo(() => {
+    if (!gl || !resources) return null;
+
+    const clearState = () => {
+      gl.disable(gl.SCISSOR_TEST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    };
+
+    const draw = ({ texture }: DrawArgs) => {
+      gl.useProgram(resources.program);
+      resources.bindQuad();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(resources.texLoc, 0);
+      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+      clearState();
+    };
+
+    const copy = ({ texture, framebuffer }: CopyArgs) => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      draw({ texture });
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    };
+
+    const setDrawCommand = (
+      div: HTMLDivElement,
+      command: null | (() => void),
+    ) => {
+      if (command) {
+        drawCommandsRef.current.set(div, command);
+      } else {
+        drawCommandsRef.current.delete(div);
+      }
+    };
+
+    return { gl, setDrawCommand, draw, copy };
+  }, [gl, resources]);
+
+  /* ------------------------ frame loop --------------------------- */
   useEffect(() => {
-    if (!regl || !fullScreenCanvas) return;
+    if (!gl || !canvas) return;
 
-    const frame = regl.frame(() => {
-      fullScreenCanvas.width = fullScreenCanvas.clientWidth;
-      fullScreenCanvas.height = fullScreenCanvas.clientHeight;
-      fullScreenCanvas.style.transform = `translateY(${window.scrollY}px)`;
+    let cancelled = false;
+
+    const render = () => {
+      if (cancelled) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const wCSS = canvas.clientWidth;
+      const hCSS = canvas.clientHeight;
+      const w = wCSS * dpr;
+      const h = hCSS * dpr;
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      canvas.style.transform = `translateY(${window.scrollY}px)`;
+
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
 
       drawCommandsRef.current.forEach((command, div) => {
-        const rect = div.getBoundingClientRect();
-        const bottom = fullScreenCanvas.offsetHeight - rect.bottom;
+        const rectCSS = div.getBoundingClientRect();
+        const bottomCSS = hCSS - rectCSS.bottom;
 
-        // console.log("drawing command for div", div, rect);
-
-        // check if it's offscreen. If so skip it
         if (
-          rect.bottom < 0 ||
-          rect.top > fullScreenCanvas.clientHeight ||
-          rect.right < 0 ||
-          rect.left > fullScreenCanvas.clientWidth
-        ) {
-          return; // it's off screen
-        }
+          rectCSS.bottom < 0 ||
+          rectCSS.top > hCSS ||
+          rectCSS.right < 0 ||
+          rectCSS.left > wCSS
+        )
+          return;
 
-        regl({
-          viewport: {
-            x: rect.left,
-            y: bottom,
-            width: rect.width,
-            height: rect.height,
-          },
-          scissor: {
-            enable: true,
-            box: {
-              x: rect.left,
-              y: bottom,
-              width: rect.width,
-              height: rect.height,
-            },
-          },
-        })(() => {
-          command();
-        });
+        const left = rectCSS.left * dpr;
+        const bottom = bottomCSS * dpr;
+        const width = rectCSS.width * dpr;
+        const height = rectCSS.height * dpr;
+
+        gl.viewport(left, bottom, width, height);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(left, bottom, width, height);
+
+        command();
       });
-    });
+
+      requestAnimationFrame(render);
+    };
+
+    requestAnimationFrame(render);
     return () => {
-      frame.cancel();
+      cancelled = true;
     };
-  }, [fullScreenCanvas, regl]);
+  }, [gl, canvas]);
 
-  const contextValue: OmniCanvasContext | null = useMemo(() => {
-    if (!regl) return null;
-    return {
-      regl: regl,
-      setDrawCommand(div: HTMLDivElement, command: null | (() => void)) {
-        if (command) {
-          drawCommandsRef.current.set(div, command);
-        } else {
-          drawCommandsRef.current.delete(div);
-        }
-      },
-      draw: regl({
-        frag: `
-          precision mediump float;
-          uniform sampler2D tex1;
-          varying vec2 uv;
-          void main () {
-            gl_FragColor = texture2D(tex1, uv);
-          }
-        `,
-        vert: `
-          precision mediump float;
-          attribute vec2 position;
-          varying vec2 uv;
-          void main () {
-            uv = 0.5 * (position + 1.0);
-            gl_Position = vec4(position, 0, 1);
-          }
-        `,
-        attributes: {
-          position: [
-            [-1, -1],
-            [1, -1],
-            [1, 1],
-            [-1, 1],
-          ],
-        },
-        elements: [
-          [0, 1, 2],
-          [2, 3, 0],
-        ],
-        uniforms: {
-          tex1: regl.prop<any, any>("tex1"),
-        },
-      }),
-      copy: regl({
-        frag: `
-          precision mediump float;
-          uniform sampler2D tex1;
-          varying vec2 uv;
-          void main () {
-            gl_FragColor = texture2D(tex1, uv);
-          }
-        `,
-        vert: `
-          precision mediump float;
-          attribute vec2 position;
-          varying vec2 uv;
-          void main () {
-            uv = 0.5 * (position + 1.0);
-            gl_Position = vec4(position, 0, 1);
-          }
-        `,
-        attributes: {
-          position: [
-            [-1, -1],
-            [1, -1],
-            [1, 1],
-            [-1, 1],
-          ],
-        },
-        elements: [
-          [0, 1, 2],
-          [2, 3, 0],
-        ],
-        uniforms: {
-          tex1: regl.prop<any, any>("tex1"),
-        },
-        framebuffer: regl.prop<any, any>("framebuffer"),
-      }),
-    };
-  }, [regl]);
-
+  /* --------------------------- JSX ------------------------------- */
   return (
     <>
       <canvas
-        ref={setFullScreenCanvas}
+        ref={setCanvas}
         className="absolute left-0 top-0 w-full h-full pointer-events-none"
-        // className="fixed left-0 top-0 w-full h-full pointer-events-none"
       />
       {contextValue && (
         <OmniCanvasContext.Provider value={contextValue}>
@@ -200,21 +249,22 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* ------------------------------------------------------------------
+ * OmniCanvasGuest – registers draw callback for a DOM rect
+ * ---------------------------------------------------------------- */
 export function OmniCanvasGuest({
   command,
   ...props
-}: { command: () => void } & React.HTMLAttributes<HTMLDivElement>) {
+}: {
+  command: () => void;
+} & React.HTMLAttributes<HTMLDivElement>) {
   const { setDrawCommand } = useContext(OmniCanvasContext);
   const [div, setDiv] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!div) return;
-
     setDrawCommand(div, command);
-
-    return () => {
-      setDrawCommand(div, null);
-    };
+    return () => setDrawCommand(div, null);
   }, [div, command, setDrawCommand]);
 
   return <div ref={setDiv} {...props} />;

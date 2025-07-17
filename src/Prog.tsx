@@ -9,62 +9,102 @@ import {
   useRef,
   useState,
 } from "react";
-import { Texture2D } from "regl";
+import { assert } from "./assert.js";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import {
-  CommandResult,
   parseToProgramRunner,
   ProgramRunner,
   ProgramState,
   runProgramRunner,
-} from "./commands.js";
+} from "./commands.js"; // updated path
 import {
   OmniCanvasContext,
   OmniCanvasGuest,
   OmniCanvasHost,
 } from "./OmniCanvas.js";
-import { onWebcamFrame, useWebcam, WebcamSelect } from "./webcam.js";
+import {
+  onWebcamFrame,
+  useWebcam,
+  WebcamSelect,
+  WebcamStream,
+} from "./webcam.js";
 
-// const initialCode = `-> cam\nbc 1 1\n<- cam`;
-// "delay 40\n-\n"
-// const initialCode = `bc 0 0\n* 1\nbc 0 0`;
 const initialCode = `copy`;
-// const initialCode = ``;
-// const initialCode = `bc 0 0\ndelay 10\n-`;
-// const initialCode = `bc 0 0`;
 
-export const Prog = () => {
-  return (
-    <div className="min-w-full min-h-full p-10 prose box-border">
-      <OmniCanvasHost>
-        <ProgInner />
-      </OmniCanvasHost>
-    </div>
+/* ------------------------------------------------------------------
+ * Helper: create/update a WebGL texture from HTMLVideoFrame
+ * ---------------------------------------------------------------- */
+function ensureVideoTexture(
+  gl: WebGLRenderingContext,
+  texRef: React.MutableRefObject<{
+    tex: WebGLTexture;
+    width: number;
+    height: number;
+  } | null>,
+  sream: WebcamStream,
+) {
+  if (!texRef.current) {
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      sream.width,
+      sream.height,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
+    texRef.current = { tex, width: sream.width, height: sream.height };
+  }
+
+  const { tex } = texRef.current!;
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    sream.video,
   );
-};
+  texRef.current!.width = sream.width;
+  texRef.current!.height = sream.height;
+}
+
+/* ------------------------------------------------------------------
+ * Main exported component
+ * ---------------------------------------------------------------- */
+export const Prog = () => (
+  <div className="min-w-full min-h-full p-10 prose box-border">
+    <OmniCanvasHost>
+      <ProgInner />
+    </OmniCanvasHost>
+  </div>
+);
 
 const ProgInner = () => {
   const ctx = useContext(OmniCanvasContext);
-  const { regl } = ctx;
+  const { gl, draw } = ctx;
 
   const [code, setCode] = useState<string>(initialCode);
   const [finalState, setFinalState] = useState<ProgramState | null>(null);
 
-  const shouldUseTestVideo = false;
   const webcam = useWebcam({
-    enabled: !shouldUseTestVideo,
-    // preference: "Iriun",
+    enabled: true,
     width: 1920,
     preference: "FaceTime",
-    // vidOverrideExt: "/IMG_0110.MOV",
-    // vidOverrideExt: "/IMG-0110-stable.mp4",
-    // vidOverrideExt: "/IMG_0110.stable.MOV",
     vidOverrideExt: "/train-cut.webm",
   });
-  const [isMirrored, setIsMirrored] = useState<boolean>(!shouldUseTestVideo);
+  const [isMirrored, setIsMirrored] = useState<boolean>(true);
 
-  // for now, persistence of the runner is very weak; any code change
-  // re-constructs the runner
+  // persist runner across renders unless code changes
   const programRunnerRef = useRef<ProgramRunner | undefined>(undefined);
   const { programRunner, error } = useMemo(
     () => parseToProgramRunner(code, programRunnerRef.current, ctx),
@@ -72,62 +112,36 @@ const ProgInner = () => {
   );
   programRunnerRef.current = programRunner;
 
-  const webcamTextureRef = useRef<Texture2D | null>(null);
+  /* ------------- webcam video → WebGL texture ------------------- */
+  const webcamTexRef = useRef<{
+    tex: WebGLTexture;
+    width: number;
+    height: number;
+  } | null>(null);
 
   useEffect(() => {
     const stream = webcam.stream;
 
-    if (!stream) {
-      return;
-    }
+    if (!gl || !stream) return;
 
     const cancel = onWebcamFrame(stream, () => {
-      regl.poll();
+      assert(!!gl);
+      ensureVideoTexture(gl, webcamTexRef, stream);
 
-      // update texture
-      if (!webcamTextureRef.current) {
-        console.log("initing webcam texture", stream.width, stream.height);
-        webcamTextureRef.current = regl.texture({
-          width: stream.width,
-          height: stream.height,
-          type: "uint8",
-          data: stream.video,
-          flipY: true,
-        });
-        console.log(
-          "inited",
-          webcamTextureRef.current.width,
-          webcamTextureRef.current.height,
-        );
-      } else {
-        // console.log("updating webcam texture");
-        webcamTextureRef.current.subimage({
-          data: stream.video,
-          flipY: true,
-        });
-      }
-
-      // run program
-      const finalState = runProgramRunner(programRunner, {
+      // feed runner
+      const final = runProgramRunner(programRunner, {
         type: "texture",
-        texture: webcamTextureRef.current,
+        texture: webcamTexRef.current!.tex,
+        width: webcamTexRef.current!.width,
+        height: webcamTexRef.current!.height,
       });
-
-      setFinalState(finalState);
-
-      // console.log(programRunner);
-      // console.log("Results:", finalState);
+      setFinalState(final);
     });
-    return () => {
-      console.log(
-        "Stopping video frame processing; we expect a onVideoFrame cancellation",
-      );
-      cancel();
-    };
-  }, [programRunner, regl, webcam.stream]);
+    return cancel;
+  }, [gl, webcam.stream, programRunner]);
 
+  /* ------------- CodeMirror config ------------------------------ */
   const [selectedLineNum, setSelectedLineNum] = useState<number>(1);
-
   const extensions = useMemo(() => {
     const selectionWatcher = EditorView.updateListener.of((update) => {
       if (update.selectionSet) {
@@ -136,82 +150,61 @@ const ProgInner = () => {
         setSelectedLineNum(line);
       }
     });
-    return [
-      basicSetup,
-      // numericSlider()
-      oneDark,
-      selectionWatcher,
-    ];
+    return [basicSetup, oneDark, selectionWatcher];
   }, []);
 
-  const lineClassName = "text-right pr-2 text-gray-400 w-[100px]";
-
-  const selectedProgramRunner = programRunner.find(
-    (programRunner) => programRunner.lineNum === selectedLineNum,
+  /* ------------- Selected texture for preview ------------------- */
+  const selectedRunner = programRunner.find(
+    (r) => r.lineNum === selectedLineNum,
   );
-  const selectedResult =
-    selectedProgramRunner && finalState?.intermediate[selectedProgramRunner.id];
-  const selectedTexture =
-    selectedResult?.type === "texture" ? selectedResult.texture : undefined;
+  const selectedRes =
+    selectedRunner && finalState?.intermediate[selectedRunner.id];
+  const selectedTex =
+    selectedRes && selectedRes.type === "texture" ? selectedRes : undefined;
 
   return (
     <div className="flex flex-row items-start">
-      <div className="flex flex-col justify-center text-gray-300 max-w-80">
-        {/* <div className="bg-gray-400"> */}
+      <div className="flex flex-col justify-center text-gray-300">
         <CodeMirrorControlled
           value={code}
           setValue={setCode}
           extensions={extensions}
         />
-        {/* </div> */}
-        {error ? (
-          <div className="text-red-500">
-            Error parsing code:{" "}
-            {error instanceof Error ? error.message : String(error)}
-          </div>
-        ) : undefined}
-        {/* <CodeMirror initialDoc="hello there" extensions={codeMirrorSetup} /> */}
-        <div className="grid grid-cols-[max-content_1fr]">
-          {webcam.stream && (
+        {error && <div className="text-red-500">Error: {String(error)}</div>}
+        <div className="grid grid-cols-[100px_400px]">
+          {webcamTexRef.current && (
             <>
-              <div className={lineClassName}>input</div>
+              <div className="text-right pr-2 text-gray-400">input</div>
               <div
-                style={{
-                  ...(isMirrored ? { transform: "scaleX(-1)" } : {}),
-                  width: "100%",
-                  height: "auto",
-                }}
+                style={{ ...(isMirrored ? { transform: "scaleX(-1)" } : {}) }}
               >
-                {webcamTextureRef.current && (
-                  <Monitor texture={webcamTextureRef.current} />
-                )}
+                <Monitor
+                  texture={webcamTexRef.current.tex}
+                  width={webcamTexRef.current.width}
+                  height={webcamTexRef.current.height}
+                />
               </div>
             </>
           )}
-          {programRunner.map((commandRunner) => {
-            const isSelected = commandRunner.lineNum === selectedLineNum;
-            const className = isSelected ? "bg-gray-600" : "";
-
+          {programRunner.map((cr) => {
+            const isSel = cr.lineNum === selectedLineNum;
+            const cName = isSel ? "bg-gray-600" : "";
+            const res = finalState?.intermediate[cr.id];
             return (
-              <Fragment key={commandRunner.id}>
-                <div className={lineClassName + " " + className}>
-                  {commandRunner.originalLine}
+              <Fragment key={cr.id}>
+                <div className={`text-right pr-2 text-gray-400 ${cName}`}>
+                  {cr.originalLine}
                   <br />
-                  lineNum: {commandRunner.lineNum}
+                  line {cr.lineNum}
                 </div>
-                <div className={className}>
-                  <ResultView
-                    result={finalState?.intermediate[commandRunner.id]}
-                    isMirrored={isMirrored}
-                  />
+                <div className={cName}>
+                  <ResultView result={res} mirrored={isMirrored} />
                 </div>
               </Fragment>
             );
           })}
         </div>
         <WebcamSelect webcam={webcam} className="mt-4" />
-        {/* <FpsView right={60} top={80} /> */}
-        {/* {JSON.stringify(selectedLineNum, null, 2) || "no selection"} */}
         <div className="flex items-center mt-2">
           <label className="mr-2">Mirror:</label>
           <input
@@ -221,79 +214,75 @@ const ProgInner = () => {
           />
         </div>
       </div>
-      {selectedTexture && (
+      {selectedTex && (
         <div
           style={{
             ...(isMirrored ? { transform: "scaleX(-1)" } : {}),
             zoom: 0.5,
           }}
-        >
-          {/* <Monitor texture={selectedTexture} /> */}
-        </div>
+        />
       )}
     </div>
   );
 };
 
+/* ------------------------------------------------------------------
+ * Result & Monitor helpers
+ * ---------------------------------------------------------------- */
 function ResultView({
   result,
-  isMirrored,
+  mirrored,
 }: {
-  result: CommandResult | undefined;
-  isMirrored: boolean;
+  result: ProgramState["intermediate"][string] | undefined;
+  mirrored: boolean;
 }) {
-  if (!result) {
-    return <div>result missing</div>;
-  } else if (result.type === "texture") {
-    // return (
-    //   <>
-    //     <DomNode
-    //       node={result.source}
-    //       {...(isMirrored && { style: { transform: "scaleX(-1)" } })}
-    //       apply={(node) => (node.style.width = "100%")}
-    //     />
-    //   </>
-    // );
-    return <Monitor texture={result.texture} />;
-  } else if (result.type === "error") {
+  if (!result) return <div>no result</div>;
+  if (result.type === "texture") {
     return (
-      <div style={{ color: "red" }}>
-        {result.error.message}{" "}
-        <button
-          onClick={() => {
-            console.log(result.error);
-          }}
-        >
-          Log
-        </button>
+      <Monitor
+        texture={result.texture}
+        width={result.width}
+        height={result.height}
+        mirrored={mirrored}
+      />
+    );
+  }
+  if (result.type === "error") {
+    return (
+      <div className="text-red-500">
+        {result.error.message}
+        <button onClick={() => console.error(result.error)}>Log</button>
       </div>
     );
-  } else {
-    return <div>not implemented</div>;
   }
+  return <div>not implemented</div>;
 }
 
-function Monitor({ texture }: { texture: Texture2D }) {
-  const { copy, draw } = useContext(OmniCanvasContext);
+function Monitor({
+  texture,
+  width,
+  height,
+  mirrored = false,
+}: {
+  texture: WebGLTexture;
+  width: number;
+  height: number;
+  mirrored?: boolean;
+}) {
+  const { draw } = useContext(OmniCanvasContext);
 
   const command = useCallback(() => {
-    // console.log(
-    //   "gonna draw",
-    //   texture.width,
-    //   texture.height,
-    //   texture.format,
-    //   texture.type,
-    // );
-    draw({
-      tex1: texture,
-    });
+    draw({ texture: texture });
   }, [draw, texture]);
 
   return (
     <OmniCanvasGuest
       command={command}
       className="w-full"
-      style={{ aspectRatio: texture.width / texture.height }}
+      style={{
+        aspectRatio: width / height,
+        ...(mirrored ? { transform: "scaleX(-1)" } : {}),
+      }}
     />
   );
 }

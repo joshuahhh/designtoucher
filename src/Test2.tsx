@@ -1,120 +1,110 @@
 import _ from "lodash";
 import { useContext, useMemo } from "react";
 import {
+  createProgram,
   OmniCanvasContext,
   OmniCanvasGuest,
   OmniCanvasHost,
 } from "./OmniCanvas.js";
 
+// ---------------------------------------------------------------------
+// Demo boxes whose colour cycles over time
+// ---------------------------------------------------------------------
 const boxes = _.range(300).map(() => ({
   width: 640 * Math.random(),
   height: 480 * Math.random(),
-  h: Math.random(),
+  h: Math.random(), // initial hue [0‒1)
 }));
 
-export const Test2 = () => {
-  return (
-    <div className="min-w-full min-h-full p-10 prose box-border">
-      <OmniCanvasHost>
-        <Test2Inner />
-      </OmniCanvasHost>
-    </div>
-  );
-};
+export const Test2 = () => (
+  <div className="min-w-full min-h-full p-10 prose box-border">
+    <OmniCanvasHost>
+      <Test2Inner />
+    </OmniCanvasHost>
+  </div>
+);
 
 export const Test2Inner = () => {
-  const { regl } = useContext(OmniCanvasContext);
+  const { gl } = useContext(OmniCanvasContext);
 
-  const command = useMemo(() => {
-    return regl?.({
-      frag: `
-        precision mediump float;
-        uniform float h;
+  // -------------------------------------------------------------------
+  // Compile program + buffers exactly once (when `gl` becomes available)
+  // -------------------------------------------------------------------
+  const drawTriangle = useMemo(() => {
+    if (!gl) return null;
 
-        float hue2rgb(float f1, float f2, float hue) {
-            if (hue < 0.0)
-                hue += 1.0;
-            else if (hue > 1.0)
-                hue -= 1.0;
-            float res;
-            if ((6.0 * hue) < 1.0)
-                res = f1 + (f2 - f1) * 6.0 * hue;
-            else if ((2.0 * hue) < 1.0)
-                res = f2;
-            else if ((3.0 * hue) < 2.0)
-                res = f1 + (f2 - f1) * ((2.0 / 3.0) - hue) * 6.0;
-            else
-                res = f1;
-            return res;
-        }
+    const vert = `
+      precision mediump float;
+      attribute vec2 position;
+      void main() { gl_Position = vec4(position, 0.0, 1.0); }
+    `;
+    const frag = `
+      precision mediump float;
+      uniform float h;
 
-        vec3 hsl2rgb(vec3 hsl) {
-            vec3 rgb;
+      // ===== tiny HSL‑>RGB helper =====
+      float hue2rgb(float f1,float f2,float hue){
+        hue = mod(hue,1.0);
+        if (6.0*hue < 1.0) return f1 + (f2-f1)*6.0*hue;
+        if (2.0*hue < 1.0) return f2;
+        if (3.0*hue < 2.0) return f1 + (f2-f1)*(2.0/3.0 - hue)*6.0;
+        return f1;
+      }
+      vec3 hsl2rgb(float hh,float s,float l){
+        if (s==0.0) return vec3(l);
+        float f2 = l < 0.5 ? l*(1.0+s) : l+s-l*s;
+        float f1 = 2.0*l - f2;
+        return vec3(
+          hue2rgb(f1,f2,hh+1.0/3.0),
+          hue2rgb(f1,f2,hh),
+          hue2rgb(f1,f2,hh-1.0/3.0)
+        );
+      }
 
-            if (hsl.y == 0.0) {
-                rgb = vec3(hsl.z); // Luminance
-            } else {
-                float f2;
+      void main() {
+        gl_FragColor = vec4(hsl2rgb(h,1.0,0.5), 1.0);
+      }
+    `;
 
-                if (hsl.z < 0.5)
-                    f2 = hsl.z * (1.0 + hsl.y);
-                else
-                    f2 = hsl.z + hsl.y - hsl.y * hsl.z;
+    const program = createProgram(gl, vert, frag);
+    const posLoc = gl.getAttribLocation(program, "position");
+    const hLoc = gl.getUniformLocation(program, "h")!;
 
-                float f1 = 2.0 * hsl.z - f2;
+    // Triangle geometry (clip‑space coords)
+    const posBuf = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1.1, 0, 0, -1.1, 1.1, 1.1]),
+      gl.STATIC_DRAW,
+    );
 
-                rgb.r = hue2rgb(f1, f2, hsl.x + (1.0/3.0));
-                rgb.g = hue2rgb(f1, f2, hsl.x);
-                rgb.b = hue2rgb(f1, f2, hsl.x - (1.0/3.0));
-            }
-            return rgb;
-        }
+    // Returned function: draw the triangle with a given hue
+    return (h: number) => {
+      gl.useProgram(program);
 
-        vec3 hsl2rgb(float h, float s, float l) {
-            return hsl2rgb(vec3(h, s, l));
-        }
+      gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
-        void main () {
-          gl_FragColor = vec4(hsl2rgb(h, 1.0, 0.5), 1);
-        }
-      `,
+      gl.uniform1f(hLoc, h);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+  }, [gl]);
 
-      vert: `
-        precision mediump float;
-        attribute vec2 position;
-        void main () {
-          gl_Position = vec4(position, 0, 1);
-        }
-      `,
-
-      attributes: {
-        position: [
-          [-1.1, 0],
-          [0, -1.1],
-          [1.1, 1.1],
-        ],
-      },
-
-      uniforms: {
-        h: regl.prop<any, "h">("h"),
-      },
-
-      count: 3,
-    });
-  }, [regl]);
+  // Until WebGL is ready, render nothing
+  if (!drawTriangle) return null;
 
   return (
     <>
       {boxes.map((box, i) => (
         <OmniCanvasGuest
           key={i}
-          command={() => {
-            command({
-              h: box.h ? (box.h + +new Date() / 1000) % 1 : 0,
-            });
-          }}
           className="border border-black inline-block"
           style={box}
+          command={() =>
+            drawTriangle(((box.h + Date.now() / 1000) % 1) as number)
+          }
         />
       ))}
     </>

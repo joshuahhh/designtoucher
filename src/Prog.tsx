@@ -31,7 +31,8 @@ import {
 } from "./webcam.js";
 
 // const initialCode = `gray`;
-const initialCode = `copy\ndelay 20\n-\n* 10`;
+// const initialCode = `copy\ndelay 20\n-\n* 10`;
+const initialCode = `red`;
 
 const movies = [
   "/Nature/Movie.1.mp4",

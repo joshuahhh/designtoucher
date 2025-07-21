@@ -238,11 +238,18 @@ abstract class CommandRunnerGL extends CommandRunner {
     const { gl } = this.ctx;
 
     // pop inputs
-    const inputs = state.stack.slice(-this.arity) as TextureValue[];
+    // TODO: arity 0 doesn't know how large to be!
+    assert(this.arity > 0, "arity 0 not implemented yet");
+    const inputs =
+      this.arity === 0
+        ? []
+        : (state.stack.slice(-this.arity) as TextureValue[]);
     const width = inputs[0].tex.width;
     const height = inputs[0].tex.height;
 
     this.ensureOut(gl, width, height);
+
+    console.log("running with inputs", inputs);
 
     this.program.run({
       viewport: [0, 0, width, height],
@@ -391,6 +398,45 @@ export class CommandRunnerFlip extends CommandRunnerGL {
       `
         vec2 uvFlip = vec2(uv.x, 1.0 - uv.y);
         gl_FragColor = texture2D(tex1, uvFlip);
+      `,
+      [],
+    );
+  }
+}
+
+export class CommandRunnerRed extends CommandRunnerGL {
+  constructor(props: CommandRunnerConstructorProps) {
+    super(
+      props,
+      0,
+      `
+        gl_FragColor = vec4(1.0, 0.0, 0.0, uv);
+      `,
+      [],
+    );
+  }
+}
+
+export class CommandRunnerGreen extends CommandRunnerGL {
+  constructor(props: CommandRunnerConstructorProps) {
+    super(
+      props,
+      0,
+      `
+        gl_FragColor = vec4(0.0, 1.0, 0.0, uv);
+      `,
+      [],
+    );
+  }
+}
+
+export class CommandRunnerBlue extends CommandRunnerGL {
+  constructor(props: CommandRunnerConstructorProps) {
+    super(
+      props,
+      0,
+      `
+        gl_FragColor = vec4(0.0, 0.0, 1.0, uv);
       `,
       [],
     );
@@ -604,6 +650,21 @@ export function parseToProgramRunner(
                 alpha: Number(args[0]),
               },
             }),
+          );
+          break;
+        case "red":
+          programRunner.push(
+            new CommandRunnerRed({ ...props, parameterValues: {} }),
+          );
+          break;
+        case "green":
+          programRunner.push(
+            new CommandRunnerGreen({ ...props, parameterValues: {} }),
+          );
+          break;
+        case "blue":
+          programRunner.push(
+            new CommandRunnerBlue({ ...props, parameterValues: {} }),
           );
           break;
         default:

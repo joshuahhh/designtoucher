@@ -1,0 +1,306 @@
+import { assertNever } from "./assert.js";
+
+declare global {
+  interface WebGLProgram {
+    _WebGLProgramBrand: true;
+  }
+  interface WebGLShader {
+    _WebGLShaderBrand: true;
+  }
+  interface WebGLTexture {
+    _WebGLTextureBrand: true;
+  }
+  interface WebGLBuffer {
+    _WebGLBufferBrand: true;
+  }
+  interface WebGLFramebuffer {
+    _WebGLFramebufferBrand: true;
+  }
+  interface WebGLUniformLocation {
+    _WebGLUniformLocationBrand: true;
+  }
+}
+
+function createShader(
+  gl: WebGLRenderingContext,
+  type: number,
+  source: string,
+): WebGLShader {
+  const shader = gl.createShader(type)!;
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  return shader;
+}
+
+function createProgram(
+  gl: WebGLRenderingContext,
+  vsSource: string,
+  fsSource: string,
+): WebGLProgram {
+  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+  const program = gl.createProgram()!;
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const linkErrLog = gl.getProgramInfoLog(program);
+    throw new Error(`Program link error: ${linkErrLog || "Unknown error"}`);
+  }
+  return program;
+}
+
+type UniformType =
+  | `${"1" | "2" | "3" | "4"}${"f" | "i"}${"v" | ""}`
+  | "sampler2D";
+
+function getTextureUnit(gl: WebGLRenderingContext, textureIdx: number): number {
+  if (textureIdx < 0 || textureIdx > 31) {
+    throw new Error("Texture index must be between 0 and 31");
+  }
+  return (gl as any)[`TEXTURE${textureIdx}`];
+}
+
+function setUniform(
+  gl: WebGLRenderingContext,
+  location: WebGLUniformLocation | null,
+  type: UniformType,
+  value: any,
+  textureIdx: number,
+  setTextureIdx: (idx: number) => void,
+) {
+  // console.log(`Setting uniform ${location} of type ${type} with value`, value);
+  if (!location) return;
+  switch (type) {
+    case "1f":
+      gl.uniform1f(location, value);
+      break;
+    case "2f":
+      gl.uniform2f(location, ...(value as [number, number]));
+      break;
+    case "3f":
+      gl.uniform3f(location, ...(value as [number, number, number]));
+      break;
+    case "4f":
+      gl.uniform4f(location, ...(value as [number, number, number, number]));
+      break;
+    case "1i":
+      gl.uniform1i(location, value);
+      break;
+    case "2i":
+      gl.uniform2i(location, ...(value as [number, number]));
+      break;
+    case "3i":
+      gl.uniform3i(location, ...(value as [number, number, number]));
+      break;
+    case "4i":
+      gl.uniform4i(location, ...(value as [number, number, number, number]));
+      break;
+    case "1fv":
+      gl.uniform1fv(location, value);
+      break;
+    case "2fv":
+      gl.uniform2fv(location, value);
+      break;
+    case "3fv":
+      gl.uniform3fv(location, value);
+      break;
+    case "4fv":
+      gl.uniform4fv(location, value);
+      break;
+    case "1iv":
+      gl.uniform1iv(location, value);
+      break;
+    case "2iv":
+      gl.uniform2iv(location, value);
+      break;
+    case "3iv":
+      gl.uniform3iv(location, value);
+      break;
+    case "4iv":
+      gl.uniform4iv(location, value);
+      break;
+    case "sampler2D":
+      const texture = value as WebGLTexture;
+      gl.activeTexture(getTextureUnit(gl, textureIdx));
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(location, textureIdx);
+      setTextureIdx(textureIdx + 1);
+      break;
+    default:
+      assertNever(type, "Unknown uniform type");
+  }
+}
+
+export class ShaderProgram {
+  program: WebGLProgram;
+
+  constructor(
+    private gl: WebGLRenderingContext,
+    vsSource: string,
+    fsSource: string,
+  ) {
+    this.program = createProgram(gl, vsSource, fsSource);
+  }
+
+  use() {
+    this.gl.useProgram(this.program);
+  }
+
+  getAttribLocation(name: string): number {
+    return this.gl.getAttribLocation(this.program, name);
+  }
+
+  getUniformLocation(name: string): WebGLUniformLocation | null {
+    return this.gl.getUniformLocation(this.program, name);
+  }
+
+  run(props: {
+    targetFramebuffer?: WebGLFramebuffer | null;
+    viewport?: [number, number, number, number];
+    uniforms?: Record<string, [UniformType, any]>;
+    attributes?: Record<string, WebGLBuffer>;
+    index?: {
+      buffer: WebGLBuffer;
+      count: number;
+    };
+  }) {
+    // fun new rule: eliminate state as much as we can
+
+    const { gl } = this;
+    const {
+      targetFramebuffer = null,
+      viewport = [0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight],
+      uniforms = {},
+      attributes = {},
+      index,
+    } = props;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, targetFramebuffer);
+    gl.viewport(...viewport);
+
+    this.use();
+
+    for (const [name, buffer] of Object.entries(attributes)) {
+      const loc = this.getAttribLocation(name);
+      gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
+      gl.enableVertexAttribArray(loc);
+      // todo: hardcoded
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    }
+
+    let textureIdx = 0;
+    for (const [name, [type, value]] of Object.entries(uniforms)) {
+      const loc = this.getUniformLocation(name);
+      if (loc) {
+        setUniform(gl, loc, type, value, textureIdx, (idx) => {
+          textureIdx = idx;
+        });
+      } else {
+        throw new Error(`Uniform ${name} not found in program`);
+      }
+    }
+
+    if (index) {
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index.buffer);
+      gl.drawElements(gl.TRIANGLES, index.count, gl.UNSIGNED_SHORT, 0);
+    } else {
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    // unbind buffers
+    for (const name of Object.keys(attributes)) {
+      const loc = this.getAttribLocation(name);
+      gl.disableVertexAttribArray(loc);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    }
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    // unbind textures
+    for (let i = 0; i < textureIdx; i++) {
+      gl.activeTexture(getTextureUnit(gl, i));
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
+    gl.useProgram(null);
+  }
+}
+
+export interface Tex {
+  texture: WebGLTexture;
+  width: number;
+  height: number;
+}
+
+export function newTex(
+  gl: WebGLRenderingContext,
+  width: number,
+  height: number,
+): Tex {
+  const texture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    width,
+    height,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    null,
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return { texture, width, height };
+}
+
+export interface Fbo {
+  tex: Tex;
+  framebuffer: WebGLFramebuffer;
+  gl: WebGLRenderingContext;
+}
+
+export function newFbo(gl: WebGLRenderingContext): Fbo {
+  const tex = newTex(gl, 1, 1);
+
+  const fb = gl.createFramebuffer()!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(
+    gl.FRAMEBUFFER,
+    gl.COLOR_ATTACHMENT0,
+    gl.TEXTURE_2D,
+    tex.texture,
+    0,
+  );
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  return { tex, framebuffer: fb, gl };
+}
+
+export function ensureFboSize(fbo: Fbo, width: number, height: number) {
+  if (fbo.tex.width === width && fbo.tex.height === height) return;
+  fbo.tex.width = width;
+  fbo.tex.height = height;
+  const { gl, tex } = fbo;
+  gl.bindTexture(gl.TEXTURE_2D, tex.texture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    width,
+    height,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    null,
+  );
+}
+
+export function deleteFbo(fbo: Fbo) {
+  const { gl, tex, framebuffer } = fbo;
+  gl.deleteTexture(tex.texture);
+  gl.deleteFramebuffer(framebuffer);
+}

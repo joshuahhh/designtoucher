@@ -6,6 +6,9 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { ShaderProgram } from "./mygl.js";
+
+console.log("hi");
 
 /* ------------------------------------------------------------------
  * Tiny WebGL helper utilities (no external deps)
@@ -40,17 +43,17 @@ export function createProgram(
  * ---------------------------------------------------------------- */
 export interface DrawArgs {
   texture: WebGLTexture;
-}
-
-export interface CopyArgs extends DrawArgs {
-  framebuffer: WebGLFramebuffer;
+  viewport?: [number, number, number, number];
+  targetFramebuffer?: WebGLFramebuffer;
 }
 
 export type OmniCanvasContextType = {
   gl: WebGLRenderingContext;
-  setDrawCommand(div: HTMLDivElement, command: null | (() => void)): void;
+  setGuestCommand(
+    div: HTMLDivElement,
+    command: null | ((viewport: [number, number, number, number]) => void),
+  ): void;
   draw(args: DrawArgs): void;
-  copy(args: CopyArgs): void;
 };
 
 export const OmniCanvasContext = createContext<OmniCanvasContextType>(
@@ -65,7 +68,12 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
   const [gl, setGl] = useState<WebGLRenderingContext | null>(null);
 
   // Map each guest <div> to its draw callback
-  const drawCommandsRef = useRef(new Map<HTMLDivElement, () => void>());
+  const guestCommandsRef = useRef(
+    new Map<
+      HTMLDivElement,
+      (viewport: [number, number, number, number]) => void
+    >(),
+  );
 
   /* ------------------------ initialize WebGL --------------------- */
   useEffect(() => {
@@ -83,32 +91,29 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
     setGl(ctx);
   }, [canvas]);
 
-  /* -------------------- programs, buffers, state ------------------ */
-  const resources = useMemo(() => {
+  const contextValue: OmniCanvasContextType | null = useMemo(() => {
     if (!gl) return null;
 
-    const vertSrc = `
-      attribute vec2 position;
-      varying vec2 uv;
-      void main() {
-        uv = 0.5 * (position + 1.0);
-        gl_Position = vec4(position, 0.0, 1.0);
-      }
-    `;
-
-    const fragSrc = `
-      precision mediump float;
-      uniform sampler2D tex1;
-      varying vec2 uv;
-      void main() {
-        gl_FragColor = texture2D(tex1, uv);
-      }
-    `;
-
-    const program = createProgram(gl, vertSrc, fragSrc);
-
-    const positionLoc = gl.getAttribLocation(program, "position");
-    const texLoc = gl.getUniformLocation(program, "tex1");
+    const program = new ShaderProgram(
+      gl,
+      `
+        attribute vec2 position;
+        varying vec2 uv;
+        void main() {
+          uv = 0.5 * (position + 1.0);
+          gl_Position = vec4(position, 0.0, 1.0);
+        }
+      `,
+      `
+        precision mediump float;
+        uniform sampler2D tex1;
+        varying vec2 uv;
+        void main() {
+          // gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0) + (0.0 * texture2D(tex1, uv));
+          gl_FragColor = texture2D(tex1, uv);
+        }
+      `,
+    );
 
     // fullscreen quad geometry
     const quadBuffer = gl.createBuffer()!;
@@ -127,54 +132,34 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       gl.STATIC_DRAW,
     );
 
-    const bindQuad = () => {
-      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
-      gl.enableVertexAttribArray(positionLoc);
-      gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    const draw = ({ texture, viewport, targetFramebuffer }: DrawArgs) => {
+      program.run({
+        targetFramebuffer: targetFramebuffer || null,
+        viewport,
+        uniforms: { tex1: ["sampler2D", texture] },
+        attributes: {
+          position: quadBuffer,
+        },
+        index: {
+          buffer: indexBuffer,
+          count: 6,
+        },
+      });
     };
 
-    return { program, texLoc, bindQuad } as const;
-  }, [gl]);
-
-  /* ------------------------ draw helpers ------------------------- */
-  const contextValue: OmniCanvasContextType | null = useMemo(() => {
-    if (!gl || !resources) return null;
-
-    const clearState = () => {
-      gl.disable(gl.SCISSOR_TEST);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    };
-
-    const draw = ({ texture }: DrawArgs) => {
-      gl.useProgram(resources.program);
-      resources.bindQuad();
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.uniform1i(resources.texLoc, 0);
-      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
-      clearState();
-    };
-
-    const copy = ({ texture, framebuffer }: CopyArgs) => {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-      draw({ texture });
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    };
-
-    const setDrawCommand = (
+    const setGuestCommand = (
       div: HTMLDivElement,
-      command: null | (() => void),
+      command: null | ((viewport: [number, number, number, number]) => void),
     ) => {
       if (command) {
-        drawCommandsRef.current.set(div, command);
+        guestCommandsRef.current.set(div, command);
       } else {
-        drawCommandsRef.current.delete(div);
+        guestCommandsRef.current.delete(div);
       }
     };
 
-    return { gl, setDrawCommand, draw, copy };
-  }, [gl, resources]);
+    return { gl, setGuestCommand, draw };
+  }, [gl]);
 
   /* ------------------------ frame loop --------------------------- */
   useEffect(() => {
@@ -196,11 +181,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       }
       canvas.style.transform = `translateY(${window.scrollY}px)`;
 
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-
-      drawCommandsRef.current.forEach((command, div) => {
+      guestCommandsRef.current.forEach((command, div) => {
         const rectCSS = div.getBoundingClientRect();
         const bottomCSS = hCSS - rectCSS.bottom;
 
@@ -217,11 +198,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
         const width = rectCSS.width * dpr;
         const height = rectCSS.height * dpr;
 
-        gl.viewport(left, bottom, width, height);
-        gl.enable(gl.SCISSOR_TEST);
-        gl.scissor(left, bottom, width, height);
-
-        command();
+        command([left, bottom, width, height]);
       });
 
       requestAnimationFrame(render);
@@ -256,16 +233,16 @@ export function OmniCanvasGuest({
   command,
   ...props
 }: {
-  command: () => void;
+  command: (viewport: [number, number, number, number]) => void;
 } & React.HTMLAttributes<HTMLDivElement>) {
-  const { setDrawCommand } = useContext(OmniCanvasContext);
+  const { setGuestCommand } = useContext(OmniCanvasContext);
   const [div, setDiv] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!div) return;
-    setDrawCommand(div, command);
-    return () => setDrawCommand(div, null);
-  }, [div, command, setDrawCommand]);
+    setGuestCommand(div, command);
+    return () => setGuestCommand(div, null);
+  }, [div, command, setGuestCommand]);
 
   return <div ref={setDiv} {...props} />;
 }

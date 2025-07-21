@@ -59,3 +59,16 @@ export function onVideoFrame(
     cancelled = true;
   };
 }
+
+export function pushBack<T>(arr: T[], item: T): void {
+  arr.push(item);
+}
+export function popBack<T>(arr: T[]): T | undefined {
+  return arr.pop();
+}
+export function pushFront<T>(arr: T[], item: T): void {
+  arr.unshift(item);
+}
+export function popFront<T>(arr: T[]): T | undefined {
+  return arr.shift();
+}

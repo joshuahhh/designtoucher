@@ -36,14 +36,14 @@ export const Test3 = () => {
 };
 
 export const Test3Inner = () => {
-  const { regl } = useContext(OmniCanvasContext);
+  const { gl } = useContext(OmniCanvasContext);
 
   const webcam = useWebcam({
     width: 1920,
     preference: "FaceTime",
   });
 
-  const webcamTextureRef = useRef<Texture2D | null>(null);
+  const webcamTextureRef = useRef<WebGLTexture | null>(null);
 
   useEffect(() => {
     const stream = webcam.stream;
@@ -53,26 +53,14 @@ export const Test3Inner = () => {
     }
 
     const cancel = onWebcamFrame(stream, () => {
-      regl.poll();
-
       // update texture
-      if (!webcamTextureRef.current) {
+      let webcamTexture = webcamTextureRef.current;
+      if (!webcamTexture) {
         console.log("initing webcam texture", stream.width, stream.height);
-        webcamTextureRef.current = regl.texture({
-          width: stream.width,
-          height: stream.height,
-          type: "uint8",
-          data: stream.video,
-          flipY: true,
-        });
-        console.log(
-          "inited",
-          webcamTextureRef.current.width,
-          webcamTextureRef.current.height,
-        );
+        webcamTexture = newTexture(gl, stream.width, stream.height);
       } else {
         // console.log("updating webcam texture");
-        webcamTextureRef.current.subimage({
+        webcamTexture.subimage({
           data: stream.video,
           flipY: true,
         });

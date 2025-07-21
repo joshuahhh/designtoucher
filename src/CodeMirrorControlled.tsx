@@ -10,7 +10,8 @@ export function CodeMirrorControlled({
   extensions,
   value,
   setValue,
-}: {
+  ...divProps
+}: React.HTMLAttributes<HTMLDivElement> & {
   extensions: Extension;
   value: string;
   setValue?: (value: string) => void;
@@ -55,6 +56,7 @@ export function CodeMirrorControlled({
       initialDoc={value}
       extensions={allExtensions}
       setEditorView={setEditorView}
+      {...divProps}
     />
   );
 }

@@ -87,4 +87,10 @@
 body {
   /* overflow: hidden; */
   /* background-color: black; */
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
 }

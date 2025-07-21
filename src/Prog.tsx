@@ -33,6 +33,14 @@ import {
 // const initialCode = `gray`;
 const initialCode = `copy\ndelay 20\n-\n* 10`;
 
+const movies = [
+  "/Nature/Movie.1.mp4",
+  "/Nature/Movie.2.mp4",
+  "/Nature/Movie.3.mp4",
+  "/Nature/Movie.4.mp4",
+  "/Nature/Movie.5.mp4",
+];
+
 /* ------------------------------------------------------------------
  * Helper: create/update a WebGL texture from HTMLVideoFrame
  * ---------------------------------------------------------------- */
@@ -80,13 +88,27 @@ const ProgInner = () => {
   const [code, setCode] = useState<string>(initialCode);
   const [finalState, setFinalState] = useState<ProgramState | null>(null);
 
+  const [videoSource, setVideoSource] = useState<string>(movies[0]);
+
   const webcam = useWebcam({
     enabled: true,
     width: 1920,
     preference: "FaceTime",
     // vidOverrideExt: "/train-cut.webm",
-    vidOverrideExt: "/Nature/Movie.2.mp4",
+    vidOverrideExt: movies.includes(videoSource) ? videoSource : undefined,
   });
+  useEffect(() => {
+    // This effect runs whenever the video source changes
+
+    // HACK: some trouble transitioning to new video source?
+    programRunnerRef.current = undefined;
+    webcamTexRef.current = null;
+
+    if (!movies.includes(videoSource)) {
+      webcam.setDeviceId(videoSource);
+    }
+  }, [videoSource, webcam]);
+
   const [isMirrored, setIsMirrored] = useState<boolean>(true);
 
   // persist runner across renders unless code changes
@@ -106,7 +128,7 @@ const ProgInner = () => {
     if (!gl || !stream) return;
 
     const cancel = onWebcamFrame(stream, () => {
-      console.log("webcam frame");
+      // console.log("webcam frame");
       assert(!!gl);
       ensureVideoTexture(gl, webcamTexRef, stream);
       // debugTex(gl, webcamTexRef.current!);
@@ -159,6 +181,23 @@ const ProgInner = () => {
       <div className="flex overflow-y-auto max-h-full">
         <div className="flex flex-col justify-center text-gray-300">
           <div className="sticky top-0">
+            <select
+              value={videoSource}
+              onChange={(e) => {
+                setVideoSource(e.target.value);
+              }}
+            >
+              {webcam.devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || "Unnamed camera"}
+                </option>
+              ))}
+              {movies.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
             <CodeMirrorControlled
               value={code}
               setValue={setCode}

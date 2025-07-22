@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import DomNode from "./DomNode.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
@@ -202,17 +202,20 @@ export const useWebcam = ({
     };
   }, [deviceId, enabled, imgOverride, streamRef, vidOverrideExt, width]);
 
-  return {
-    stream,
+  return useMemo(
+    () => ({
+      stream,
 
-    devices,
-    deviceId,
-    setDeviceId,
+      devices,
+      deviceId,
+      setDeviceId,
 
-    isMirrored,
+      isMirrored,
 
-    setImgOverride,
-  };
+      setImgOverride,
+    }),
+    [deviceId, devices, isMirrored, setImgOverride, stream],
+  );
 };
 
 export const WebcamSelect = ({

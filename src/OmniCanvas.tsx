@@ -115,35 +115,12 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       `,
     );
 
-    // fullscreen quad geometry
-    const quadBuffer = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]),
-      gl.STATIC_DRAW,
-    );
-
-    const indexBuffer = gl.createBuffer()!;
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-    gl.bufferData(
-      gl.ELEMENT_ARRAY_BUFFER,
-      new Uint16Array([0, 1, 2, 2, 3, 0]),
-      gl.STATIC_DRAW,
-    );
-
     const draw = ({ texture, viewport, targetFramebuffer }: DrawArgs) => {
       program.run({
         targetFramebuffer: targetFramebuffer || null,
         viewport,
         uniforms: { tex1: ["sampler2D", texture] },
-        attributes: {
-          position: quadBuffer,
-        },
-        index: {
-          buffer: indexBuffer,
-          count: 6,
-        },
+        fullscreen: true,
       });
     };
 

@@ -29,6 +29,12 @@ function createShader(
   const shader = gl.createShader(type)!;
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const compileErrLog = gl.getShaderInfoLog(shader);
+    throw new Error(
+      `Shader compile error: ${compileErrLog || "Unknown error"}`,
+    );
+  }
   return shader;
 }
 
@@ -134,6 +140,10 @@ function setUniform(
 
 export class ShaderProgram {
   program: WebGLProgram;
+  fullscreenStuff: {
+    quadBuffer: WebGLBuffer;
+    indexBuffer: WebGLBuffer;
+  } | null = null;
 
   constructor(
     private gl: WebGLRenderingContext,
@@ -155,6 +165,31 @@ export class ShaderProgram {
     return this.gl.getUniformLocation(this.program, name);
   }
 
+  private getFullscreenStuff() {
+    const { gl } = this;
+
+    if (!this.fullscreenStuff) {
+      // fullscreen quad geometry
+      const quadBuffer = gl.createBuffer()!;
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]),
+        gl.STATIC_DRAW,
+      );
+      const indexBuffer = gl.createBuffer()!;
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+      gl.bufferData(
+        gl.ELEMENT_ARRAY_BUFFER,
+        new Uint16Array([0, 1, 2, 2, 3, 0]),
+        gl.STATIC_DRAW,
+      );
+      this.fullscreenStuff = { quadBuffer, indexBuffer };
+    }
+
+    return this.fullscreenStuff;
+  }
+
   run(props: {
     targetFramebuffer?: WebGLFramebuffer | null;
     viewport?: [number, number, number, number];
@@ -164,17 +199,27 @@ export class ShaderProgram {
       buffer: WebGLBuffer;
       count: number;
     };
+    fullscreen?: boolean;
   }) {
     // fun new rule: eliminate state as much as we can
 
     const { gl } = this;
-    const {
+    let {
       targetFramebuffer = null,
       viewport = [0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight],
       uniforms = {},
       attributes = {},
       index,
     } = props;
+
+    if (props.fullscreen) {
+      const { quadBuffer, indexBuffer } = this.getFullscreenStuff();
+      attributes.position = quadBuffer;
+      index = {
+        buffer: indexBuffer,
+        count: 6,
+      };
+    }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, targetFramebuffer);
     gl.viewport(...viewport);

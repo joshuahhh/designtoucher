@@ -41,24 +41,21 @@ export type ParameterValues = Record<string, unknown>;
 
 type CommandRunnerConstructorProps = {
   id: string;
-  lineNum: number;
   parameterValues: ParameterValues;
-  originalLine: string;
+  command: Command;
   ctx: OmniCanvasContextType;
 };
 
 export abstract class CommandRunner implements CommandRunnerConstructorProps {
   id: string;
-  lineNum: number;
   parameterValues: ParameterValues;
-  originalLine: string;
+  command: Command;
   ctx: OmniCanvasContextType;
 
   constructor(props: CommandRunnerConstructorProps) {
     this.id = props.id;
-    this.lineNum = props.lineNum;
     this.parameterValues = props.parameterValues;
-    this.originalLine = props.originalLine;
+    this.command = props.command;
     this.ctx = props.ctx;
   }
 
@@ -90,72 +87,38 @@ export abstract class CommandRunnerFromStack extends CommandRunner {
   }
 }
 
-/* ------------------------------------------------------------------
- * Helpers: single‑value stack ops, variable save/load
- * ---------------------------------------------------------------- */
-// export class CommandRunnerSaveToVar extends CommandRunner {
-//   private resources?: { tex: WebGLTexture; fb: WebGLFramebuffer };
+export class CommandRunnerSaveToVar extends CommandRunner {
+  private fbo: Fbo | null = null;
 
-//   run(state: ProgramState): ProgramState {
-//     if (state.type === "error") return state;
-//     const input = state.stack[state.stack.length - 1];
-//     const { gl, draw } = this.ctx;
-//     assert(input.type === "texture");
+  run(state: ProgramState): ProgramState {
+    if (state.type === "error") return state;
+    const input = state.stack[state.stack.length - 1];
+    const { gl, draw } = this.ctx;
+    assert(input.type === "texture");
 
-//     // lazy allocate dest texture+FBO
-//     if (!this.resources) {
-//       const tex = gl.createTexture()!;
-//       gl.bindTexture(gl.TEXTURE_2D, tex);
-//       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-//       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-//       const fb = gl.createFramebuffer()!;
-//       gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-//       gl.framebufferTexture2D(
-//         gl.FRAMEBUFFER,
-//         gl.COLOR_ATTACHMENT0,
-//         gl.TEXTURE_2D,
-//         tex,
-//         0,
-//       );
-//       this.resources = { tex, fb };
-//     }
+    // lazy allocate dest texture+FBO
+    if (!this.fbo) {
+      this.fbo = newFbo(gl);
+      ensureFboSize(this.fbo, input.tex.width, input.tex.height);
+    }
 
-//     const { tex, fb } = this.resources;
+    // copy input texture → framebuffer (tex)
+    draw({
+      texture: input.tex.texture,
+      targetFramebuffer: this.fbo.framebuffer,
+      viewport: [0, 0, input.tex.width, input.tex.height],
+    });
 
-//     // resize dest texture if needed
-//     if (
-//       input.tex.width !== this.parameterValues.__w ||
-//       input.tex.height !== this.parameterValues.__h
-//     ) {
-//       gl.bindTexture(gl.TEXTURE_2D, tex);
-//       gl.texImage2D(
-//         gl.TEXTURE_2D,
-//         0,
-//         gl.RGBA,
-//         input.tex.width,
-//         input.tex.height,
-//         0,
-//         gl.RGBA,
-//         gl.UNSIGNED_BYTE,
-//         null,
-//       );
-//       this.parameterValues.__w = input.tex.width;
-//       this.parameterValues.__h = input.tex.height;
-//     }
-
-//     // copy input texture → framebuffer (tex)
-//     draw({ texture: input.tex.texture, targetFramebuffer: fb });
-
-//     const varName = String(this.parameterValues["varName"]);
-//     return {
-//       ...state,
-//       vars: {
-//         ...state.vars,
-//         [varName]: { type: "texture", tex },
-//       },
-//     };
-//   }
-// }
+    const varName = String(this.parameterValues["varName"]);
+    return {
+      ...state,
+      vars: {
+        ...state.vars,
+        [varName]: { type: "texture", tex: this.fbo.tex },
+      },
+    };
+  }
+}
 
 export class CommandRunnerLoadFromVar extends CommandRunner {
   run(state: ProgramState): ProgramState {
@@ -174,10 +137,8 @@ export class CommandRunnerLoadFromVar extends CommandRunner {
  * Base class for commands that pop N textures, push 1 texture
  * implemented with a tiny custom fragment shader
  * ---------------------------------------------------------------- */
-abstract class CommandRunnerGL extends CommandRunner {
+class CommandRunnerGL extends CommandRunner {
   private program: ShaderProgram;
-  private quadVbo: WebGLBuffer;
-  private indexBuffer: WebGLBuffer;
   private outFbo: Fbo;
 
   constructor(
@@ -202,23 +163,6 @@ abstract class CommandRunnerGL extends CommandRunner {
       void main(){ uv = 0.5*(position+1.0); gl_Position = vec4(position,0.0,1.0); }
     `;
     this.program = new ShaderProgram(gl, vertSrc, fragSrc);
-
-    // quad
-    this.quadVbo = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]),
-      gl.STATIC_DRAW,
-    );
-
-    this.indexBuffer = gl.createBuffer()!;
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-    gl.bufferData(
-      gl.ELEMENT_ARRAY_BUFFER,
-      new Uint16Array([0, 1, 2, 2, 3, 0]),
-      gl.STATIC_DRAW,
-    );
 
     this.outFbo = undefined as any; // will be set in ensureOut()
     this.ensureOut(gl, 1, 1); // initial dummy FBO
@@ -249,7 +193,7 @@ abstract class CommandRunnerGL extends CommandRunner {
 
     this.ensureOut(gl, width, height);
 
-    console.log("running with inputs", inputs);
+    // console.log("running with inputs", inputs);
 
     this.program.run({
       viewport: [0, 0, width, height],
@@ -267,13 +211,7 @@ abstract class CommandRunnerGL extends CommandRunner {
           ]),
         ),
       },
-      attributes: {
-        position: this.quadVbo,
-      },
-      index: {
-        buffer: this.indexBuffer,
-        count: 6,
-      },
+      fullscreen: true,
       targetFramebuffer: this.outFbo.framebuffer,
     });
 
@@ -330,11 +268,10 @@ export class CommandRunnerTimes extends CommandRunnerGL {
   constructor(props: CommandRunnerConstructorProps) {
     super(
       props,
-      2,
+      1,
       `
         vec3 c1 = texture2D(tex1, uv).rgb;
-        vec3 c2 = texture2D(tex2, uv).rgb;
-        gl_FragColor = vec4(c1 * c2 * alpha, 1.0);
+        gl_FragColor = vec4(c1 * alpha, 1.0);
       `,
       ["alpha"],
     );
@@ -404,13 +341,28 @@ export class CommandRunnerFlip extends CommandRunnerGL {
   }
 }
 
+export class CommandRunnerKal extends CommandRunnerGL {
+  constructor(props: CommandRunnerConstructorProps) {
+    super(
+      props,
+      1,
+      `
+        // vec2 uvFlip = vec2(mod(uv.x, 0.1), mod(uv.y, 0.1));
+        vec2 uvFlip = uv + vec2(sin(uv.y * 30.0) * 0.1, cos(uv.x * 30.0) * 0.1);
+        gl_FragColor = texture2D(tex1, uvFlip);
+      `,
+      [],
+    );
+  }
+}
+
 export class CommandRunnerRed extends CommandRunnerGL {
   constructor(props: CommandRunnerConstructorProps) {
     super(
       props,
       0,
       `
-        gl_FragColor = vec4(1.0, 0.0, 0.0, uv);
+        gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
       `,
       [],
     );
@@ -423,7 +375,7 @@ export class CommandRunnerGreen extends CommandRunnerGL {
       props,
       0,
       `
-        gl_FragColor = vec4(0.0, 1.0, 0.0, uv);
+        gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0);
       `,
       [],
     );
@@ -436,7 +388,7 @@ export class CommandRunnerBlue extends CommandRunnerGL {
       props,
       0,
       `
-        gl_FragColor = vec4(0.0, 0.0, 1.0, uv);
+        gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);
       `,
       [],
     );
@@ -445,6 +397,7 @@ export class CommandRunnerBlue extends CommandRunnerGL {
 
 class CommandRunnerDelay extends CommandRunnerFromStack {
   fbos: Fbo[] = [];
+  outFbo: Fbo | null = null;
 
   /*
   the ring will always have size one greater than the delay length.
@@ -496,7 +449,20 @@ class CommandRunnerDelay extends CommandRunnerFromStack {
       throw new Error("Delay ring not long enough");
     }
 
-    return { type: "texture", tex: this.fbos[0].tex };
+    // TODO: ideally we'd just return this.fbos[0].tex, but this
+    // glitches out... race condition? anyway let's just copy it to a
+    // new FBO and avoid that trouble.
+    if (!this.outFbo) {
+      this.outFbo = newFbo(gl);
+      ensureFboSize(this.outFbo, input.tex.width, input.tex.height);
+    }
+    draw({
+      texture: this.fbos[0].tex.texture,
+      targetFramebuffer: this.outFbo.framebuffer,
+      viewport: [0, 0, input.tex.width, input.tex.height],
+    });
+
+    return { type: "texture", tex: this.outFbo.tex };
   }
 }
 
@@ -524,6 +490,46 @@ export function runProgramRunner(
  * ---------------------------------------------------------------- */
 export type ParseResult = { programRunner: ProgramRunner; error?: unknown };
 
+type Command = {
+  text: string;
+  lineNums: number[];
+  multiLine: boolean;
+};
+
+function splitIntoCommands(code: string): Command[] {
+  // split by newlines, except that { & } (on their own lines delimit multi-line commands)
+  const lines = code.split("\n").map((line) => line.trim());
+  const commands: Command[] = [];
+  let multiLineCommand: Command | undefined = undefined;
+  for (const [lineIdx, line] of lines.entries()) {
+    const lineNum = lineIdx + 1;
+    if (multiLineCommand !== undefined) {
+      if (line === "}") {
+        commands.push(multiLineCommand);
+        multiLineCommand = undefined;
+      } else {
+        multiLineCommand.text += line;
+        multiLineCommand.lineNums.push(lineNum);
+      }
+    } else {
+      if (line === "{") {
+        multiLineCommand = { text: "", lineNums: [], multiLine: true };
+      } else if (line) {
+        commands.push({ text: line, lineNums: [lineNum], multiLine: false });
+      }
+      // otherwise, empty line – do nothing
+    }
+  }
+  if (multiLineCommand !== undefined) {
+    throw new Error("Unclosed multi-line command");
+  }
+  return commands;
+}
+
+function commandContentsEqual(a: Command, b: Command): boolean {
+  return a.text === b.text && a.multiLine === b.multiLine;
+}
+
 export function parseToProgramRunner(
   code: string,
   oldProgramRunner: ProgramRunner | undefined,
@@ -531,43 +537,60 @@ export function parseToProgramRunner(
 ): ParseResult {
   let programRunner: ProgramRunner = [];
   try {
-    for (const [idx, line] of code.split("\n").entries()) {
-      const lineNum = idx + 1;
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const [cmd, ...args] = trimmed.split(/\s+/);
+    const commands = splitIntoCommands(code);
+    for (const [idx, command] of commands.entries()) {
+      const { text, multiLine } = command;
+
+      const [cmd, ...args] = text.split(/\s+/);
       const id = String(programRunner.length);
 
       // reuse unchanged runner if line identical (hot‑swap optimisation)
       if (
         oldProgramRunner &&
         oldProgramRunner[idx] &&
-        oldProgramRunner[idx].originalLine === line
+        commandContentsEqual(oldProgramRunner[idx].command, command)
       ) {
-        oldProgramRunner[idx].lineNum = lineNum;
+        // need to update line numbers, etc.
+        oldProgramRunner[idx].command = command;
         programRunner.push(oldProgramRunner[idx]);
         continue;
       }
 
       const props = {
         id,
-        lineNum,
-        originalLine: line,
+        command,
         ctx,
       } satisfies Partial<CommandRunnerConstructorProps>;
 
+      if (multiLine) {
+        // derive arity from largest texN in text
+        const largestN = Math.max(
+          ...(text.match(/tex(\d+)/g) || []).map((s) => Number(s.slice(3))),
+        );
+        const arity = largestN > -Infinity ? largestN : 0;
+        programRunner.push(
+          new CommandRunnerGL(
+            { ...props, parameterValues: {} },
+            arity,
+            text,
+            [],
+          ),
+        );
+        continue;
+      }
+
       switch (cmd.toLowerCase()) {
-        // case "->":
-        //   assert(args.length === 1, "save needs var name");
-        //   programRunner.push(
-        //     new CommandRunnerSaveToVar({
-        //       ...props,
-        //       parameterValues: {
-        //         varName: args[0],
-        //       },
-        //     }),
-        //   );
-        //   break;
+        case "->":
+          assert(args.length === 1, "save needs var name");
+          programRunner.push(
+            new CommandRunnerSaveToVar({
+              ...props,
+              parameterValues: {
+                varName: args[0],
+              },
+            }),
+          );
+          break;
         case "<-":
           assert(args.length === 1, "load needs var name");
           programRunner.push(
@@ -612,6 +635,14 @@ export function parseToProgramRunner(
         case "iden":
           programRunner.push(
             new CommandRunnerIden({
+              ...props,
+              parameterValues: {},
+            }),
+          );
+          break;
+        case "in":
+          programRunner.push(
+            new CommandRunnerCopy({
               ...props,
               parameterValues: {},
             }),
@@ -665,6 +696,11 @@ export function parseToProgramRunner(
         case "blue":
           programRunner.push(
             new CommandRunnerBlue({ ...props, parameterValues: {} }),
+          );
+          break;
+        case "kal":
+          programRunner.push(
+            new CommandRunnerKal({ ...props, parameterValues: {} }),
           );
           break;
         default:

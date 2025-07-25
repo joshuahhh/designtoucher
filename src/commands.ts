@@ -395,7 +395,7 @@ export class CommandRunnerBlue extends CommandRunnerGL {
   }
 }
 
-class CommandRunnerDelay extends CommandRunnerFromStack {
+export class CommandRunnerDelay extends CommandRunnerFromStack {
   fbos: Fbo[] = [];
   outFbo: Fbo | null = null;
 

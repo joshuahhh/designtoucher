@@ -1,12 +1,13 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { ShaderProgram } from "./mygl.js";
+import { ShaderProgram, Tex } from "./mygl.js";
 
 console.log("hi");
 
@@ -192,7 +193,8 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
     <>
       <canvas
         ref={setCanvas}
-        className="absolute left-0 top-0 w-full h-full pointer-events-none"
+        // TODO: don't love the z-index here
+        className="absolute left-0 top-0 w-full h-full pointer-events-none z-[1]"
       />
       {contextValue && (
         <OmniCanvasContext.Provider value={contextValue}>
@@ -222,4 +224,27 @@ export function OmniCanvasGuest({
   }, [div, command, setGuestCommand]);
 
   return <div ref={setDiv} {...props} />;
+}
+
+export function Monitor({ tex }: { tex: Tex }) {
+  const { draw } = useContext(OmniCanvasContext);
+
+  const command = useCallback(
+    (viewport: [number, number, number, number]) => {
+      draw({ texture: tex.texture, viewport });
+    },
+    [draw, tex.texture],
+  );
+
+  return (
+    <div>
+      <OmniCanvasGuest
+        command={command}
+        className="w-full"
+        style={{ aspectRatio: tex.width / tex.height }}
+      />
+      {/* <div>{new Date().toISOString()}</div>
+      <div>{sum}</div> */}
+    </div>
+  );
 }

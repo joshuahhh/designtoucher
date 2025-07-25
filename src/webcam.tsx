@@ -22,7 +22,7 @@ export type WebcamStream = {
   height: number;
 };
 
-async function startStream(
+export async function startStream(
   deviceId: string,
   width: number,
 ): Promise<WebcamStream> {
@@ -80,7 +80,7 @@ async function startStream(
   };
 }
 
-function stopStream(stream: WebcamStream) {
+export function stopStream(stream: WebcamStream) {
   const { video } = stream;
   if (video instanceof HTMLImageElement) {
     return;

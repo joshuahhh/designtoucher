@@ -1,12 +1,5 @@
 import { basicSetup, EditorView } from "codemirror";
-import {
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { assert } from "./assert.js";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import {
@@ -17,11 +10,7 @@ import {
   runProgramRunner,
 } from "./commands.js"; // updated path
 import { newTex, Tex } from "./mygl.js";
-import {
-  OmniCanvasContext,
-  OmniCanvasGuest,
-  OmniCanvasHost,
-} from "./OmniCanvas.js";
+import { Monitor, OmniCanvasContext, OmniCanvasHost } from "./OmniCanvas.js";
 import { onWebcamFrame, useWebcam, WebcamStream } from "./webcam.js";
 
 // const initialCode = `in\ngray`;
@@ -224,7 +213,7 @@ const ProgInner = () => {
       </div>
       {selectedTex && (
         <div className="flex-1 ml-4">
-          <Monitor gl={gl} tex={selectedTex.tex} />
+          <Monitor tex={selectedTex.tex} />
         </div>
       )}
     </div>
@@ -287,33 +276,4 @@ function ResultView({
     );
   }
   return <div>not implemented</div>;
-}
-
-function Monitor({ gl, tex }: { gl: WebGLRenderingContext; tex: Tex }) {
-  const { draw } = useContext(OmniCanvasContext);
-
-  const command = useCallback(
-    (viewport: [number, number, number, number]) => {
-      draw({ texture: tex.texture, viewport });
-    },
-    [draw, tex.texture],
-  );
-
-  // const pixels = usePixels(gl, tex);
-  // const sum = useMemo(() => {
-  //   if (!pixels) return 0;
-  //   return pixels.reduce((acc, val) => acc + val, 0);
-  // }, [pixels]);
-
-  return (
-    <div>
-      <OmniCanvasGuest
-        command={command}
-        className="w-full"
-        style={{ aspectRatio: tex.width / tex.height }}
-      />
-      {/* <div>{new Date().toISOString()}</div>
-      <div>{sum}</div> */}
-    </div>
-  );
 }

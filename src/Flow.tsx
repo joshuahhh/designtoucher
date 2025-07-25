@@ -190,6 +190,7 @@ const FlowInner = () => {
   }));
 
   const [runtimes, setRuntimes] = useState<Record<string, OpRuntime>>({});
+  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node>[]) =>
@@ -220,27 +221,59 @@ const FlowInner = () => {
   );
 
   return (
-    <div className="w-full h-full">
-      <FlowContext.Provider value={{ runtimes: runtimesRef.current }}>
-        <ReactFlow
-          attributionPosition="top-right"
-          nodes={flow.nodes}
-          edges={flow.edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          nodeTypes={nodeTypes}
-          maxZoom={10}
-          minZoom={0.1}
-          viewport={viewport}
-          onViewportChange={setViewport}
+    <div className="w-full h-full flex">
+      <div className="flex-1 relative">
+        <FlowContext.Provider value={{ runtimes: runtimesRef.current }}>
+          <ReactFlow
+            attributionPosition="top-right"
+            nodes={flow.nodes}
+            edges={flow.edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={nodeTypes}
+            maxZoom={10}
+            minZoom={0.1}
+            viewport={viewport}
+            onViewportChange={setViewport}
+          >
+            <MiniMap zoomable pannable />
+            <Controls />
+            <Background />
+            <CopyPaste />
+          </ReactFlow>
+        </FlowContext.Provider>
+        
+        {/* Toggle Button */}
+        <button
+          onClick={() => setIsPanelExpanded(!isPanelExpanded)}
+          className="absolute top-4 right-4 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 transition-colors"
         >
-          <MiniMap zoomable pannable />
-          <Controls />
-          <Background />
-          <CopyPaste />
-        </ReactFlow>
-      </FlowContext.Provider>
+          {isPanelExpanded ? (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          )}
+        </button>
+      </div>
+      
+      {/* Expandable Panel */}
+      <div className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
+        isPanelExpanded ? 'w-80 opacity-100' : 'w-0 opacity-0'
+      } overflow-hidden`}>
+        <div className="p-4 h-full">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">Components</h3>
+          <div className="space-y-2">
+            <div className="text-sm text-gray-600">
+              Drag and drop components will go here
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

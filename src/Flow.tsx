@@ -17,6 +17,7 @@ import {
   NodeTypes,
   Position,
   ReactFlow,
+  Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import _ from "lodash";
@@ -182,11 +183,17 @@ const FlowInner = () => {
   }));
   const flowUP = up(setFlow);
 
+  const [viewport, setViewport] = useLocalStorage<Viewport>("viewport", () => ({
+    x: 100,
+    y: 100,
+    zoom: 2,
+  }));
+
   const [runtimes, setRuntimes] = useState<Record<string, OpRuntime>>({});
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node>[]) =>
-      flowUP.nodes.$((nodes) => applyNodeChanges(changes, nodes)),
+      flowUP.nodes.$as<Node[]>().$((nodes) => applyNodeChanges(changes, nodes)),
     [flowUP.nodes],
   );
   const onEdgesChange = useCallback(
@@ -225,7 +232,8 @@ const FlowInner = () => {
           nodeTypes={nodeTypes}
           maxZoom={10}
           minZoom={0.1}
-          defaultViewport={{ x: 100, y: 100, zoom: 2 }}
+          viewport={viewport}
+          onViewportChange={setViewport}
         >
           <MiniMap zoomable pannable />
           <Controls />

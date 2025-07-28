@@ -75,10 +75,18 @@ const opWebcam = defineOp(
     static description = "Camera input";
     static numInputs = 0;
     static numOutputs = 1;
+    static params: OpParam[] = [
+      {
+        displayName: "Flip horizontally",
+        varName: "hflip",
+        type: "boolean",
+        defaultValue: true,
+      },
+    ];
 
     webcamStream: WebcamStream | null = null;
     tex: Tex | null = null;
-    hflipOp: OpInstance;
+    hflipOp: OpInstance | null = null;
 
     constructor(ctx: OmniCanvasContextType, nodeId: string) {
       super(ctx, nodeId);
@@ -96,14 +104,12 @@ const opWebcam = defineOp(
         this.webcamStream = await startStream(facetimeCam.deviceId, 1280);
       })();
 
-      this.hflipOp = new opHFlip(ctx, nodeId + "-hflip");
-
       this.tex = newTex(this.ctx.gl, 1280, 720);
 
       this.outputs = [null];
     }
 
-    run() {
+    run({ paramValues }: RunProps) {
       const { gl } = this.ctx;
 
       if (!this.webcamStream) {
@@ -132,12 +138,25 @@ const opWebcam = defineOp(
       this.tex.width = this.webcamStream.width;
       this.tex.height = this.webcamStream.height;
 
-      this.hflipOp.run({
-        inputs: [this.tex],
-        paramValues: {},
-      });
+      if (paramValues["hflip"]) {
+        if (!this.hflipOp) {
+          this.hflipOp = new opHFlip(this.ctx, this.nodeId + "-hflip");
+        }
 
-      this.outputs = [this.hflipOp.outputs[0]];
+        this.hflipOp.run({
+          inputs: [this.tex],
+          paramValues: {},
+        });
+
+        this.outputs = [this.hflipOp.outputs[0]];
+      } else {
+        if (this.hflipOp) {
+          this.hflipOp.destroy();
+          this.hflipOp = null;
+        }
+
+        this.outputs = [this.tex];
+      }
     }
 
     destroy() {

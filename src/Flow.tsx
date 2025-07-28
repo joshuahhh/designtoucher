@@ -29,6 +29,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { assertNever } from "./assert.js";
 import {
   AnyOpId,
   defaultParamValues,
@@ -180,14 +181,30 @@ export function OpNodeView(props: NodeProps<OpNode>) {
                 />
               </div>
             );
-          } else {
+          } else if (p.type === "boolean") {
             return (
               <div key={p.varName} className="operation-node-param flex gap-1">
                 <label className="operation-node-param-label">
                   {p.displayName}
                 </label>
+                <input
+                  className="nodrag"
+                  type="checkbox"
+                  checked={value}
+                  onChange={(e) => {
+                    setData((data) => ({
+                      ...data,
+                      paramValues: {
+                        ...data.paramValues,
+                        [p.varName]: e.target.checked,
+                      },
+                    }));
+                  }}
+                />
               </div>
             );
+          } else {
+            assertNever(p, `Unknown param type: ${(p as any).type}`);
           }
         })}
     </div>

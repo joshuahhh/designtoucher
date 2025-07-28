@@ -1,211 +1,493 @@
 import { Edge, Node } from "@xyflow/react";
 import _ from "lodash";
+import { assert } from "./assert.js";
 import {
-  CommandRunner,
-  CommandRunnerDelay,
-  CommandRunnerFlip,
-  CommandRunnerKal,
-  CommandRunnerMinus,
-} from "./commands.js";
-import { newTex, Tex } from "./mygl.js";
+  deleteFbo,
+  ensureFboSize,
+  Fbo,
+  newFbo,
+  newTex,
+  ShaderProgram,
+  Tex,
+} from "./mygl.js";
 import { OmniCanvasContextType } from "./OmniCanvas.js";
 import { toposortFromEdges } from "./toposort.js";
+import { popFront, pushBack, pushFront } from "./util.js";
 import { startStream, stopStream, WebcamStream } from "./webcam.js";
 
-export type OpRuntime = {
-  run: (props: { inputs: (Tex | undefined)[] }) => void;
-  destroy: () => void;
-  getOutputs: () => Tex[];
+type RunProps = {
+  inputs: (Tex | null)[];
+  paramValues: Record<string, unknown>;
 };
 
-export type Op<Id extends string, OR extends OpRuntime> = {
+export type OpInstance = {
+  run: (props: RunProps) => void;
+  destroy: () => void;
+  outputs: (Tex | null)[];
+};
+
+export type OpClass<Id extends string> = {
   id: Id;
+  description: string;
   numInputs: number;
   numOutputs: number;
-  makeRuntime: (ctx: OmniCanvasContextType, nodeId: string) => OR;
+  params?: OpParam[];
+  new (ctx: OmniCanvasContextType, nodeId: string): OpInstance;
 };
 
-function makeOp<Id extends string, OR extends OpRuntime>(
-  op: Op<Id, OR>,
-): Op<Id, OR> {
-  return op;
+function defineOp<Id extends string>(cls: OpClass<Id>) {
+  return cls;
 }
 
-const webcamOperation = makeOp({
-  id: "webcam" as const,
-  numInputs: 0,
-  numOutputs: 1,
-  makeRuntime: (ctx, nodeId) => {
-    const { gl } = ctx;
+export type OpParam = {
+  displayName: string;
+  varName: string;
+} & (
+  | {
+      type: "number";
+      defaultValue: number;
+      min: number;
+      max: number;
+      step: number;
+    }
+  | {
+      type: "string";
+      defaultValue: string;
+    }
+  | {
+      type: "boolean";
+      defaultValue: boolean;
+    }
+);
 
-    let webcamStream: WebcamStream | null = null;
-    (async () => {
-      // load facetime cam
-      const allDevices = await navigator.mediaDevices.enumerateDevices();
-      const cams = allDevices.filter((d) => d.kind === "videoinput");
+abstract class BaseOp {
+  outputs: (Tex | null)[] = [];
 
-      // find facetime cam
-      const facetimeCam = cams.find((d) => d.label.includes("FaceTime"));
-      if (!facetimeCam) {
-        throw new Error("No FaceTime camera found");
+  constructor(
+    public ctx: OmniCanvasContextType,
+    public nodeId: string,
+  ) {}
+}
+
+const opWebcam = defineOp(
+  class extends BaseOp {
+    static id = "cam" as const;
+    static description = "Camera input";
+    static numInputs = 0;
+    static numOutputs = 1;
+
+    webcamStream: WebcamStream | null = null;
+    tex: Tex | null = null;
+    hflipOp: OpInstance;
+
+    constructor(ctx: OmniCanvasContextType, nodeId: string) {
+      super(ctx, nodeId);
+
+      (async () => {
+        // load facetime cam
+        const allDevices = await navigator.mediaDevices.enumerateDevices();
+        const cams = allDevices.filter((d) => d.kind === "videoinput");
+
+        // find facetime cam
+        const facetimeCam = cams.find((d) => d.label.includes("FaceTime"));
+        if (!facetimeCam) {
+          throw new Error("No FaceTime camera found");
+        }
+        this.webcamStream = await startStream(facetimeCam.deviceId, 1280);
+      })();
+
+      this.hflipOp = new opHFlip(ctx, nodeId + "-hflip");
+
+      this.tex = newTex(this.ctx.gl, 1280, 720);
+
+      this.outputs = [null];
+    }
+
+    run() {
+      const { gl } = this.ctx;
+
+      if (!this.webcamStream) {
+        return;
       }
-      webcamStream = await startStream(facetimeCam.deviceId, 1280);
-    })();
 
-    let tex: Tex | null = null;
-
-    return {
-      run: () => {
-        if (!webcamStream) {
-          return;
-        }
-
-        if (!tex) {
-          tex = newTex(gl, webcamStream.width, webcamStream.height);
-        }
-
-        gl.bindTexture(gl.TEXTURE_2D, tex.texture);
-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-        gl.texSubImage2D(
-          gl.TEXTURE_2D,
-          0,
-          0,
-          0,
-          gl.RGBA,
-          gl.UNSIGNED_BYTE,
-          webcamStream.video,
+      if (!this.tex) {
+        this.tex = newTex(
+          this.ctx.gl,
+          this.webcamStream.width,
+          this.webcamStream.height,
         );
-        tex.width = webcamStream.width;
-        tex.height = webcamStream.height;
-      },
-      destroy: () => {
-        console.log("Destroying webcam operation", nodeId);
-        if (webcamStream) {
-          stopStream(webcamStream);
-          webcamStream = null;
-        }
-      },
-      getOutputs: () => [tex!],
-    };
-  },
-});
+      }
 
-function makeOpFromCR(
-  id: string,
-  makeCR: (ctx: OmniCanvasContextType) => CommandRunner,
-  numInputs: number,
-) {
-  return makeOp({
-    id,
-    numInputs,
-    numOutputs: 1,
-    makeRuntime: (ctx, nodeId) => {
-      const cr = makeCR(ctx);
-      let output: Tex | null = null;
-      return {
-        run: ({ inputs }) => {
-          if (inputs.some((i) => !i)) {
-            output = null;
-          } else {
-            output = hackyRunCommandRunner(cr, inputs as Tex[]);
-          }
+      gl.bindTexture(gl.TEXTURE_2D, this.tex.texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        this.webcamStream.video,
+      );
+      this.tex.width = this.webcamStream.width;
+      this.tex.height = this.webcamStream.height;
+
+      this.hflipOp.run({
+        inputs: [this.tex],
+        paramValues: {},
+      });
+
+      this.outputs = [this.hflipOp.outputs[0]];
+    }
+
+    destroy() {
+      if (this.webcamStream) {
+        stopStream(this.webcamStream);
+        this.webcamStream = null;
+      }
+    }
+  },
+);
+
+const opDelay = defineOp(
+  class extends BaseOp {
+    static id = "delay" as const;
+    static description = "Delay input by some number of frames";
+    static numInputs = 1;
+    static numOutputs = 1;
+    static params: OpParam[] = [
+      {
+        displayName: "Frames of delay",
+        varName: "framesOfDelay",
+        type: "number",
+        defaultValue: 30,
+        min: 1,
+        max: 300,
+        step: 1,
+      },
+    ];
+
+    fbos: Fbo[] = [];
+    outFbo: Fbo | null = null;
+
+    run({ inputs, paramValues }: RunProps) {
+      const { gl, draw } = this.ctx;
+      const tex = inputs[0];
+      if (!tex) {
+        this.outputs = [null];
+        return;
+      }
+      const ringLength = (paramValues["framesOfDelay"] as number) + 1;
+
+      if (this.fbos.length < ringLength) {
+        console.log("delay: lengthening ring");
+        pushFront(this.fbos, newFbo(gl));
+      }
+
+      // get rid of extraneous textures
+      while (this.fbos.length > ringLength) {
+        console.log("delay: shortening");
+        deleteFbo(popFront(this.fbos)!);
+      }
+
+      // cycle the ring
+      const oldestFbo = popFront(this.fbos)!;
+      ensureFboSize(oldestFbo, tex.width, tex.height);
+      draw({
+        texture: tex.texture,
+        targetFramebuffer: oldestFbo.framebuffer,
+        viewport: [0, 0, tex.width, tex.height],
+      });
+      pushBack(this.fbos, oldestFbo);
+
+      if (this.fbos.length < ringLength) {
+        this.outputs = [null];
+        return;
+        // throw new Error("Delay ring not long enough");
+      }
+
+      // TODO: ideally we'd just return this.fbos[0].tex, but this
+      // glitches out... race condition? anyway let's just copy it to a
+      // new FBO and avoid that trouble.
+      if (!this.outFbo) {
+        this.outFbo = newFbo(gl);
+        ensureFboSize(this.outFbo, tex.width, tex.height);
+      }
+      draw({
+        texture: this.fbos[0].tex.texture,
+        targetFramebuffer: this.outFbo.framebuffer,
+        viewport: [0, 0, tex.width, tex.height],
+      });
+
+      this.outputs = [this.outFbo.tex];
+    }
+
+    destroy() {
+      this.fbos.forEach((fbo) => deleteFbo(fbo));
+      if (this.outFbo) {
+        deleteFbo(this.outFbo);
+      }
+    }
+  },
+);
+
+const opFrag = defineOp(
+  class extends BaseOp {
+    static id = "frag" as const;
+    static description = "Fragment shader operation";
+    static numInputs = 1;
+    static numOutputs = 1;
+    static params: OpParam[] = [
+      {
+        displayName: "Fragment shader body",
+        varName: "fragBody",
+        type: "string",
+        defaultValue:
+          "vec3 tex1Color = vec3(texture2D(tex1, uv));\ngl_FragColor = vec4(tex1Color * 2.0, 1.0);",
+      },
+    ];
+
+    compiled: {
+      program: ShaderProgram;
+      fragBody: string;
+    } | null = null;
+    outFbo: Fbo;
+
+    constructor(ctx: OmniCanvasContextType, nodeId: string) {
+      super(ctx, nodeId);
+      this.outFbo = newFbo(ctx.gl);
+    }
+
+    run({ inputs, paramValues }: RunProps) {
+      const { gl } = this.ctx;
+      const tex = inputs[0];
+      if (!tex) {
+        this.outputs = [null];
+        return;
+      }
+
+      const fragBody = paramValues["fragBody"] as string;
+      if (!this.compiled || this.compiled.fragBody !== fragBody) {
+        // compile the shader
+        const fragSrc =
+          `
+          precision mediump float;\n` +
+          `uniform sampler2D tex1;\n` +
+          `varying vec2 uv;\n` +
+          `void main(){\n${fragBody}\n}`;
+        const vertSrc = `
+          attribute vec2 position; varying vec2 uv;
+          void main(){ uv = 0.5*(position+1.0); gl_Position = vec4(position,0.0,1.0); }
+        `;
+        this.compiled = {
+          program: new ShaderProgram(gl, vertSrc, fragSrc),
+          fragBody,
+        };
+      }
+
+      ensureFboSize(this.outFbo, tex.width, tex.height);
+
+      this.compiled.program.run({
+        viewport: [0, 0, tex.width, tex.height],
+        uniforms: { tex1: ["sampler2D", tex.texture] },
+        fullscreen: true,
+        targetFramebuffer: this.outFbo.framebuffer,
+      });
+
+      this.outputs = [this.outFbo.tex];
+    }
+
+    destroy() {
+      deleteFbo(this.outFbo);
+      this.compiled = null;
+    }
+  },
+);
+
+function fragOp(numInputs: number, fragBody: string, params: OpParam[] = []) {
+  assert(params.every((p) => p.type === "number"));
+
+  const fragSrc =
+    `
+    precision mediump float;\n` +
+    params.map((p) => `uniform float ${p.varName};`).join("\n") +
+    _.range(numInputs)
+      .map((i) => `uniform sampler2D tex${i + 1};`)
+      .join("\n") +
+    `\nvarying vec2 uv;\nvoid main(){\n${fragBody}\n}
+  `;
+
+  const vertSrc = `
+    attribute vec2 position; varying vec2 uv;
+    void main(){ uv = 0.5*(position+1.0); gl_Position = vec4(position,0.0,1.0); }
+  `;
+
+  return class extends BaseOp {
+    static numInputs = numInputs;
+    static numOutputs = 1;
+    static params = params;
+
+    private program: ShaderProgram;
+    private outFbo: Fbo;
+
+    constructor(ctx: OmniCanvasContextType, nodeId: string) {
+      super(ctx, nodeId);
+      console.log("Creating fragOp", fragSrc);
+      this.program = new ShaderProgram(ctx.gl, vertSrc, fragSrc);
+      this.outFbo = newFbo(ctx.gl);
+    }
+
+    run({ inputs, paramValues }: RunProps) {
+      if (inputs.some((i) => !i)) {
+        this.outputs = [null];
+        return;
+      }
+
+      const firstInput = inputs[0]!;
+      const { width, height } = firstInput;
+
+      ensureFboSize(this.outFbo, width, height);
+
+      this.program.run({
+        viewport: [0, 0, width, height],
+        uniforms: {
+          ...Object.fromEntries(
+            params.map((p) => [
+              p.varName,
+              ["1f", Number(paramValues[p.varName] ?? 0)],
+            ]),
+          ),
+          ...Object.fromEntries(
+            inputs.map((value, i) => [
+              `tex${i + 1}`,
+              ["sampler2D", value!.texture],
+            ]),
+          ),
         },
-        destroy: () => {
-          console.log("Destroying command runner operation", nodeId);
-        },
-        getOutputs: () => [output!],
-      };
-    },
-  });
+        fullscreen: true,
+        targetFramebuffer: this.outFbo.framebuffer,
+      });
+
+      this.outputs = [this.outFbo.tex];
+    }
+
+    destroy() {
+      deleteFbo(this.outFbo);
+    }
+  };
 }
 
-// const flip = makeOp({
-//   id: "flip" as const,
-//   numInputs: 1,
-//   numOutputs: 1,
-//   makeRuntime: (ctx, nodeId) => {
-//     const cr = new CommandRunnerFlip({
-//       ctx,
-//       command: undefined!,
-//       id: undefined!,
-//       parameterValues: {},
-//     });
-//     let output: Tex | null = null;
-
-//     return {
-//       run: ({ inputs }) => {
-//         // console.log("Running flip operation", nodeId);
-//         // Implement flip logic here
-//         console.log("Running flip operation", nodeId, inputs);
-//         if (!inputs[0]) {
-//           output = null;
-//         } else {
-//           output = hackyRunCommandRunner(cr, inputs as Tex[]);
-//         }
-//       },
-//       destroy: () => {
-//         console.log("Destroying flip operation", nodeId);
-//       },
-//       getOutputs: () => [output!],
-//     };
-//   },
-// });
-
-const flip = makeOpFromCR(
-  "flip",
-  (ctx) =>
-    new CommandRunnerFlip({
-      ctx,
-      command: undefined!,
-      id: undefined!,
-      parameterValues: {},
-    }),
-  1,
+const opHFlip = defineOp(
+  class extends fragOp(
+    1,
+    `
+      vec2 uvFlip = vec2(1.0 - uv.x, uv.y);
+      gl_FragColor = texture2D(tex1, uvFlip);
+    `,
+  ) {
+    static id = "hflip" as const;
+    static description = "Flip image horizontally";
+  },
 );
 
-const kal = makeOpFromCR(
-  "kal",
-  (ctx) =>
-    new CommandRunnerKal({
-      ctx,
-      command: undefined!,
-      id: undefined!,
-      parameterValues: {},
-    }),
-  1,
+const opVFlip = defineOp(
+  class extends fragOp(
+    1,
+    `
+      vec2 uvFlip = vec2(uv.x, 1.0 - uv.y);
+      gl_FragColor = texture2D(tex1, uvFlip);
+    `,
+  ) {
+    static id = "vflip" as const;
+    static description = "Flip image vertically";
+  },
 );
 
-const delay = makeOpFromCR(
-  "delay",
-  (ctx) =>
-    new CommandRunnerDelay({
-      ctx,
-      command: undefined!,
-      id: undefined!,
-      parameterValues: {
-        Length: 30,
+const opKal = defineOp(
+  class extends fragOp(
+    1,
+    `
+      vec2 uvFlip = uv + vec2(sin(uv.y / period) * strength, cos(uv.x / period) * strength);
+      gl_FragColor = texture2D(tex1, uvFlip);
+    `,
+    [
+      {
+        displayName: "Strength",
+        varName: "strength",
+        type: "number",
+        defaultValue: 0.1,
+        min: 0,
+        max: 1,
+        step: 0.001,
       },
-    }),
-  1,
+      {
+        displayName: "Period",
+        varName: "period",
+        type: "number",
+        defaultValue: 0.03,
+        min: 0,
+        max: 0.5,
+        step: 0.001,
+      },
+    ],
+  ) {
+    static id = "kal" as const;
+    static description = "Kaleidoscope effect";
+  },
 );
 
-const minus = makeOpFromCR(
-  "minus",
-  (ctx) =>
-    new CommandRunnerMinus({
-      ctx,
-      command: undefined!,
-      id: undefined!,
-      parameterValues: {},
-    }),
-  2,
+const opMinus = defineOp(
+  class extends fragOp(
+    2,
+    `
+      vec3 tex1Color = vec3(texture2D(tex1, uv));
+      vec3 tex2Color = vec3(texture2D(tex2, uv));
+      gl_FragColor = vec4(tex1Color - tex2Color, 1.0);
+    `,
+  ) {
+    static id = "minus" as const;
+    static description = "Subtract two images";
+  },
 );
 
-const ops = [webcamOperation, flip, kal, delay, minus];
+const opTimes = defineOp(
+  class extends fragOp(
+    1,
+    `
+      vec3 tex1Color = vec3(texture2D(tex1, uv));
+      gl_FragColor = vec4(tex1Color * alpha, 1.0);
+    `,
+    [
+      {
+        displayName: "Alpha",
+        varName: "alpha",
+        type: "number",
+        defaultValue: 1,
+        min: 0,
+        max: 10,
+        step: 0.01,
+      },
+    ],
+  ) {
+    static id = "times" as const;
+    static description = "Multiply image by number";
+  },
+);
 
-type AnyOpId = (typeof ops)[number]["id"];
+export const ops = [
+  opWebcam,
+  opDelay,
+  opHFlip,
+  opVFlip,
+  opKal,
+  opMinus,
+  opTimes,
+  opFrag,
+] as const;
 
-export function opById(id: string): Op<AnyOpId, OpRuntime> {
+export type AnyOpId = (typeof ops)[number]["id"];
+
+export function opById(id: string): OpClass<AnyOpId> {
   const found = ops.find((op) => op.id === id);
   if (!found) {
     throw new Error(`Operation with id ${id} not found`);
@@ -213,7 +495,10 @@ export function opById(id: string): Op<AnyOpId, OpRuntime> {
   return found;
 }
 
-export type OpNode = Node<{ opId: AnyOpId }, "operation">;
+export type OpNode = Node<
+  { opId: AnyOpId; paramValues: Record<string, any> },
+  "operation"
+>;
 
 export function idxToOutputHandle(idx: number): string {
   return `output-${idx + 1}`;
@@ -234,10 +519,21 @@ export function inputHandleToIdx(handle: string | null | undefined): number {
   return parseInt(handle.slice("input-".length)) - 1;
 }
 
+export function defaultParamValues(opId: AnyOpId): Record<string, any> {
+  const op = opById(opId);
+  if (!op.params) return {};
+
+  return Object.fromEntries(
+    op.params.map((param) => {
+      return [param.varName, param.defaultValue];
+    }),
+  );
+}
+
 export function runFlow(
   nodes: OpNode[],
   edges: Edge[],
-  runtimes: Record<string, OpRuntime>,
+  runtimes: Record<string, OpInstance>,
   ctx: OmniCanvasContextType,
 ) {
   // clean up old runtimes
@@ -252,7 +548,7 @@ export function runFlow(
   nodes.forEach((node) => {
     if (!runtimes[node.id]) {
       const op = opById(node.data.opId);
-      runtimes[node.id] = op.makeRuntime(ctx, node.id);
+      runtimes[node.id] = new op(ctx, node.id);
     }
   });
 
@@ -277,33 +573,17 @@ export function runFlow(
         (e) => e.target === nodeId && e.targetHandle === idxToInputHandle(i),
       );
       if (!edge) {
-        return undefined;
+        return null;
       }
-      return runtimes[edge.source].getOutputs()[
+      return runtimes[edge.source].outputs[
         outputHandleToIdx(edge.sourceHandle)
       ];
     });
 
-    runtime.run({ inputs });
+    try {
+      runtime.run({ inputs, paramValues: node.data.paramValues });
+    } catch (error) {
+      console.error(`Error running node ${nodeId}:`, error);
+    }
   });
-}
-
-export function hackyRunCommandRunner(
-  cr: CommandRunner,
-  inputs: Tex[],
-): Tex | null {
-  const newState = cr.run({
-    type: "active",
-    vars: {},
-    stack: inputs.map((tex) => ({
-      type: "texture",
-      tex,
-    })),
-    intermediate: {},
-  });
-  if (newState.type === "error") {
-    // TODO: error reporting
-    return null;
-  }
-  return newState.stack.at(-1)!.tex;
 }

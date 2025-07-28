@@ -4,7 +4,14 @@ import {
   ReactFlowInstance,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useEffect } from "react";
+import {
+  Dispatch,
+  SetStateAction,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+import { useRefForCallback } from "./useRefForCallback";
 
 export function useSetNodeData<D extends Record<string, unknown>>(
   props: NodeProps<Node<D>>,
@@ -18,6 +25,40 @@ export function useSetNodeData<D extends Record<string, unknown>>(
       ),
     );
   };
+}
+
+// react-flow docs say: "When dealing with input fields you don’t
+//   want to use a nodes data object as UI state directly. There is a
+//   delay in updating the data object and the cursor might jump
+//   around erratically and lead to unwanted inputs."
+//
+// This hook provides a safer way of accessing node data. It stores a
+// copy of the node's data as standard React state, and syncs it
+// bidirectionally with the react-flow node's data object.
+export function useNodeData<D extends Record<string, unknown>>(
+  props: NodeProps<Node<D>>,
+): [D, Dispatch<SetStateAction<D>>] {
+  const { setNodes } = useReactFlow<Node<D>>();
+  const [data, setData] = useState<D>(props.data);
+
+  // Update the react-flow node's data object whenever the local
+  // state changes.
+  useEffect(() => {
+    setNodes((nodes) =>
+      nodes.map((n) => (n.id === props.id ? { ...n, data } : n)),
+    );
+  }, [data, props.id, setNodes]);
+
+  // Update the local state whenever the react-flow node's data
+  // object changes (tho check for equality first, to avoid loops).
+  const dataRef = useRefForCallback(data);
+  useEffect(() => {
+    if (props.data !== dataRef.current) {
+      setData(props.data);
+    }
+  }, [props.data, dataRef]);
+
+  return [data, setData];
 }
 
 export const CopyPaste = () => {

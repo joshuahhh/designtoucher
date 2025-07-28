@@ -4,7 +4,6 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
   Background,
-  BuiltInNode,
   Connection,
   Controls,
   Edge,
@@ -17,6 +16,8 @@ import {
   NodeTypes,
   Position,
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
   Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -29,38 +30,48 @@ import {
   useState,
 } from "react";
 import {
+  AnyOpId,
+  defaultParamValues,
   idxToInputHandle,
   idxToOutputHandle,
   opById,
+  OpInstance,
   OpNode,
-  OpRuntime,
+  ops,
   runFlow,
 } from "./flow-lib.js";
 import { Monitor, OmniCanvasContext, OmniCanvasHost } from "./OmniCanvas.js";
-import { CopyPaste, useSetNodeData } from "./react-flow-util.js";
+import { CopyPaste, useNodeData } from "./react-flow-util.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
 import "./xy-theme.css";
 
 const FlowContext = createContext<{
-  runtimes: Record<string, OpRuntime>;
+  runtimes: Record<string, OpInstance>;
 }>(undefined!);
 
-export function OperationNode(props: NodeProps<OpNode>) {
+export function OpNodeView(props: NodeProps<OpNode>) {
+  const [data, setData] = useNodeData(props);
   const { selected } = props;
+
+  useEffect(() => {
+    console.log("OpNodeView mounted", props.id);
+    return () => {
+      console.log("OpNodeView unmounted", props.id);
+    };
+  }, [props.id]);
 
   const { runtimes } = useContext(FlowContext);
 
-  const setNodeData = useSetNodeData(props);
-  const operation = opById(props.data.opId);
+  const opClass = opById(data.opId);
   const runtime = runtimes[props.id];
 
   if (!runtime) {
     return null;
   }
 
-  const outputs = runtime.getOutputs();
+  const outputs = runtime.outputs;
 
   return (
     <div className="operation-node">
@@ -70,10 +81,9 @@ export function OperationNode(props: NodeProps<OpNode>) {
         minWidth={100}
         minHeight={30}
       /> */}
-      <h3>Node: {props.id}</h3>
-      <h3>Operation: {operation.id}</h3>
+      <div className="above">{opClass.id}</div>
       <div className="operation-node-inputs">
-        {_.range(operation.numInputs).map((i) => {
+        {_.range(opClass.numInputs).map((i) => {
           const handle = idxToInputHandle(i);
           return (
             <Handle
@@ -88,7 +98,7 @@ export function OperationNode(props: NodeProps<OpNode>) {
         })}
       </div>
       <div className="operation-node-outputs">
-        {_.range(operation.numOutputs).map((i) => {
+        {_.range(opClass.numOutputs).map((i) => {
           const handle = idxToOutputHandle(i);
           return (
             <Handle
@@ -101,36 +111,108 @@ export function OperationNode(props: NodeProps<OpNode>) {
           );
         })}
       </div>
-      {outputs[0] && (
+      {outputs[0] ? (
         <div style={{ width: 200 }}>
           <Monitor tex={outputs[0]} />
         </div>
+      ) : (
+        <div
+          style={{
+            width: 200,
+            aspectRatio: "1.77778 / 1",
+            backgroundColor: "lightgray",
+          }}
+        />
       )}
+      {selected &&
+        opClass.params?.map((p) => {
+          const value = data.paramValues[p.varName];
+          if (p.type === "number") {
+            return (
+              <div key={p.varName} className="operation-node-param flex gap-1">
+                <label className="operation-node-param-label">
+                  {p.displayName}
+                </label>
+                <input
+                  className="nodrag w-20"
+                  type="range"
+                  min={p.min}
+                  max={p.max}
+                  step={p.step}
+                  value={value}
+                  onChange={(e) => {
+                    setData((data) => ({
+                      ...data,
+                      paramValues: {
+                        ...data.paramValues,
+                        [p.varName]: Number(e.target.value),
+                      },
+                    }));
+                  }}
+                />
+                <span className="operation-node-param-value">
+                  {Number(value).toFixed(2)}
+                </span>
+              </div>
+            );
+          } else if (p.type === "string") {
+            return (
+              <div
+                key={p.varName}
+                className="operation-node-param flex flex-col gap-1"
+              >
+                <label className="operation-node-param-label">
+                  {p.displayName}
+                </label>
+                <textarea
+                  className="nodrag max-w-full font-mono"
+                  style={{ fontSize: "0.5rem" }}
+                  value={value}
+                  onChange={(e) => {
+                    setData((data) => ({
+                      ...data,
+                      paramValues: {
+                        ...data.paramValues,
+                        [p.varName]: e.target.value,
+                      },
+                    }));
+                  }}
+                />
+              </div>
+            );
+          } else {
+            return (
+              <div key={p.varName} className="operation-node-param flex gap-1">
+                <label className="operation-node-param-label">
+                  {p.displayName}
+                </label>
+              </div>
+            );
+          }
+        })}
     </div>
   );
 }
-
-type CustomNodeType = BuiltInNode | OpNode;
 
 const initialNodes: OpNode[] = [
   {
     id: "n1",
     position: { x: 0, y: 0 },
-    data: { opId: "webcam" },
+    data: { opId: "cam", paramValues: defaultParamValues("cam") },
     type: "operation",
   },
   {
     id: "n2",
     position: { x: 100, y: 100 },
-    data: { opId: "delay" },
+    data: { opId: "kal", paramValues: defaultParamValues("kal") },
     type: "operation",
   },
-  {
-    id: "n3",
-    position: { x: 200, y: 200 },
-    data: { opId: "minus" },
-    type: "operation",
-  },
+  // {
+  //   id: "n3",
+  //   position: { x: 200, y: 200 },
+  //   data: { opId: "minus" },
+  //   type: "operation",
+  // },
 ];
 
 const initialEdges = [
@@ -141,31 +223,33 @@ const initialEdges = [
     target: "n2",
     targetHandle: "input-1",
   },
-  {
-    id: "n1-n3",
-    source: "n1",
-    sourceHandle: "output-1",
-    target: "n3",
-    targetHandle: "input-1",
-  },
-  {
-    id: "n2-n3",
-    source: "n2",
-    sourceHandle: "output-1",
-    target: "n3",
-    targetHandle: "input-2",
-  },
+  // {
+  //   id: "n1-n3",
+  //   source: "n1",
+  //   sourceHandle: "output-1",
+  //   target: "n3",
+  //   targetHandle: "input-1",
+  // },
+  // {
+  //   id: "n2-n3",
+  //   source: "n2",
+  //   sourceHandle: "output-1",
+  //   target: "n3",
+  //   targetHandle: "input-2",
+  // },
 ];
 
 const nodeTypes: NodeTypes = {
-  operation: OperationNode,
+  operation: OpNodeView,
 };
 
 export const Flow = () => (
   <div className="flex w-full h-full overflow-hidden box-border">
-    <OmniCanvasHost>
-      <FlowInner />
-    </OmniCanvasHost>
+    <ReactFlowProvider>
+      <OmniCanvasHost>
+        <FlowInner />
+      </OmniCanvasHost>
+    </ReactFlowProvider>
   </div>
 );
 
@@ -174,8 +258,11 @@ type Flow = {
   edges: Edge[];
 };
 
+const getId = () => `n${Math.random().toString(16).slice(2)}`;
+
 const FlowInner = () => {
   const ctx = useContext(OmniCanvasContext);
+  const { screenToFlowPosition } = useReactFlow();
 
   const [flow, setFlow] = useLocalStorage<Flow>("flow", () => ({
     nodes: initialNodes,
@@ -189,8 +276,9 @@ const FlowInner = () => {
     zoom: 2,
   }));
 
-  const [runtimes, setRuntimes] = useState<Record<string, OpRuntime>>({});
+  const [runtimes, setRuntimes] = useState<Record<string, OpInstance>>({});
   const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+  const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node>[]) =>
@@ -220,6 +308,44 @@ const FlowInner = () => {
     [flowUP.edges],
   );
 
+  const onDragStart = useCallback((event: React.DragEvent, opId: AnyOpId) => {
+    setDraggedOpId(opId);
+    event.dataTransfer.setData("text/plain", opId);
+    event.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      if (!draggedOpId) return;
+
+      const position = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      const newNode: OpNode = {
+        id: getId(),
+        type: "operation",
+        position,
+        data: {
+          opId: draggedOpId,
+          paramValues: defaultParamValues(draggedOpId),
+        },
+      };
+
+      flowUP.nodes.$((nodes) => [...nodes, newNode]);
+      setDraggedOpId(null);
+    },
+    [screenToFlowPosition, draggedOpId, flowUP.nodes],
+  );
+
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">
@@ -236,6 +362,8 @@ const FlowInner = () => {
             minZoom={0.1}
             viewport={viewport}
             onViewportChange={setViewport}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
           >
             <MiniMap zoomable pannable />
             <Controls />
@@ -243,34 +371,68 @@ const FlowInner = () => {
             <CopyPaste />
           </ReactFlow>
         </FlowContext.Provider>
-        
+
         {/* Toggle Button */}
         <button
           onClick={() => setIsPanelExpanded(!isPanelExpanded)}
           className="absolute top-4 right-4 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 transition-colors"
         >
           {isPanelExpanded ? (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
             </svg>
           ) : (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           )}
         </button>
       </div>
-      
+
       {/* Expandable Panel */}
-      <div className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
-        isPanelExpanded ? 'w-80 opacity-100' : 'w-0 opacity-0'
-      } overflow-hidden`}>
-        <div className="p-4 h-full">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Components</h3>
-          <div className="space-y-2">
-            <div className="text-sm text-gray-600">
-              Drag and drop components will go here
-            </div>
+      <div
+        className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
+          isPanelExpanded ? "w-60 opacity-100" : "w-0 opacity-0"
+        } overflow-hidden z-[2]`}
+      >
+        <div className="pt-4 px-4 h-full flex flex-col">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            Components
+          </h3>
+          <div className="space-y-2 overflow-auto">
+            {ops.map((op) => (
+              <div
+                key={op.id}
+                draggable
+                onDragStart={(event) => onDragStart(event, op.id)}
+                className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
+              >
+                <div className="font-medium text-gray-900">{op.id}</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {op.description}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

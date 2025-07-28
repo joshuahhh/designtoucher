@@ -15,7 +15,8 @@
     0px 3.54px 4.55px 0px #00000005, 0px 3.54px 4.55px 0px #0000000d,
     0px 0.51px 1.01px 0px #0000001a;
 
-  --xy-node-border-radius-default: 8px;
+  /* --xy-node-border-radius-default: 8px; */
+  --xy-node-border-radius-default: 0;
 
   --xy-handle-background-color-default: #ffffff;
   --xy-handle-border-color-default: #aaaaaa;
@@ -41,7 +42,8 @@
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 10px;
+  /* padding: 10px; */
+  margin: 5px;
   font-size: 12px;
   flex-direction: column;
   border: var(--xy-node-border-default);
@@ -267,4 +269,16 @@
   margin-top: 10px;
   margin-bottom: 3px;
   display: inline-block;
+}
+
+.operation-node .below {
+  position: absolute;
+  bottom: -18px;
+  left: 0;
+}
+
+.operation-node .above {
+  position: absolute;
+  top: -18px;
+  left: 0;
 }

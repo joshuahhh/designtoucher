@@ -327,13 +327,27 @@ export class CommandRunnerBC extends CommandRunnerGL {
   }
 }
 
-export class CommandRunnerFlip extends CommandRunnerGL {
+export class CommandRunnerVFlip extends CommandRunnerGL {
   constructor(props: CommandRunnerConstructorProps) {
     super(
       props,
       1,
       `
         vec2 uvFlip = vec2(uv.x, 1.0 - uv.y);
+        gl_FragColor = texture2D(tex1, uvFlip);
+      `,
+      [],
+    );
+  }
+}
+
+export class CommandRunnerHFlip extends CommandRunnerGL {
+  constructor(props: CommandRunnerConstructorProps) {
+    super(
+      props,
+      1,
+      `
+        vec2 uvFlip = vec2(1.0 - uv.x, uv.y);
         gl_FragColor = texture2D(tex1, uvFlip);
       `,
       [],

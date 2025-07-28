@@ -16,3 +16,9 @@ bugs:
 [ ] fix: bad sticky code editor, images go under
 [ ] fix: glitchy delay
 [ ] fix: chain of flips acts weird
+
+flow stuff:
+[ ] drag connector to empty space to bring up menu
+[ ] position handles correctly
+[ ] label handles?
+[ ] better display before inputs are added – empty box at aspect ratio?

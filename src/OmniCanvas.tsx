@@ -241,7 +241,11 @@ export function Monitor({ tex }: { tex: Tex }) {
       <OmniCanvasGuest
         command={command}
         className="w-full"
-        style={{ aspectRatio: tex.width / tex.height }}
+        style={{
+          aspectRatio: tex.width / tex.height,
+          background:
+            "repeating-conic-gradient(#808080 0 25%, #0000 0 50%) 50% / 20px 20px",
+        }}
       />
       {/* <div>{new Date().toISOString()}</div>
       <div>{sum}</div> */}

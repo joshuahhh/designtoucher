@@ -1,4 +1,6 @@
 import { assertNever } from "./assert.js";
+import "./mylygia.js";
+import { expandLygia } from "./mylygia.js";
 
 declare global {
   interface WebGLProgram {
@@ -22,12 +24,19 @@ declare global {
 }
 
 function createShader(
-  gl: WebGLRenderingContext,
+  gl: WebGL2RenderingContext,
   type: number,
   source: string,
 ): WebGLShader {
+  const sourceWithIncludes = expandLygia(source);
+  // if (sourceWithIncludes !== source) {
+  //   console.group(`Shader source with includes`);
+  //   console.log(`BEFORE:\n${source}`);
+  //   console.log(`AFTER:\n${sourceWithIncludes}`);
+  //   console.groupEnd();
+  // }
   const shader = gl.createShader(type)!;
-  gl.shaderSource(shader, source);
+  gl.shaderSource(shader, sourceWithIncludes);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     const compileErrLog = gl.getShaderInfoLog(shader);
@@ -39,7 +48,7 @@ function createShader(
 }
 
 function createProgram(
-  gl: WebGLRenderingContext,
+  gl: WebGL2RenderingContext,
   vsSource: string,
   fsSource: string,
 ): WebGLProgram {
@@ -58,9 +67,13 @@ function createProgram(
 
 type UniformType =
   | `${"1" | "2" | "3" | "4"}${"f" | "i"}${"v" | ""}`
-  | "sampler2D";
+  | "sampler2D"
+  | "sampler3D";
 
-function getTextureUnit(gl: WebGLRenderingContext, textureIdx: number): number {
+function getTextureUnit(
+  gl: WebGL2RenderingContext,
+  textureIdx: number,
+): number {
   if (textureIdx < 0 || textureIdx > 31) {
     throw new Error("Texture index must be between 0 and 31");
   }
@@ -68,7 +81,7 @@ function getTextureUnit(gl: WebGLRenderingContext, textureIdx: number): number {
 }
 
 function setUniform(
-  gl: WebGLRenderingContext,
+  gl: WebGL2RenderingContext,
   location: WebGLUniformLocation | null,
   type: UniformType,
   value: any,
@@ -133,6 +146,13 @@ function setUniform(
       gl.uniform1i(location, textureIdx);
       setTextureIdx(textureIdx + 1);
       break;
+    case "sampler3D":
+      const texture3D = value as WebGLTexture;
+      gl.activeTexture(getTextureUnit(gl, textureIdx));
+      gl.bindTexture(gl.TEXTURE_3D, texture3D);
+      gl.uniform1i(location, textureIdx);
+      setTextureIdx(textureIdx + 1);
+      break;
     default:
       assertNever(type, "Unknown uniform type");
   }
@@ -146,11 +166,12 @@ export class ShaderProgram {
   } | null = null;
 
   constructor(
-    private gl: WebGLRenderingContext,
+    private gl: WebGL2RenderingContext,
     vsSource: string,
     fsSource: string,
   ) {
-    this.program = createProgram(gl, vsSource, fsSource);
+    // we trim so that directives like `#version` don't cause issues
+    this.program = createProgram(gl, vsSource.trim(), fsSource.trim());
   }
 
   use() {
@@ -228,6 +249,9 @@ export class ShaderProgram {
 
     for (const [name, buffer] of Object.entries(attributes)) {
       const loc = this.getAttribLocation(name);
+      if (loc === -1) {
+        throw new Error(`Attribute ${name} not found in program`);
+      }
       gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
       gl.enableVertexAttribArray(loc);
       // todo: hardcoded
@@ -279,7 +303,7 @@ export interface Tex {
 }
 
 export function newTex(
-  gl: WebGLRenderingContext,
+  gl: WebGL2RenderingContext,
   width: number,
   height: number,
 ): Tex {
@@ -296,20 +320,37 @@ export function newTex(
     gl.UNSIGNED_BYTE,
     null,
   );
+  // gl.texImage2D(
+  //   gl.TEXTURE_2D,
+  //   0,
+  //   gl.RGBA32F,
+  //   width,
+  //   height,
+  //   0,
+  //   gl.RGBA,
+  //   gl.FLOAT,
+  //   null,
+  // );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return { texture, width, height };
 }
 
+export function destroyTex(gl: WebGL2RenderingContext, tex: Tex): void {
+  gl.deleteTexture(tex.texture);
+}
+
 export interface Fbo {
   tex: Tex;
   framebuffer: WebGLFramebuffer;
-  gl: WebGLRenderingContext;
+  gl: WebGL2RenderingContext;
 }
 
-export function newFbo(gl: WebGLRenderingContext): Fbo {
-  const tex = newTex(gl, 1, 1);
+export function newFbo(gl: WebGL2RenderingContext): Fbo {
+  // HACK
+  const tex = newTex(gl, 1280, 720);
 
   const fb = gl.createFramebuffer()!;
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
@@ -327,6 +368,14 @@ export function newFbo(gl: WebGLRenderingContext): Fbo {
 
 export function ensureFboSize(fbo: Fbo, width: number, height: number) {
   if (fbo.tex.width === width && fbo.tex.height === height) return;
+  console.log(
+    "resizing FBO from",
+    fbo.tex.width,
+    fbo.tex.height,
+    "to",
+    width,
+    height,
+  );
   fbo.tex.width = width;
   fbo.tex.height = height;
   const { gl, tex } = fbo;
@@ -346,6 +395,46 @@ export function ensureFboSize(fbo: Fbo, width: number, height: number) {
 
 export function deleteFbo(fbo: Fbo) {
   const { gl, tex, framebuffer } = fbo;
-  gl.deleteTexture(tex.texture);
+  destroyTex(gl, tex);
   gl.deleteFramebuffer(framebuffer);
+}
+
+export interface Tex3D {
+  texture: WebGLTexture;
+  width: number;
+  height: number;
+  depth: number;
+}
+
+export function newTex3D(
+  gl: WebGL2RenderingContext,
+  width: number,
+  height: number,
+  depth: number,
+): Tex3D {
+  const texture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_3D, texture);
+  gl.texImage3D(
+    gl.TEXTURE_3D,
+    0,
+    gl.RGBA,
+    width,
+    height,
+    depth,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    null,
+  );
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+  gl.bindTexture(gl.TEXTURE_3D, null);
+  return { texture, width, height, depth };
+}
+
+export function destroyTex3D(gl: WebGL2RenderingContext, tex: Tex3D): void {
+  gl.deleteTexture(tex.texture);
 }

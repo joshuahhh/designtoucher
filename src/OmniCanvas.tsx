@@ -7,41 +7,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ShaderProgram, Tex } from "./mygl.js";
+import { newTex, ShaderProgram, Tex } from "./mygl.js";
 
-console.log("hi");
-
-/* ------------------------------------------------------------------
- * Tiny WebGL helper utilities (no external deps)
- * ---------------------------------------------------------------- */
-function createShader(gl: WebGLRenderingContext, src: string, type: number) {
-  const shader = gl.createShader(type)!;
-  gl.shaderSource(shader, src);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    throw new Error(gl.getShaderInfoLog(shader) || "Shader compile error");
-  }
-  return shader;
-}
-
-export function createProgram(
-  gl: WebGLRenderingContext,
-  vert: string,
-  frag: string,
-) {
-  const program = gl.createProgram()!;
-  gl.attachShader(program, createShader(gl, vert, gl.VERTEX_SHADER));
-  gl.attachShader(program, createShader(gl, frag, gl.FRAGMENT_SHADER));
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    throw new Error(gl.getProgramInfoLog(program) || "Program link error");
-  }
-  return program;
-}
-
-/* ------------------------------------------------------------------
- * Public types
- * ---------------------------------------------------------------- */
 export interface DrawArgs {
   texture: WebGLTexture;
   viewport?: [number, number, number, number];
@@ -49,24 +16,22 @@ export interface DrawArgs {
 }
 
 export type OmniCanvasContextType = {
-  gl: WebGLRenderingContext;
+  gl: WebGL2RenderingContext;
   setGuestCommand(
     div: HTMLDivElement,
     command: null | ((viewport: [number, number, number, number]) => void),
   ): void;
   draw(args: DrawArgs): void;
+  emptyTex: Tex;
 };
 
 export const OmniCanvasContext = createContext<OmniCanvasContextType>(
   null as any,
 );
 
-/* ------------------------------------------------------------------
- * OmniCanvasHost – provides the GL context & render loop
- * ---------------------------------------------------------------- */
 export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
-  const [gl, setGl] = useState<WebGLRenderingContext | null>(null);
+  const [gl, setGl] = useState<WebGL2RenderingContext | null>(null);
 
   // Map each guest <div> to its draw callback
   const guestCommandsRef = useRef(
@@ -76,11 +41,10 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
     >(),
   );
 
-  /* ------------------------ initialize WebGL --------------------- */
   useEffect(() => {
     if (!canvas) return;
 
-    const ctx = canvas.getContext("webgl", {
+    const gl = canvas.getContext("webgl2", {
       antialias: true,
       depth: false,
       stencil: false,
@@ -88,8 +52,12 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       premultipliedAlpha: true,
     });
 
-    if (!ctx) throw new Error("WebGL not supported");
-    setGl(ctx);
+    if (!gl) throw new Error("WebGL 2 not supported");
+
+    gl.getExtension("OES_texture_float");
+    gl.getExtension("OES_texture_float_linear");
+
+    setGl(gl);
   }, [canvas]);
 
   const contextValue: OmniCanvasContextType | null = useMemo(() => {
@@ -136,10 +104,11 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       }
     };
 
-    return { gl, setGuestCommand, draw };
+    const emptyTex = newTex(gl, 1280, 720);
+
+    return { gl, setGuestCommand, draw, emptyTex };
   }, [gl]);
 
-  /* ------------------------ frame loop --------------------------- */
   useEffect(() => {
     if (!gl || !canvas) return;
 
@@ -188,7 +157,6 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
     };
   }, [gl, canvas]);
 
-  /* --------------------------- JSX ------------------------------- */
   return (
     <>
       <canvas
@@ -205,9 +173,6 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ------------------------------------------------------------------
- * OmniCanvasGuest – registers draw callback for a DOM rect
- * ---------------------------------------------------------------- */
 export function OmniCanvasGuest({
   command,
   ...props

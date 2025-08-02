@@ -9,9 +9,10 @@ import {
   SetStateAction,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useState,
 } from "react";
-import { useRefForCallback } from "./useRefForCallback";
+import { useRefForCallback } from "./useRefForCallback.js";
 
 export function useSetNodeData<D extends Record<string, unknown>>(
   props: NodeProps<Node<D>>,
@@ -43,7 +44,7 @@ export function useNodeData<D extends Record<string, unknown>>(
 
   // Update the react-flow node's data object whenever the local
   // state changes.
-  useEffect(() => {
+  useLayoutEffect(() => {
     setNodes((nodes) =>
       nodes.map((n) => (n.id === props.id ? { ...n, data } : n)),
     );
@@ -52,7 +53,7 @@ export function useNodeData<D extends Record<string, unknown>>(
   // Update the local state whenever the react-flow node's data
   // object changes (tho check for equality first, to avoid loops).
   const dataRef = useRefForCallback(data);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (props.data !== dataRef.current) {
       setData(props.data);
     }
@@ -70,6 +71,12 @@ export const CopyPaste = () => {
 export const useCopyPaste = (rfInstance: ReactFlowInstance | null) => {
   const onCopyCapture = useCallback(
     (event: ClipboardEvent) => {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.classList.contains("nocopypaste")
+      ) {
+        return;
+      }
       event.preventDefault();
       const nodes = JSON.stringify(
         rfInstance?.getNodes().filter((n) => n.selected),
@@ -82,6 +89,12 @@ export const useCopyPaste = (rfInstance: ReactFlowInstance | null) => {
 
   const onPasteCapture = useCallback(
     (event: ClipboardEvent) => {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.classList.contains("nocopypaste")
+      ) {
+        return;
+      }
       event.preventDefault();
       const nodes = JSON.parse(
         event.clipboardData?.getData("flowchart:nodes") || "[]",
@@ -104,15 +117,10 @@ export const useCopyPaste = (rfInstance: ReactFlowInstance | null) => {
 
   useEffect(() => {
     window.addEventListener("copy", onCopyCapture);
-    return () => {
-      window.removeEventListener("copy", onCopyCapture);
-    };
-  }, [onCopyCapture]);
-
-  useEffect(() => {
     window.addEventListener("paste", onPasteCapture);
     return () => {
+      window.removeEventListener("copy", onCopyCapture);
       window.removeEventListener("paste", onPasteCapture);
     };
-  }, [onPasteCapture]);
+  }, [onCopyCapture, onPasteCapture]);
 };

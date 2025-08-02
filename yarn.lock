@@ -2511,6 +2511,11 @@ lru-cache@^5.1.1:
   dependencies:
     yallist "^3.0.2"
 
+lygia@^1.3.3:
+  version "1.3.3"
+  resolved "https://registry.yarnpkg.com/lygia/-/lygia-1.3.3.tgz#af333692a2bd2eda7f7fbf73f7cd992bb50fadbe"
+  integrity sha512-uXfA9oBjtXFt93Xiya98M3qgsxwzWp2tpn5MEgsEtSZMzOhZv+DbNzIui8IHvrzFnTDUU3AzesHuY3Fts3RoaQ==
+
 math-intrinsics@^1.1.0:
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/math-intrinsics/-/math-intrinsics-1.1.0.tgz#a0dd74be81e2aa5c2f27e65ce283605ee4e2b7f9"
@@ -2945,6 +2950,11 @@ resolve-from@^4.0.0:
   version "4.0.0"
   resolved "https://registry.yarnpkg.com/resolve-from/-/resolve-from-4.0.0.tgz#4abcd852ad32dd7baabfe9b40e00a36db5f392e6"
   integrity sha512-pb/MYmXstAkysRFx8piNI1tGFNQIFA3vkE3Gq4EuA1dF6gHp/+vgZqsCGJapvy8N3Q+4o7FwvquPJcnZ7RYy4g==
+
+resolve-lygia@^1.0.4:
+  version "1.0.4"
+  resolved "https://registry.yarnpkg.com/resolve-lygia/-/resolve-lygia-1.0.4.tgz#462c7e0a6c9f7d3e462bc29f81f2b8d4bab630e3"
+  integrity sha512-m4mdAUWOZQ+OGMIcS/lETS9ONNiqYAndWOvDKi1VmkytM/a8Yagibz7DyQUiPWT5a46BRzkvarn7Vg4EBVKEZA==
 
 resolve@^1.1.7, resolve@^1.22.2, resolve@^1.22.4:
   version "1.22.10"

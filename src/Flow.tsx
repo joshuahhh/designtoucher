@@ -24,6 +24,8 @@ import "@xyflow/react/dist/style.css";
 import _ from "lodash";
 import {
   createContext,
+  Dispatch,
+  SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -38,6 +40,8 @@ import {
   opById,
   OpInstance,
   OpNode,
+  OpNodeData,
+  OpParam,
   ops,
   runFlow,
 } from "./flow-lib.js";
@@ -125,91 +129,148 @@ export function OpNodeView(props: NodeProps<OpNode>) {
           }}
         />
       )}
-      {selected &&
-        opClass.params?.map((p) => {
-          const value = data.paramValues[p.varName];
-          if (p.type === "number") {
-            return (
-              <div key={p.varName} className="operation-node-param flex gap-1">
-                <label className="operation-node-param-label">
-                  {p.displayName}
-                </label>
-                <input
-                  className="nodrag w-20"
-                  type="range"
-                  min={p.min}
-                  max={p.max}
-                  step={p.step}
-                  value={value}
-                  onChange={(e) => {
-                    setData((data) => ({
-                      ...data,
-                      paramValues: {
-                        ...data.paramValues,
-                        [p.varName]: Number(e.target.value),
-                      },
-                    }));
-                  }}
-                />
-                <span className="operation-node-param-value">
-                  {Number(value).toFixed(2)}
-                </span>
-              </div>
-            );
-          } else if (p.type === "string") {
-            return (
-              <div
-                key={p.varName}
-                className="operation-node-param flex flex-col gap-1"
-              >
-                <label className="operation-node-param-label">
-                  {p.displayName}
-                </label>
-                <textarea
-                  className="nodrag max-w-full font-mono"
-                  style={{ fontSize: "0.5rem" }}
-                  value={value}
-                  onChange={(e) => {
-                    setData((data) => ({
-                      ...data,
-                      paramValues: {
-                        ...data.paramValues,
-                        [p.varName]: e.target.value,
-                      },
-                    }));
-                  }}
-                />
-              </div>
-            );
-          } else if (p.type === "boolean") {
-            return (
-              <div key={p.varName} className="operation-node-param flex gap-1">
-                <label className="operation-node-param-label">
-                  {p.displayName}
-                </label>
-                <input
-                  className="nodrag"
-                  type="checkbox"
-                  checked={value}
-                  onChange={(e) => {
-                    setData((data) => ({
-                      ...data,
-                      paramValues: {
-                        ...data.paramValues,
-                        [p.varName]: e.target.checked,
-                      },
-                    }));
-                  }}
-                />
-              </div>
-            );
-          } else {
-            assertNever(p, `Unknown param type: ${(p as any).type}`);
-          }
-        })}
+      {selected && (
+        <div className="operation-node-params">
+          {opClass.params?.map((param) => (
+            <Param
+              key={param.varName}
+              param={param}
+              data={data}
+              setData={setData}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+
+const Param = (props: {
+  param: OpParam;
+  data: OpNodeData;
+  setData: Dispatch<SetStateAction<OpNodeData>>;
+}) => {
+  const { param, data, setData } = props;
+  const value = data.paramValues[param.varName];
+
+  const [automate, setAutomate] = useState<false | number>(false);
+  const automateRef = useRefForCallback(automate);
+
+  useEffect(() => {
+    return animate(() => {
+      setData((data) => {
+        if (!automateRef.current || param.type !== "number") return data;
+
+        const value = data.paramValues[param.varName];
+        const newValue = value + param.step * automateRef.current;
+        if (newValue <= param.min || newValue >= param.max) {
+          setAutomate(-automateRef.current);
+        }
+
+        return {
+          ...data,
+          paramValues: {
+            ...data.paramValues,
+            [param.varName]: newValue,
+          },
+        };
+      });
+    });
+  }, [automateRef, param, setData]);
+
+  if (param.type === "number") {
+    return (
+      <div
+        key={param.varName}
+        className="operation-node-param flex gap-1 group"
+      >
+        <label className="operation-node-param-label">
+          {param.displayName}
+        </label>
+        <input
+          className="nodrag w-20"
+          type="range"
+          min={param.min}
+          max={param.max}
+          step={param.step}
+          value={value}
+          onChange={(e) => {
+            setData((data) => ({
+              ...data,
+              paramValues: {
+                ...data.paramValues,
+                [param.varName]: Number(e.target.value),
+              },
+            }));
+          }}
+        />
+        <span className="operation-node-param-value">
+          {Number(value).toFixed(2)}
+        </span>
+        <span
+          className={`ml-2 ${automate ? "" : "group-hover:visible invisible"}`}
+        >
+          <input
+            className="nodrag ml-2"
+            type="checkbox"
+            checked={automate !== false}
+            onChange={(e) => setAutomate(e.target.checked ? 1 : false)}
+          />
+          ⌛
+        </span>
+      </div>
+    );
+  } else if (param.type === "string") {
+    return (
+      <div
+        key={param.varName}
+        className="operation-node-param flex flex-col gap-1"
+      >
+        <label className="operation-node-param-label">
+          {param.displayName}
+        </label>
+        <textarea
+          className="nodrag nocopypaste max-w-full font-mono"
+          style={{ fontSize: "0.5rem" }}
+          value={value}
+          onChange={(e) => {
+            setData((data) => ({
+              ...data,
+              paramValues: {
+                ...data.paramValues,
+                [param.varName]: e.target.value,
+              },
+            }));
+          }}
+        />
+      </div>
+    );
+  } else if (param.type === "boolean") {
+    return (
+      <div key={param.varName} className="operation-node-param flex gap-1">
+        <label className="operation-node-param-label">
+          {param.displayName}
+        </label>
+        <input
+          className="nodrag"
+          type="checkbox"
+          checked={value}
+          onChange={(e) => {
+            setData((data) => ({
+              ...data,
+              paramValues: {
+                ...data.paramValues,
+                [param.varName]: e.target.checked,
+              },
+            }));
+          }}
+        />
+      </div>
+    );
+  } else {
+    assertNever(param, `Unknown param type: ${(param as any).type}`);
+  }
+};
 
 const initialNodes: OpNode[] = [
   {
@@ -321,7 +382,19 @@ const FlowInner = () => {
   }, [flowRef, runtimes, ctx]);
 
   const onConnect = useCallback(
-    (params: Connection) => flowUP.edges.$((edges) => addEdge(params, edges)),
+    (params: Connection) => {
+      flowUP.edges.$((edges) =>
+        addEdge(
+          params,
+          edges.filter((e) => {
+            return !(
+              e.target === params.target &&
+              e.targetHandle === params.targetHandle
+            );
+          }),
+        ),
+      );
+    },
     [flowUP.edges],
   );
 

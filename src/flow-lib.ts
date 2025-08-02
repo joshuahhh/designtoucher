@@ -3,12 +3,15 @@ import _ from "lodash";
 import { assert } from "./assert.js";
 import {
   deleteFbo,
+  destroyTex3D,
   ensureFboSize,
   Fbo,
   newFbo,
   newTex,
+  newTex3D,
   ShaderProgram,
   Tex,
+  Tex3D,
 } from "./mygl.js";
 import { OmniCanvasContextType } from "./OmniCanvas.js";
 import { toposortFromEdges } from "./toposort.js";
@@ -98,13 +101,17 @@ const opWebcam = defineOp(
 
         // find facetime cam
         const facetimeCam = cams.find((d) => d.label.includes("FaceTime"));
+        // const facetimeCam = cams.find((d) => d.label.includes("OBS"));
         if (!facetimeCam) {
           throw new Error("No FaceTime camera found");
         }
         this.webcamStream = await startStream(facetimeCam.deviceId, 1280);
+        console.log(
+          "Webcam stream started",
+          this.webcamStream.width,
+          this.webcamStream.height,
+        );
       })();
-
-      this.tex = newTex(this.ctx.gl, 1280, 720);
 
       this.outputs = [null];
     }
@@ -117,6 +124,11 @@ const opWebcam = defineOp(
       }
 
       if (!this.tex) {
+        console.log(
+          "Creating new texture for webcam stream",
+          this.webcamStream.width,
+          this.webcamStream.height,
+        );
         this.tex = newTex(
           this.ctx.gl,
           this.webcamStream.width,
@@ -126,6 +138,7 @@ const opWebcam = defineOp(
 
       gl.bindTexture(gl.TEXTURE_2D, this.tex.texture);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      // console.log("BEFORE texSubImage2D");
       gl.texSubImage2D(
         gl.TEXTURE_2D,
         0,
@@ -135,6 +148,7 @@ const opWebcam = defineOp(
         gl.UNSIGNED_BYTE,
         this.webcamStream.video,
       );
+      // console.log("AFTER texSubImage2D");
       this.tex.width = this.webcamStream.width;
       this.tex.height = this.webcamStream.height;
 
@@ -286,13 +300,17 @@ const opFrag = defineOp(
       }
 
       const fragBody = paramValues["fragBody"] as string;
+
+      const hasTime = fragBody.includes("time");
+
       if (!this.compiled || this.compiled.fragBody !== fragBody) {
         // compile the shader
         const fragSrc =
-          `
-          precision mediump float;\n` +
+          `precision mediump float;\n` +
           `uniform sampler2D tex1;\n` +
+          (hasTime ? `uniform float time;\n` : "") +
           `varying vec2 uv;\n` +
+          `// lygia-includes\n` +
           `void main(){\n${fragBody}\n}`;
         const vertSrc = `
           attribute vec2 position; varying vec2 uv;
@@ -308,7 +326,10 @@ const opFrag = defineOp(
 
       this.compiled.program.run({
         viewport: [0, 0, tex.width, tex.height],
-        uniforms: { tex1: ["sampler2D", tex.texture] },
+        uniforms: {
+          tex1: ["sampler2D", tex.texture],
+          ...(hasTime ? { time: ["1f", performance.now() / 1000] } : {}),
+        },
         fullscreen: true,
         targetFramebuffer: this.outFbo.framebuffer,
       });
@@ -323,17 +344,161 @@ const opFrag = defineOp(
   },
 );
 
+const opTimeMachine = defineOp(
+  class extends BaseOp {
+    static id = "timeMachine" as const;
+    static description = "Time machine operation";
+    static numInputs = 2;
+    static numOutputs = 1;
+    static params: OpParam[] = [
+      {
+        displayName: "Number of frames",
+        varName: "numFrames",
+        type: "number",
+        min: 1,
+        max: 200,
+        step: 1,
+        defaultValue: 100,
+      },
+    ];
+
+    private frames: Tex3D;
+    private head: number = 0;
+    private fbo: WebGLFramebuffer;
+
+    private program: ShaderProgram;
+    private outFbo: Fbo;
+
+    constructor(ctx: OmniCanvasContextType, nodeId: string) {
+      super(ctx, nodeId);
+      this.frames = newTex3D(ctx.gl, 1, 1, 1);
+      this.fbo = ctx.gl.createFramebuffer()!;
+      this.outputs = [null];
+
+      this.program = new ShaderProgram(
+        ctx.gl,
+        `
+          #version 300 es
+          in vec2 position;
+          out vec2 vUV;
+          void main() {
+            vUV = 0.5 * (position + 1.0);
+            gl_Position = vec4(position, 0.0, 1.0);
+          }
+        `,
+        `
+          #version 300 es
+          precision mediump float;
+          precision mediump sampler3D;
+          uniform sampler3D uTex3D;
+          uniform sampler2D uIndex;        // encodes desired frame offset in R
+          uniform int       uHead;
+          uniform int       uDepth;
+
+          in vec2 vUV;
+          out vec4 frag;
+
+          int wrap(int x,int m){ return (x % m + m) % m; }
+
+          void main(){
+            // index texture gives offset [0,1] → [0,DEPTH)
+            float offsetF = texture(uIndex, vUV).r * float(uDepth);
+            int   offset  = int(offsetF + 0.5);            // round to nearest slice
+            int   layer   = wrap(uHead - offset, uDepth);
+            float w       = (float(layer) + 0.5) / float(uDepth);  // texel centre
+            frag = texture(uTex3D, vec3(vUV, w));
+          }
+        `,
+      );
+
+      this.outFbo = newFbo(ctx.gl);
+    }
+
+    run({ inputs, paramValues }: RunProps) {
+      const { gl, draw } = this.ctx;
+      const tex = inputs[0];
+      if (!tex) {
+        this.outputs = [null];
+        return;
+      }
+
+      const idxTex = inputs[1];
+      if (!idxTex) {
+        this.outputs = [null];
+        return;
+      }
+
+      const width = tex.width;
+      const height = tex.height;
+      const depth = paramValues["numFrames"] as number;
+
+      if (
+        this.frames.width !== width ||
+        this.frames.height !== height ||
+        this.frames.depth !== depth
+      ) {
+        if (this.frames) {
+          destroyTex3D(gl, this.frames);
+        }
+        this.frames = newTex3D(gl, width, height, depth);
+        this.head = 0;
+      }
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.framebufferTextureLayer(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        this.frames.texture,
+        0,
+        this.head,
+      );
+
+      draw({
+        texture: tex.texture,
+        targetFramebuffer: this.fbo,
+        viewport: [0, 0, width, height],
+      });
+
+      this.head = (this.head + 1) % this.frames.depth;
+
+      ensureFboSize(this.outFbo, width, height);
+
+      this.program.run({
+        viewport: [0, 0, width, height],
+        uniforms: {
+          uTex3D: ["sampler3D", this.frames.texture],
+          uIndex: ["sampler2D", idxTex.texture],
+          uHead: ["1i", this.head],
+          uDepth: ["1i", this.frames.depth],
+        },
+        fullscreen: true,
+        targetFramebuffer: this.outFbo.framebuffer,
+      });
+
+      this.outputs = [this.outFbo.tex];
+    }
+
+    destroy() {
+      destroyTex3D(this.ctx.gl, this.frames);
+      deleteFbo(this.outFbo);
+      this.ctx.gl.deleteFramebuffer(this.fbo);
+    }
+  },
+);
+
 function fragOp(numInputs: number, fragBody: string, params: OpParam[] = []) {
   assert(params.every((p) => p.type === "number"));
 
+  const hasTime = fragBody.includes("time");
+
   const fragSrc =
-    `
-    precision mediump float;\n` +
+    `precision mediump float;\n` +
+    (hasTime ? `uniform float time;\n` : "") +
     params.map((p) => `uniform float ${p.varName};`).join("\n") +
     _.range(numInputs)
       .map((i) => `uniform sampler2D tex${i + 1};`)
       .join("\n") +
-    `\nvarying vec2 uv;\nvoid main(){\n${fragBody}\n}
+    `\nvarying vec2 uv;\n// lygia-includes\nvoid main(){\n${fragBody}\n}
   `;
 
   const vertSrc = `
@@ -351,19 +516,19 @@ function fragOp(numInputs: number, fragBody: string, params: OpParam[] = []) {
 
     constructor(ctx: OmniCanvasContextType, nodeId: string) {
       super(ctx, nodeId);
-      console.log("Creating fragOp", fragSrc);
       this.program = new ShaderProgram(ctx.gl, vertSrc, fragSrc);
       this.outFbo = newFbo(ctx.gl);
     }
 
     run({ inputs, paramValues }: RunProps) {
-      if (inputs.some((i) => !i)) {
-        this.outputs = [null];
-        return;
-      }
+      inputs = inputs.map((tex) => tex ?? this.ctx.emptyTex);
+      // if (inputs.some((i) => !i)) {
+      //   this.outputs = [null];
+      //   return;
+      // }
 
-      const firstInput = inputs[0]!;
-      const { width, height } = firstInput;
+      const { width, height } =
+        inputs.length > 0 ? inputs[0]! : { width: 1280, height: 720 };
 
       ensureFboSize(this.outFbo, width, height);
 
@@ -382,6 +547,7 @@ function fragOp(numInputs: number, fragBody: string, params: OpParam[] = []) {
               ["sampler2D", value!.texture],
             ]),
           ),
+          ...(hasTime ? { time: ["1f", performance.now() / 1000] } : {}),
         },
         fullscreen: true,
         targetFramebuffer: this.outFbo.framebuffer,
@@ -455,6 +621,33 @@ const opKal = defineOp(
   },
 );
 
+const opDisplace = defineOp(
+  class extends fragOp(
+    3,
+    `
+      float x = texture2D(tex2, uv).r;
+      float y = texture2D(tex3, uv).r;
+      gl_FragColor = texture2D(tex1, uv + vec2(x, y) / 3.0);
+    `,
+    [],
+  ) {
+    static id = "displace" as const;
+    static description = "Displace image based on two other images";
+  },
+);
+
+const opBlack = defineOp(
+  class extends fragOp(
+    0,
+    `
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    `,
+  ) {
+    static id = "black" as const;
+    static description = "Black image";
+  },
+);
+
 const opMinus = defineOp(
   class extends fragOp(
     2,
@@ -466,6 +659,20 @@ const opMinus = defineOp(
   ) {
     static id = "minus" as const;
     static description = "Subtract two images";
+  },
+);
+
+const opBlend = defineOp(
+  class extends fragOp(
+    2,
+    `
+      vec3 tex1Color = vec3(texture2D(tex1, uv));
+      vec3 tex2Color = vec3(texture2D(tex2, uv));
+      gl_FragColor = vec4(mix(tex1Color, tex2Color, 0.5), 1.0);
+    `,
+  ) {
+    static id = "blend" as const;
+    static description = "Blend two images";
   },
 );
 
@@ -493,6 +700,145 @@ const opTimes = defineOp(
   },
 );
 
+const opLFO = defineOp(
+  class extends fragOp(
+    0,
+    `
+      float t = mod(time, period) / period;
+      float value = (sin(t * 2.0 * 3.14159 + phase) + 1.0) * amplitude / 2.0;
+      gl_FragColor = vec4(value, value, value, 1.0);
+    `,
+    [
+      {
+        displayName: "Amplitude",
+        varName: "amplitude",
+        type: "number",
+        defaultValue: 1,
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+      {
+        displayName: "Period",
+        varName: "period",
+        type: "number",
+        defaultValue: 1,
+        min: 0.01,
+        max: 10,
+        step: 0.01,
+      },
+      {
+        displayName: "Phase",
+        varName: "phase",
+        type: "number",
+        defaultValue: 0,
+        min: -Math.PI,
+        max: Math.PI,
+        step: 0.01,
+      },
+    ],
+  ) {
+    static id = "lfo" as const;
+    static description = "Low-frequency oscillator";
+  },
+);
+
+const opGradient = defineOp(
+  class extends fragOp(
+    0,
+    `
+      float angleRad = radians(angle);
+      vec2 uvNorm = uv - 0.5;
+      float x = cos(angleRad) * uvNorm.x - sin(angleRad) * uvNorm.y;
+      gl_FragColor = vec4(vec3(x + 0.5), 1.0);
+    `,
+    [
+      {
+        displayName: "Angle",
+        varName: "angle",
+        type: "number",
+        min: 0,
+        max: 360,
+        step: 1,
+        defaultValue: 0,
+      },
+    ],
+  ) {
+    static id = "gradient" as const;
+    static description = "Generate a gradient";
+  },
+);
+
+const opSteps = defineOp(
+  class extends fragOp(
+    1,
+    `
+      vec3 tex1Color = vec3(texture2D(tex1, uv));
+      float stepSize = 1.0 / float(steps);
+      tex1Color = floor(tex1Color / stepSize) * stepSize;
+      gl_FragColor = vec4(tex1Color, 1.0);
+    `,
+    [
+      {
+        displayName: "Steps",
+        varName: "steps",
+        type: "number",
+        defaultValue: 0,
+        min: 1,
+        max: 20,
+        step: 1,
+      },
+    ],
+  ) {
+    static id = "steps" as const;
+    static description = "Reduce each channel to N steps";
+  },
+);
+
+const opSNoise = defineOp(
+  class extends fragOp(
+    0,
+    `
+      #include <lygia/generative/snoise.glsl>
+
+      float noise = snoise(vec3(uv.x / size, uv.y / size, version)) * 0.5 + 0.5;
+      gl_FragColor = vec4(vec3(noise * strength), 1.0);
+    `,
+    [
+      {
+        displayName: "Strength",
+        varName: "strength",
+        type: "number",
+        defaultValue: 1,
+        min: 0,
+        max: 2,
+        step: 0.01,
+      },
+      {
+        displayName: "Size",
+        varName: "size",
+        type: "number",
+        defaultValue: 0.1,
+        min: 0.01,
+        max: 1,
+        step: 0.01,
+      },
+      {
+        displayName: "Version",
+        varName: "version",
+        type: "number",
+        defaultValue: 0,
+        min: 0,
+        max: 10,
+        step: 0.01,
+      },
+    ],
+  ) {
+    static id = "snoise" as const;
+    static description = "Generate 2D simplex noise";
+  },
+);
+
 export const ops = [
   opWebcam,
   opDelay,
@@ -500,8 +846,16 @@ export const ops = [
   opVFlip,
   opKal,
   opMinus,
+  opBlend,
   opTimes,
   opFrag,
+  opTimeMachine,
+  opGradient,
+  opBlack,
+  opDisplace,
+  opSNoise,
+  opLFO,
+  opSteps,
 ] as const;
 
 export type AnyOpId = (typeof ops)[number]["id"];
@@ -514,10 +868,9 @@ export function opById(id: string): OpClass<AnyOpId> {
   return found;
 }
 
-export type OpNode = Node<
-  { opId: AnyOpId; paramValues: Record<string, any> },
-  "operation"
->;
+export type OpNodeData = { opId: AnyOpId; paramValues: Record<string, any> };
+
+export type OpNode = Node<OpNodeData, "operation">;
 
 export function idxToOutputHandle(idx: number): string {
   return `output-${idx + 1}`;

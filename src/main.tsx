@@ -16,9 +16,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <HashRouter>
       <Routes>
-        <Route path="/" element={<Root />} />
+        <Route path="/" element={<Flow />} />
         <Route path="/prog" element={<Prog />} />
-        <Route path="/flow" element={<Flow />} />
+        <Route path="/root" element={<Root />} />
         <Route path="/test" element={<Test />} />
         <Route path="/test2" element={<Test2 />} />
         <Route path="/test3" element={<Test3 />} />

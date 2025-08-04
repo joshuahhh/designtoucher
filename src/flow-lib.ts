@@ -95,17 +95,44 @@ const opWebcam = defineOp(
       super(ctx, nodeId);
 
       (async () => {
-        // load facetime cam
+        // gotta do this first on Safari
+
+        if (!navigator.mediaDevices) {
+          throw new Error(
+            "navigator.mediaDevices not available; are we in a SECURE CONTEXT, like a bunch of goddamned SECRET AGENTS?",
+          );
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+          });
+          stream.getTracks().forEach((track) => track.stop());
+        } catch (e) {
+          // ignore
+          console.log("Ignoring getUserMedia error:", e);
+        }
+        console.log("X");
+
         const allDevices = await navigator.mediaDevices.enumerateDevices();
+        console.log("All devices:", allDevices);
         const cams = allDevices.filter((d) => d.kind === "videoinput");
 
         // find facetime cam
-        const facetimeCam = cams.find((d) => d.label.includes("FaceTime"));
+        let camToUse = cams.find((d) => d.label.includes("FaceTime"));
         // const facetimeCam = cams.find((d) => d.label.includes("OBS"));
-        if (!facetimeCam) {
-          throw new Error("No FaceTime camera found");
+        if (!camToUse) {
+          console.warn("No FaceTime camera found, using first video input");
+          if (cams.length === 0) {
+            throw new Error("No video input devices found");
+          }
+          camToUse = cams[0];
         }
-        this.webcamStream = await startStream(facetimeCam.deviceId, 1280);
+
+        console.log("Y", camToUse.deviceId);
+        this.webcamStream = await startStream(camToUse.deviceId, 1920);
+        console.log("Z");
+
         console.log(
           "Webcam stream started",
           this.webcamStream.width,
@@ -632,7 +659,7 @@ const opDisplace = defineOp(
     [],
   ) {
     static id = "displace" as const;
-    static description = "Displace image based on two other images";
+    static description = "Displace input based on X / Y inputs";
   },
 );
 
@@ -678,10 +705,11 @@ const opBlend = defineOp(
 
 const opTimes = defineOp(
   class extends fragOp(
-    1,
+    2,
     `
       vec3 tex1Color = vec3(texture2D(tex1, uv));
-      gl_FragColor = vec4(tex1Color * alpha, 1.0);
+      vec3 tex2Color = vec3(texture2D(tex2, uv));
+      gl_FragColor = vec4(tex1Color * tex2Color * alpha, 1.0);
     `,
     [
       {
@@ -839,26 +867,21 @@ const opSNoise = defineOp(
   },
 );
 
-export const ops = [
-  opWebcam,
-  opDelay,
-  opHFlip,
-  opVFlip,
-  opKal,
-  opMinus,
-  opBlend,
-  opTimes,
-  opFrag,
-  opTimeMachine,
-  opGradient,
-  opBlack,
-  opDisplace,
-  opSNoise,
-  opLFO,
-  opSteps,
+export const opsInGroups = [
+  ["Sources", [opWebcam]],
+  ["Generators", [opLFO, opGradient, opBlack, opSNoise]],
+  ["Space", [opHFlip, opVFlip, opKal, opDisplace]],
+  ["Color", [opSteps]],
+  ["Combiners", [opMinus, opBlend, opTimes]],
+  ["Time", [opDelay, opTimeMachine]],
+  ["Power", [opFrag]],
 ] as const;
 
-export type AnyOpId = (typeof ops)[number]["id"];
+type AnyOpId = (typeof opsInGroups)[number][1][number]["id"];
+
+export const ops = opsInGroups.flatMap(
+  (group) => group[1] as unknown as OpClass<AnyOpId>[],
+);
 
 export function opById(id: string): OpClass<AnyOpId> {
   const found = ops.find((op) => op.id === id);

@@ -18,6 +18,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useUpdateNodeInternals,
   Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -42,7 +43,7 @@ import {
   OpNode,
   OpNodeData,
   OpParam,
-  ops,
+  opsInGroups,
   runFlow,
 } from "./flow-lib.js";
 import { Monitor, OmniCanvasContext, OmniCanvasHost } from "./OmniCanvas.js";
@@ -72,6 +73,15 @@ export function OpNodeView(props: NodeProps<OpNode>) {
   const opClass = opById(data.opId);
   const runtime = runtimes[props.id];
 
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // console.log("Updating node internals for", props.id);
+      updateNodeInternals(props.id);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [props.id, updateNodeInternals]);
+
   if (!runtime) {
     return null;
   }
@@ -87,50 +97,51 @@ export function OpNodeView(props: NodeProps<OpNode>) {
         minHeight={30}
       /> */}
       <div className="above">{opClass.id}</div>
-      <div className="operation-node-inputs">
-        {_.range(opClass.numInputs).map((i) => {
-          const handle = idxToInputHandle(i);
-          return (
-            <Handle
-              key={handle}
-              type="target"
-              position={Position.Left}
-              id={handle}
-              className="nodrag"
-              style={{ transform: `translateY(${i * 30}px)` }}
-            />
-          );
-        })}
-      </div>
-      <div className="operation-node-outputs">
-        {_.range(opClass.numOutputs).map((i) => {
-          const handle = idxToOutputHandle(i);
-          return (
-            <Handle
-              key={handle}
-              type="source"
-              position={Position.Right}
-              id={handle}
-              className="nodrag"
-            />
-          );
-        })}
-      </div>
-      {outputs[0] ? (
-        <div style={{ width: 200 }}>
-          <Monitor tex={outputs[0]} />
+      <div className="operation-node-body relative">
+        <div className="operation-node-inputs">
+          {_.range(opClass.numInputs).map((i) => {
+            const handle = idxToInputHandle(i);
+            return (
+              <Handle
+                key={handle}
+                type="target"
+                position={Position.Left}
+                id={handle}
+                className="nodrag"
+              />
+            );
+          })}
         </div>
-      ) : (
-        <div
-          style={{
-            width: 200,
-            aspectRatio: "1.77778 / 1",
-            backgroundColor: "lightgray",
-          }}
-        />
-      )}
+        <div className="operation-node-outputs">
+          {_.range(opClass.numOutputs).map((i) => {
+            const handle = idxToOutputHandle(i);
+            return (
+              <Handle
+                key={handle}
+                type="source"
+                position={Position.Right}
+                id={handle}
+                className="nodrag"
+              />
+            );
+          })}
+        </div>
+        {outputs[0] ? (
+          <div style={{ width: 200 }}>
+            <Monitor tex={outputs[0]} />
+          </div>
+        ) : (
+          <div
+            style={{
+              width: 200,
+              aspectRatio: "1.77778 / 1",
+              backgroundColor: "lightgray",
+            }}
+          />
+        )}
+      </div>
       {selected && (
-        <div className="operation-node-params">
+        <div className="operation-node-params below">
           {opClass.params?.map((param) => (
             <Param
               key={param.varName}
@@ -506,20 +517,27 @@ const FlowInner = () => {
         } overflow-hidden z-[2]`}
       >
         <div className="pt-4 px-4 h-full flex flex-col">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">
-            Components
-          </h3>
-          <div className="space-y-2 overflow-auto">
-            {ops.map((op) => (
-              <div
-                key={op.id}
-                draggable
-                onDragStart={(event) => onDragStart(event, op.id)}
-                className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
-              >
-                <div className="font-medium text-gray-900">{op.id}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {op.description}
+          <h3 className="text-lg font-semibold text-gray-800">Components</h3>
+          <div className="overflow-auto">
+            {opsInGroups.map(([groupName, groupOps]) => (
+              <div key={groupName} className="my-8">
+                <h4 className="text-sm text-gray-600 mb-2 font-bold">
+                  {groupName}
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  {groupOps.map((op) => (
+                    <div
+                      key={op.id}
+                      draggable
+                      onDragStart={(event) => onDragStart(event, op.id)}
+                      className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
+                    >
+                      <div className="font-medium text-gray-900">{op.id}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {op.description}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}

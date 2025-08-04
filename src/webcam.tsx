@@ -22,6 +22,50 @@ export type WebcamStream = {
   height: number;
 };
 
+async function supportsResolution(
+  deviceId: string,
+  width: number,
+  height: number,
+): Promise<boolean> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        deviceId: { exact: deviceId },
+        width: { exact: width },
+        height: { exact: height },
+      },
+    });
+    stream.getTracks().forEach((track) => track.stop());
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function findSupportedResolutions(
+  deviceId: string,
+): Promise<[number, number][]> {
+  const candidates = [
+    [3840, 2160],
+    [2560, 1440],
+    [1920, 1080],
+    [1600, 900],
+    [1280, 720],
+    [1024, 576],
+    [960, 540],
+    [640, 480],
+    [320, 240],
+  ];
+
+  const results = [];
+  for (const [w, h] of candidates) {
+    if (await supportsResolution(deviceId, w, h)) {
+      results.push([w, h] as [number, number]);
+    }
+  }
+  return results;
+}
+
 export async function startStream(
   deviceId: string,
   width: number,
@@ -49,6 +93,9 @@ export async function startStream(
   //   },
   // };
 
+  const supportedResolutions = await findSupportedResolutions(deviceId);
+  console.log("Supported resolutions:", supportedResolutions);
+
   const constraints: MediaStreamConstraints = {
     video: {
       deviceId: { exact: deviceId },
@@ -60,7 +107,9 @@ export async function startStream(
     },
   };
 
+  console.log("Starting webcam stream with constraints:", constraints);
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  console.log("Webcam stream started", stream);
   video.srcObject = stream;
   video.play();
 

@@ -1,6 +1,6 @@
 const files = import.meta.glob(
   "/node_modules/lygia/**/*.glsl",
-  { as: "raw", eager: true }, // → each key = file path, each value = file text
+  { query: "?raw", import: "default", eager: true }, // → each key = file path, each value = file text
 );
 
 const LYGIA_SRC: Record<string, string> = {};

@@ -877,7 +877,7 @@ export const opsInGroups = [
   ["Power", [opFrag]],
 ] as const;
 
-type AnyOpId = (typeof opsInGroups)[number][1][number]["id"];
+export type AnyOpId = (typeof opsInGroups)[number][1][number]["id"];
 
 export const ops = opsInGroups.flatMap(
   (group) => group[1] as unknown as OpClass<AnyOpId>[],

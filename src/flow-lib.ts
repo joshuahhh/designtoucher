@@ -24,8 +24,8 @@ type RunProps = {
 };
 
 export type OpInstance = {
-  run: (props: RunProps) => void;
-  destroy: () => void;
+  run(props: RunProps): void;
+  destroy(): void;
   outputs: (Tex | null)[];
 };
 

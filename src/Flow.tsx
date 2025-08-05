@@ -366,7 +366,7 @@ const FlowInner = () => {
   }));
 
   const [runtimes, setRuntimes] = useState<Record<string, OpInstance>>({});
-  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
 
   const onNodesChange = useCallback(
@@ -408,12 +408,6 @@ const FlowInner = () => {
     },
     [flowUP.edges],
   );
-
-  const onDragStart = useCallback((event: React.DragEvent, opId: AnyOpId) => {
-    setDraggedOpId(opId);
-    event.dataTransfer.setData("text/plain", opId);
-    event.dataTransfer.effectAllowed = "move";
-  }, []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -473,75 +467,111 @@ const FlowInner = () => {
           </ReactFlow>
         </FlowContext.Provider>
 
-        {/* Toggle Button */}
-        <button
-          onClick={() => setIsPanelExpanded(!isPanelExpanded)}
-          className="absolute top-4 right-4 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 transition-colors"
-        >
-          {isPanelExpanded ? (
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          ) : (
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          )}
-        </button>
+        <SidebarToggleButton
+          isSidebarExpanded={isSidebarExpanded}
+          setIsSidebarExpanded={setIsSidebarExpanded}
+        />
       </div>
+      <Sidebar
+        isSidebarExpanded={isSidebarExpanded}
+        setDraggedOpId={setDraggedOpId}
+      />
+    </div>
+  );
+};
 
-      {/* Expandable Panel */}
-      <div
-        className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
-          isPanelExpanded ? "w-60 opacity-100" : "w-0 opacity-0"
-        } overflow-hidden z-[2]`}
-      >
-        <div className="pt-4 px-4 h-full flex flex-col">
-          <h3 className="text-lg font-semibold text-gray-800">Components</h3>
-          <div className="overflow-auto">
-            {opsInGroups.map(([groupName, groupOps]) => (
-              <div key={groupName} className="my-8">
-                <h4 className="text-sm text-gray-600 mb-2 font-bold">
-                  {groupName}
-                </h4>
-                <div className="grid grid-cols-1 gap-2">
-                  {groupOps.map((op) => (
-                    <div
-                      key={op.id}
-                      draggable
-                      onDragStart={(event) => onDragStart(event, op.id)}
-                      className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
-                    >
-                      <div className="font-medium text-gray-900">{op.id}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {op.description}
-                      </div>
+const SidebarToggleButton = ({
+  isSidebarExpanded,
+  setIsSidebarExpanded,
+}: {
+  isSidebarExpanded: boolean;
+  setIsSidebarExpanded: Dispatch<SetStateAction<boolean>>;
+}) => {
+  return (
+    <button
+      onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+      className="absolute top-4 right-4 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 transition-colors"
+    >
+      {isSidebarExpanded ? (
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+      ) : (
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 19l-7-7 7-7"
+          />
+        </svg>
+      )}
+    </button>
+  );
+};
+
+const Sidebar = ({
+  isSidebarExpanded,
+  setDraggedOpId,
+}: {
+  isSidebarExpanded: boolean;
+  setDraggedOpId: Dispatch<SetStateAction<AnyOpId | null>>;
+}) => {
+  const onDragStart = useCallback(
+    (event: React.DragEvent, opId: AnyOpId) => {
+      setDraggedOpId(opId);
+      event.dataTransfer.setData("text/plain", opId);
+      event.dataTransfer.effectAllowed = "move";
+    },
+    [setDraggedOpId],
+  );
+
+  return (
+    <div
+      className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
+        isSidebarExpanded ? "w-60 opacity-100" : "w-0 opacity-0"
+      } overflow-hidden z-[2]`}
+    >
+      <div className="pt-4 px-4 h-full flex flex-col">
+        <h3 className="text-lg font-semibold text-gray-800">Components</h3>
+        <div className="overflow-auto">
+          {opsInGroups.map(([groupName, groupOps]) => (
+            <div key={groupName} className="my-8">
+              <h4 className="text-sm text-gray-600 mb-2 font-bold">
+                {groupName}
+              </h4>
+              <div className="grid grid-cols-1 gap-2">
+                {groupOps.map((op) => (
+                  <div
+                    key={op.id}
+                    draggable
+                    onDragStart={(event) => onDragStart(event, op.id)}
+                    className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
+                  >
+                    <div className="font-medium text-gray-900">{op.id}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {op.description}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

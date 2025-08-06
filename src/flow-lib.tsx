@@ -1,9 +1,25 @@
 import { UpdateProxy } from "@engraft/update-proxy";
 import { Slider, Tooltip } from "@radix-ui/themes";
-import { Edge, Handle, Node, NodeProps, Position } from "@xyflow/react";
+import {
+  Edge,
+  Handle,
+  Node,
+  Position,
+  useEdges,
+  useNodeId,
+} from "@xyflow/react";
 import clsx from "clsx";
 import _ from "lodash";
-import { ReactNode } from "react";
+import mergeRefs from "merge-refs/src/index.js";
+import {
+  createContext,
+  createRef,
+  forwardRef,
+  ReactNode,
+  useContext,
+  useLayoutEffect,
+  useState,
+} from "react";
 import { assert } from "./assert.js";
 import {
   deleteFbo,
@@ -17,7 +33,7 @@ import {
   Tex,
   Tex3D,
 } from "./mygl.js";
-import { OmniCanvasContextType } from "./OmniCanvas.js";
+import { Monitor, OmniCanvasContextType } from "./OmniCanvas.js";
 import { toposortFromEdges } from "./toposort.js";
 import { popFront, pushBack, pushFront } from "./util.js";
 import { startStream, stopStream, WebcamStream } from "./webcam.js";
@@ -27,9 +43,11 @@ type RunProps = {
   paramValues: Record<string, unknown>;
 };
 
-type TopProps = NodeProps<OpNode> & {
+type TopProps = {
+  paramValues: Record<string, unknown>;
   paramValuesUP: UpdateProxy<Record<string, unknown>>;
   instance: BaseOp;
+  phony: boolean;
 };
 
 export type OpClass<Id extends string> = {
@@ -114,8 +132,13 @@ const opWebcam = defineOp(
     constructor(ctx: OmniCanvasContextType, nodeId: string) {
       super(ctx, nodeId);
 
+      console.log("constructing cam, here's the trace");
+      console.trace("opWebcam constructor trace");
+
       (async () => {
         // gotta do this first on Safari
+
+        console.log("Requesting webcam access...");
 
         if (!navigator.mediaDevices) {
           throw new Error(
@@ -148,7 +171,6 @@ const opWebcam = defineOp(
         }
 
         this.webcamStream = await startStream(camToUse.deviceId, 1920);
-        console.log("Z");
 
         console.log(
           "Webcam stream started",
@@ -224,12 +246,12 @@ const opWebcam = defineOp(
       }
     }
 
-    renderTop(props: NodeProps<OpNode>) {
+    renderTop(props: TopProps) {
       return (
-        <div className="text-xs">
+        <Sentence>
           Use input{" "}
           <span className="underline decoration-dotted">FaceTime camera</span>
-        </div>
+        </Sentence>
       );
     }
   },
@@ -323,19 +345,19 @@ const opDelay = defineOp(
 );
 
 const OpDelay = (props: TopProps) => {
-  const { data, instance, paramValuesUP } = props;
+  const { paramValues, instance, paramValuesUP, phony } = props;
 
   return (
-    <div className="text-xs">
-      Delay <SentenceHandle idx={0} /> by{" "}
+    <Sentence>
+      Delay <SentenceHandle idx={0} phony={phony} /> by{" "}
       <SentenceParam
         varName="framesOfDelay"
         instance={instance}
-        paramValues={data.paramValues}
+        paramValues={paramValues}
         paramValuesUP={paramValuesUP}
       />{" "}
       frames
-    </div>
+    </Sentence>
   );
 };
 
@@ -701,45 +723,72 @@ const opKal = defineOp(
 );
 
 const OpKal = (props: TopProps) => {
-  const { data, instance, paramValuesUP } = props;
+  const { instance, paramValues, paramValuesUP, phony } = props;
 
   return (
-    <div className="text-xs">
-      Wiggle <SentenceHandle idx={0} /> with strength{" "}
+    <Sentence>
+      Wiggle <SentenceHandle idx={0} phony={phony} /> with strength{" "}
       <SentenceParam
         varName="strength"
         instance={instance}
-        paramValues={data.paramValues}
+        paramValues={paramValues}
         paramValuesUP={paramValuesUP}
       />{" "}
       and size{" "}
       <SentenceParam
         varName="size"
         instance={instance}
-        paramValues={data.paramValues}
+        paramValues={paramValues}
         paramValuesUP={paramValuesUP}
       />
-    </div>
+    </Sentence>
   );
 };
 
-const SentenceHandle = ({ idx }: { idx: number }) => {
-  const handleClasses = clsx`
+export const FlowContext = createContext<{
+  runtimes: Record<string, BaseOp>;
+}>(undefined!);
+
+const SentenceHandle = ({ idx, phony }: { idx: number; phony: boolean }) => {
+  // figure out if we're downstream of a node
+  const edges = useEdges();
+  const nodeId = useNodeId();
+  const edge = edges.find(
+    (edge) =>
+      edge.target === nodeId && edge.targetHandle === idxToInputHandle(idx),
+  );
+  const flowContext = useContext(FlowContext);
+
+  const sourceRuntime =
+    flowContext && edge ? flowContext.runtimes[edge.source] : undefined;
+
+  const className = clsx(
+    `
     nodrag
-    w-3 h-3
     [&.clickconnecting]:bg-red-600
-    border-none
 
-    !static transform-none
-  `;
+    inline-block
+    border-2 border-solid border-black rounded-sm
+  `,
+    { "w-3 h-3": !sourceRuntime, "h-4": sourceRuntime },
+  );
 
-  return (
+  return phony ? (
+    <div className={className} />
+  ) : (
     <Handle
       type="target"
       position={Position.Top}
       id={idxToInputHandle(idx)}
-      className={clsx(handleClasses, "inline-block !transform-none rounded-sm")}
-    />
+      className={className}
+    >
+      {sourceRuntime && sourceRuntime.outputs[0] ? (
+        <Monitor
+          tex={sourceRuntime.outputs[0]}
+          className="pointer-events-none"
+        />
+      ) : null}
+    </Handle>
   );
 };
 
@@ -759,37 +808,105 @@ const SentenceParam = ({
     throw new Error(`Parameter ${varName} not found`);
   }
   if (param.type === "number") {
-    const tooltip = (
-      <div className="flex flex-row items-center gap-2">
-        <div className="text-xs">{param.min}</div>
-        <Slider
-          className="w-32"
-          value={[instance.getParamValue(paramValues, varName)]}
-          min={param.min}
-          max={param.max}
-          step={param.step}
-          onValueChange={(value) => {
-            if (instance.params) {
-              const param = instance.params.find((p) => p.varName === varName);
-              if (param) {
-                paramValuesUP[varName].$set(parseFloat(value.toString()));
-              }
-            }
-          }}
-        />
-        <div className="text-xs">{param.max}</div>
-      </div>
-    );
     return (
-      <Tooltip content={tooltip} delayDuration={0}>
-        <span className="underline decoration-dotted">
-          {instance.getParamValue(paramValues, varName)}
-        </span>
-      </Tooltip>
+      <SentenceParamNumber
+        varName={varName}
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+        param={param}
+      />
     );
   }
 
   throw new Error(`Unsupported parameter type: ${param.type}`);
+};
+
+const StableWidthSpan = forwardRef<
+  HTMLSpanElement,
+  {
+    dragging?: boolean;
+  } & React.HTMLAttributes<HTMLSpanElement>
+>(({ dragging, ...otherProps }, forwardedRef) => {
+  const ref = createRef<HTMLSpanElement>();
+  const [minWidth, setMinWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    if (dragging && ref.current) {
+      const w = ref.current.offsetWidth;
+      setMinWidth((prev) => Math.max(prev, w));
+    }
+    if (!dragging) {
+      setMinWidth(0); // release lock
+    }
+  }, [dragging, ref]);
+
+  return (
+    <span
+      ref={mergeRefs(ref, forwardedRef)}
+      {...otherProps}
+      style={{
+        ...otherProps.style,
+        minWidth: dragging ? minWidth : "inherit",
+      }}
+    />
+  );
+});
+
+const SentenceParamNumber = ({
+  varName,
+  instance,
+  paramValues,
+  paramValuesUP,
+  param,
+}: {
+  varName: string;
+  instance: BaseOp;
+  paramValues: Record<string, unknown>;
+  paramValuesUP: UpdateProxy<Record<string, unknown>>;
+  param: OpParam & { type: "number" };
+}) => {
+  const [dragging, setDragging] = useState(false);
+
+  if (varName === "strength") {
+    console.log("dragging", dragging, varName, paramValues[varName]);
+  }
+
+  const tooltip = (
+    <div className="flex flex-row items-center gap-2">
+      <div className="text-xs">{param.min}</div>
+      <Slider
+        className="w-32"
+        value={[instance.getParamValue(paramValues, varName)]}
+        min={param.min}
+        max={param.max}
+        step={param.step}
+        onValueChange={(value) => {
+          if (instance.params) {
+            const param = instance.params.find((p) => p.varName === varName);
+            if (param) {
+              paramValuesUP[varName].$set(parseFloat(value.toString()));
+            }
+          }
+          setDragging(true);
+        }}
+        onValueCommit={() => {
+          setDragging(false);
+        }}
+      />
+      <div className="text-xs">{param.max}</div>
+    </div>
+  );
+  return (
+    <Tooltip content={tooltip} delayDuration={0}>
+      <StableWidthSpan
+        dragging={dragging}
+        className="underline decoration-dotted tabular-nums"
+      >
+        {instance.getParamValue(paramValues, varName)}
+      </StableWidthSpan>
+    </Tooltip>
+  );
 };
 
 const opDisplace = defineOp(
@@ -837,13 +954,18 @@ const opMinus = defineOp(
   },
 );
 
-const OpMinus = (props: TopProps) => {
-  const { data, instance, paramValuesUP } = props;
-
+const OpMinus = ({ phony }: TopProps) => {
   return (
-    <div className="text-xs">
-      <SentenceHandle idx={0} /> - <SentenceHandle idx={1} />
-    </div>
+    <Sentence>
+      Math: <SentenceHandle idx={0} phony={phony} /> -{" "}
+      <SentenceHandle idx={1} phony={phony} />
+    </Sentence>
+  );
+};
+
+const Sentence = ({ children }: { children: ReactNode }) => {
+  return (
+    <span className="text-xs flex flex-row items-center gap-1">{children}</span>
   );
 };
 
@@ -865,13 +987,12 @@ const opBlend = defineOp(
   },
 );
 
-const OpBlend = (props: TopProps) => {
-  const { data, instance, paramValuesUP } = props;
-
+const OpBlend = ({ phony }: TopProps) => {
   return (
-    <div className="text-xs">
-      Blend <SentenceHandle idx={0} /> with <SentenceHandle idx={1} />
-    </div>
+    <Sentence>
+      Blend <SentenceHandle idx={0} phony={phony} /> with{" "}
+      <SentenceHandle idx={1} phony={phony} />
+    </Sentence>
   );
 };
 
@@ -1036,8 +1157,45 @@ const opSNoise = defineOp(
   ) {
     static id = "snoise" as const;
     static description = "Generate 2D simplex noise";
+
+    renderTop(props: TopProps) {
+      return <OpSNoise {...props} />;
+    }
   },
 );
+
+const OpSNoise = ({
+  phony,
+  instance,
+  paramValues,
+  paramValuesUP,
+}: TopProps) => {
+  return (
+    <Sentence>
+      Make simplex noise with strength{" "}
+      <SentenceParam
+        varName="strength"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />{" "}
+      , size{" "}
+      <SentenceParam
+        varName="size"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />{" "}
+      , and version{" "}
+      <SentenceParam
+        varName="version"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />
+    </Sentence>
+  );
+};
 
 export const opsInGroups = [
   ["Sources", [opWebcam]],

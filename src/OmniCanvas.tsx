@@ -206,7 +206,7 @@ export function Monitor({ tex, className }: { tex: Tex; className?: string }) {
   return (
     <OmniCanvasGuest
       command={command}
-      className={clsx(className, "w-full")}
+      className={clsx(className, "w-full h-full")}
       style={{
         aspectRatio: tex.width / tex.height,
         background:

@@ -21,21 +21,22 @@ import {
   useUpdateNodeInternals,
   Viewport,
 } from "@xyflow/react";
-import "@xyflow/react/dist/base.css";
 import { clsx } from "clsx";
 import {
-  createContext,
   Dispatch,
   SetStateAction,
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import { assertNever } from "./assert.js";
+import "./flow-base.css";
 import {
   AnyOpId,
   BaseOp,
+  FlowContext,
   idxToOutputHandle,
   opById,
   OpNode,
@@ -44,17 +45,17 @@ import {
   opsInGroups,
   runFlow,
 } from "./flow-lib.js";
-import { Monitor, OmniCanvasContext, OmniCanvasHost } from "./OmniCanvas.js";
+import {
+  Monitor,
+  OmniCanvasContext,
+  OmniCanvasContextType,
+  OmniCanvasHost,
+} from "./OmniCanvas.js";
 import { CopyPaste, useNodeData } from "./react-flow-util.js";
-import { SmartBezierEdge } from "./smart-edge/SmartBezierEdge.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
 // import "./xy-theme.css";
-
-const FlowContext = createContext<{
-  runtimes: Record<string, BaseOp>;
-}>(undefined!);
 
 export function OpNodeView(props: NodeProps<OpNode>) {
   const [data, setData] = useNodeData(props);
@@ -107,11 +108,12 @@ export function OpNodeView(props: NodeProps<OpNode>) {
         minHeight={30}
       /> */}
       {runtime.renderTop?.({
-        ...props,
+        paramValues: data.paramValues,
         paramValuesUP: dataUP.paramValues,
         instance: runtime,
+        phony: false,
       }) ?? <div className="above">{opClass.id}</div>}
-      <div className="operation-node-body relative">
+      <div className="operation-node-body relative mt-1">
         {/* <div className="flex flex-col justify-center gap-2.5 absolute left-0 h-full -translate-x-1/2">
           {_.range(runtime.numInputs).map((i) => {
             const handle = idxToInputHandle(i);
@@ -152,20 +154,10 @@ export function OpNodeView(props: NodeProps<OpNode>) {
                 [&.clickconnecting]:border-red-600
 
                 border-4 border-solid border-black rounded-sm
-                !static !transform-none
-                `}
+              `}
             >
               <Monitor tex={outputs[0]} className="pointer-events-none" />
             </Handle>
-            {/* <Handle
-              type="source"
-              position={Position.Bottom}
-              id={idxToOutputHandle(0)}
-              className={
-                handleClasses +
-                " absolute bottom-0 left-1/2 !-translate-x-1/2 !translate-y-1/2"
-              }
-            /> */}
           </div>
         ) : (
           <div
@@ -514,6 +506,7 @@ const FlowInner = () => {
       <Sidebar
         isSidebarExpanded={isSidebarExpanded}
         setDraggedOpId={setDraggedOpId}
+        ctx={ctx}
       />
     </div>
   );
@@ -567,9 +560,11 @@ const SidebarToggleButton = ({
 const Sidebar = ({
   isSidebarExpanded,
   setDraggedOpId,
+  ctx,
 }: {
   isSidebarExpanded: boolean;
   setDraggedOpId: Dispatch<SetStateAction<AnyOpId | null>>;
+  ctx: OmniCanvasContextType;
 }) => {
   const onDragStart = useCallback(
     (event: React.DragEvent, opId: AnyOpId) => {
@@ -578,6 +573,19 @@ const Sidebar = ({
       event.dataTransfer.effectAllowed = "move";
     },
     [setDraggedOpId],
+  );
+
+  const instantiatedOps = useMemo(
+    () =>
+      Object.fromEntries(
+        opsInGroups.flatMap(([groupName, groupOps]) =>
+          groupOps.map((opClass) => {
+            const op = new opClass(ctx, undefined as any);
+            return [opClass.id, op];
+          }),
+        ),
+      ),
+    [ctx],
   );
 
   return (
@@ -595,19 +603,40 @@ const Sidebar = ({
                 {groupName}
               </h4>
               <div className="grid grid-cols-1 gap-2">
-                {groupOps.map((op) => (
-                  <div
-                    key={op.id}
-                    draggable
-                    onDragStart={(event) => onDragStart(event, op.id)}
-                    className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
-                  >
-                    <div className="font-medium text-gray-900">{op.id}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {op.description}
+                {groupOps.map((opClass) => {
+                  const op = instantiatedOps[opClass.id];
+
+                  if (!op.renderTop) {
+                    return null; // Skip if no renderTop method
+                  }
+
+                  return (
+                    <div
+                      key={opClass.id}
+                      draggable
+                      onDragStart={(event) => onDragStart(event, opClass.id)}
+                      className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
+                    >
+                      {op.renderTop?.({
+                        instance: op,
+                        paramValuesUP: up(() => {}),
+                        paramValues: {},
+                        phony: true,
+                      })}
                     </div>
-                  </div>
-                ))}
+                  );
+                  // <div
+                  //   key={op.id}
+                  //   draggable
+                  //   onDragStart={(event) => onDragStart(event, op.id)}
+                  //   className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
+                  // >
+                  //   <div className="font-medium text-gray-900">{op.id}</div>
+                  //   <div className="text-xs text-gray-500 mt-1">
+                  //     {op.description}
+                  //   </div>
+                  // </div>
+                })}
               </div>
             </div>
           ))}

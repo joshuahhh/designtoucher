@@ -28,6 +28,7 @@
     "jsfeat": "^0.0.8",
     "lodash": "^4.17.21",
     "lygia": "^1.3.3",
+    "merge-refs": "^2.0.0",
     "pathfinding": "^0.4.18",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

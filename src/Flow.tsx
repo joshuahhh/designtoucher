@@ -21,8 +21,8 @@ import {
   useUpdateNodeInternals,
   Viewport,
 } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import _ from "lodash";
+import "@xyflow/react/dist/base.css";
+import { clsx } from "clsx";
 import {
   createContext,
   Dispatch,
@@ -35,11 +35,9 @@ import {
 import { assertNever } from "./assert.js";
 import {
   AnyOpId,
-  defaultParamValues,
-  idxToInputHandle,
+  BaseOp,
   idxToOutputHandle,
   opById,
-  OpInstance,
   OpNode,
   OpNodeData,
   OpParam,
@@ -48,25 +46,28 @@ import {
 } from "./flow-lib.js";
 import { Monitor, OmniCanvasContext, OmniCanvasHost } from "./OmniCanvas.js";
 import { CopyPaste, useNodeData } from "./react-flow-util.js";
+import { SmartBezierEdge } from "./smart-edge/SmartBezierEdge.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
-import "./xy-theme.css";
+// import "./xy-theme.css";
 
 const FlowContext = createContext<{
-  runtimes: Record<string, OpInstance>;
+  runtimes: Record<string, BaseOp>;
 }>(undefined!);
 
 export function OpNodeView(props: NodeProps<OpNode>) {
   const [data, setData] = useNodeData(props);
+  const dataUP = up(setData);
+
   const { selected } = props;
 
-  useEffect(() => {
-    console.log("OpNodeView mounted", props.id);
-    return () => {
-      console.log("OpNodeView unmounted", props.id);
-    };
-  }, [props.id]);
+  // useEffect(() => {
+  //   console.log("OpNodeView mounted", props.id);
+  //   return () => {
+  //     console.log("OpNodeView unmounted", props.id);
+  //   };
+  // }, [props.id]);
 
   const { runtimes } = useContext(FlowContext);
 
@@ -88,18 +89,31 @@ export function OpNodeView(props: NodeProps<OpNode>) {
 
   const outputs = runtime.outputs;
 
+  const handleClasses = clsx`
+    nodrag
+    w-5 h-5
+    [&.clickconnecting]:bg-red-600
+    border-none
+
+    static transform-none
+  `;
+
   return (
-    <div className="operation-node">
+    <div className="font-['Varela_Round'] flex flex-col items-center border border-gray-300 rounded-md bg-gray-100 p-2 !-z-10">
       {/* <NodeResizer
         color="#ff0071"
         isVisible={selected}
         minWidth={100}
         minHeight={30}
       /> */}
-      <div className="above">{opClass.id}</div>
+      {runtime.renderTop?.({
+        ...props,
+        paramValuesUP: dataUP.paramValues,
+        instance: runtime,
+      }) ?? <div className="above">{opClass.id}</div>}
       <div className="operation-node-body relative">
-        <div className="operation-node-inputs">
-          {_.range(opClass.numInputs).map((i) => {
+        {/* <div className="flex flex-col justify-center gap-2.5 absolute left-0 h-full -translate-x-1/2">
+          {_.range(runtime.numInputs).map((i) => {
             const handle = idxToInputHandle(i);
             return (
               <Handle
@@ -107,13 +121,13 @@ export function OpNodeView(props: NodeProps<OpNode>) {
                 type="target"
                 position={Position.Left}
                 id={handle}
-                className="nodrag"
+                className={handleClasses}
               />
             );
           })}
-        </div>
-        <div className="operation-node-outputs">
-          {_.range(opClass.numOutputs).map((i) => {
+        </div> */}
+        {/* <div className="flex flex-col justify-center gap-2.5 absolute right-0 h-full translate-x-1/2">
+          {_.range(runtime.numOutputs).map((i) => {
             const handle = idxToOutputHandle(i);
             return (
               <Handle
@@ -121,14 +135,37 @@ export function OpNodeView(props: NodeProps<OpNode>) {
                 type="source"
                 position={Position.Right}
                 id={handle}
-                className="nodrag"
+                className={handleClasses}
               />
             );
           })}
-        </div>
+        </div> */}
         {outputs[0] ? (
-          <div style={{ width: 200 }}>
-            <Monitor tex={outputs[0]} />
+          <div style={{ width: 200 }} className="relative">
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id={idxToOutputHandle(0)}
+              className={`
+                w-[200px]
+                nodrag
+                [&.clickconnecting]:border-red-600
+
+                border-4 border-solid border-black rounded-sm
+                !static !transform-none
+                `}
+            >
+              <Monitor tex={outputs[0]} className="pointer-events-none" />
+            </Handle>
+            {/* <Handle
+              type="source"
+              position={Position.Bottom}
+              id={idxToOutputHandle(0)}
+              className={
+                handleClasses +
+                " absolute bottom-0 left-1/2 !-translate-x-1/2 !translate-y-1/2"
+              }
+            /> */}
           </div>
         ) : (
           <div
@@ -140,9 +177,9 @@ export function OpNodeView(props: NodeProps<OpNode>) {
           />
         )}
       </div>
-      {selected && (
+      {/* {selected && (
         <div className="operation-node-params below">
-          {opClass.params?.map((param) => (
+          {runtime.params?.map((param) => (
             <Param
               key={param.varName}
               param={param}
@@ -151,7 +188,7 @@ export function OpNodeView(props: NodeProps<OpNode>) {
             />
           ))}
         </div>
-      )}
+      )} */}
     </div>
   );
 }
@@ -287,13 +324,13 @@ const initialNodes: OpNode[] = [
   {
     id: "n1",
     position: { x: 0, y: 0 },
-    data: { opId: "cam", paramValues: defaultParamValues("cam") },
+    data: { opId: "cam", paramValues: {} },
     type: "operation",
   },
   {
     id: "n2",
     position: { x: 100, y: 100 },
-    data: { opId: "kal", paramValues: defaultParamValues("kal") },
+    data: { opId: "kal", paramValues: {} },
     type: "operation",
   },
   // {
@@ -365,7 +402,7 @@ const FlowInner = () => {
     zoom: 2,
   }));
 
-  const [runtimes, setRuntimes] = useState<Record<string, OpInstance>>({});
+  const [runtimes, setRuntimes] = useState<Record<string, BaseOp>>({});
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
 
@@ -431,7 +468,7 @@ const FlowInner = () => {
         position,
         data: {
           opId: draggedOpId,
-          paramValues: defaultParamValues(draggedOpId),
+          paramValues: {},
         },
       };
 
@@ -459,6 +496,8 @@ const FlowInner = () => {
             onViewportChange={setViewport}
             onDragOver={onDragOver}
             onDrop={onDrop}
+            nodeOrigin={[0.5, 0.5]}
+            className="[--xy-edge-stroke-default:#000]"
           >
             <MiniMap zoomable pannable />
             <Controls />

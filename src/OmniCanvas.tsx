@@ -1,8 +1,10 @@
+import { clsx } from "clsx";
 import React, {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -142,8 +144,8 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
 
         const left = Math.floor(rectCSS.left * dpr);
         const bottom = Math.floor(bottomCSS * dpr);
-        const width = Math.ceil(rectCSS.width * dpr);
-        const height = Math.ceil(rectCSS.height * dpr);
+        const width = Math.ceil(rectCSS.width * dpr) + 1;
+        const height = Math.ceil(rectCSS.height * dpr) + 1;
 
         command([left, bottom, width, height]);
       });
@@ -182,7 +184,7 @@ export function OmniCanvasGuest({
   const { setGuestCommand } = useContext(OmniCanvasContext);
   const [div, setDiv] = useState<HTMLDivElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!div) return;
     setGuestCommand(div, command);
     return () => setGuestCommand(div, null);
@@ -191,7 +193,7 @@ export function OmniCanvasGuest({
   return <div ref={setDiv} {...props} />;
 }
 
-export function Monitor({ tex }: { tex: Tex }) {
+export function Monitor({ tex, className }: { tex: Tex; className?: string }) {
   const { draw } = useContext(OmniCanvasContext);
 
   const command = useCallback(
@@ -202,18 +204,14 @@ export function Monitor({ tex }: { tex: Tex }) {
   );
 
   return (
-    <div>
-      <OmniCanvasGuest
-        command={command}
-        className="w-full"
-        style={{
-          aspectRatio: tex.width / tex.height,
-          background:
-            "repeating-conic-gradient(#808080 0 25%, #0000 0 50%) 50% / 20px 20px",
-        }}
-      />
-      {/* <div>{new Date().toISOString()}</div>
-      <div>{sum}</div> */}
-    </div>
+    <OmniCanvasGuest
+      command={command}
+      className={clsx(className, "w-full")}
+      style={{
+        aspectRatio: tex.width / tex.height,
+        background:
+          "repeating-conic-gradient(#808080 0 25%, #FFF 0 50%) 50% / 20px 20px",
+      }}
+    />
   );
 }

@@ -1,5 +1,9 @@
-import { Edge, Node } from "@xyflow/react";
+import { UpdateProxy } from "@engraft/update-proxy";
+import { Slider, Tooltip } from "@radix-ui/themes";
+import { Edge, Handle, Node, NodeProps, Position } from "@xyflow/react";
+import clsx from "clsx";
 import _ from "lodash";
+import { ReactNode } from "react";
 import { assert } from "./assert.js";
 import {
   deleteFbo,
@@ -23,19 +27,15 @@ type RunProps = {
   paramValues: Record<string, unknown>;
 };
 
-export type OpInstance = {
-  run(props: RunProps): void;
-  destroy(): void;
-  outputs: (Tex | null)[];
+type TopProps = NodeProps<OpNode> & {
+  paramValuesUP: UpdateProxy<Record<string, unknown>>;
+  instance: BaseOp;
 };
 
 export type OpClass<Id extends string> = {
   id: Id;
   description: string;
-  numInputs: number;
-  numOutputs: number;
-  params?: OpParam[];
-  new (ctx: OmniCanvasContextType, nodeId: string): OpInstance;
+  new (ctx: OmniCanvasContextType, nodeId: string): BaseOp;
 };
 
 function defineOp<Id extends string>(cls: OpClass<Id>) {
@@ -63,22 +63,42 @@ export type OpParam = {
     }
 );
 
-abstract class BaseOp {
+export abstract class BaseOp {
   outputs: (Tex | null)[] = [];
 
   constructor(
     public ctx: OmniCanvasContextType,
     public nodeId: string,
   ) {}
+  abstract run(props: RunProps): void;
+  abstract destroy(): void;
+  abstract numInputs: number;
+  abstract numOutputs: number;
+  params?: OpParam[] | undefined;
+  renderTop?(props: TopProps): ReactNode;
+
+  getParamValue(paramValues: Record<string, any>, paramName: string): any {
+    const value = paramValues[paramName];
+    if (value !== undefined) {
+      return value;
+    }
+
+    const param = this.params?.find((p) => p.varName === paramName);
+    if (param) {
+      return param.defaultValue;
+    }
+
+    throw new Error(`Parameter ${paramName} not found`);
+  }
 }
 
 const opWebcam = defineOp(
   class extends BaseOp {
     static id = "cam" as const;
     static description = "Camera input";
-    static numInputs = 0;
-    static numOutputs = 1;
-    static params: OpParam[] = [
+    numInputs = 0;
+    numOutputs = 1;
+    params: OpParam[] = [
       {
         displayName: "Flip horizontally",
         varName: "hflip",
@@ -89,7 +109,7 @@ const opWebcam = defineOp(
 
     webcamStream: WebcamStream | null = null;
     tex: Tex | null = null;
-    hflipOp: OpInstance | null = null;
+    hflipOp: BaseOp | null = null;
 
     constructor(ctx: OmniCanvasContextType, nodeId: string) {
       super(ctx, nodeId);
@@ -112,10 +132,8 @@ const opWebcam = defineOp(
           // ignore
           console.log("Ignoring getUserMedia error:", e);
         }
-        console.log("X");
 
         const allDevices = await navigator.mediaDevices.enumerateDevices();
-        console.log("All devices:", allDevices);
         const cams = allDevices.filter((d) => d.kind === "videoinput");
 
         // find facetime cam
@@ -129,7 +147,6 @@ const opWebcam = defineOp(
           camToUse = cams[0];
         }
 
-        console.log("Y", camToUse.deviceId);
         this.webcamStream = await startStream(camToUse.deviceId, 1920);
         console.log("Z");
 
@@ -179,7 +196,7 @@ const opWebcam = defineOp(
       this.tex.width = this.webcamStream.width;
       this.tex.height = this.webcamStream.height;
 
-      if (paramValues["hflip"]) {
+      if (this.getParamValue(paramValues, "hflip")) {
         if (!this.hflipOp) {
           this.hflipOp = new opHFlip(this.ctx, this.nodeId + "-hflip");
         }
@@ -206,6 +223,15 @@ const opWebcam = defineOp(
         this.webcamStream = null;
       }
     }
+
+    renderTop(props: NodeProps<OpNode>) {
+      return (
+        <div className="text-xs">
+          Use input{" "}
+          <span className="underline decoration-dotted">FaceTime camera</span>
+        </div>
+      );
+    }
   },
 );
 
@@ -213,9 +239,9 @@ const opDelay = defineOp(
   class extends BaseOp {
     static id = "delay" as const;
     static description = "Delay input by some number of frames";
-    static numInputs = 1;
-    static numOutputs = 1;
-    static params: OpParam[] = [
+    numInputs = 1;
+    numOutputs = 1;
+    params: OpParam[] = [
       {
         displayName: "Frames of delay",
         varName: "framesOfDelay",
@@ -237,7 +263,8 @@ const opDelay = defineOp(
         this.outputs = [null];
         return;
       }
-      const ringLength = (paramValues["framesOfDelay"] as number) + 1;
+      const ringLength =
+        (this.getParamValue(paramValues, "framesOfDelay") as number) + 1;
 
       if (this.fbos.length < ringLength) {
         console.log("delay: lengthening ring");
@@ -288,16 +315,37 @@ const opDelay = defineOp(
         deleteFbo(this.outFbo);
       }
     }
+
+    renderTop(props: TopProps) {
+      return <OpDelay {...props} instance={this} />;
+    }
   },
 );
+
+const OpDelay = (props: TopProps) => {
+  const { data, instance, paramValuesUP } = props;
+
+  return (
+    <div className="text-xs">
+      Delay <SentenceHandle idx={0} /> by{" "}
+      <SentenceParam
+        varName="framesOfDelay"
+        instance={instance}
+        paramValues={data.paramValues}
+        paramValuesUP={paramValuesUP}
+      />{" "}
+      frames
+    </div>
+  );
+};
 
 const opFrag = defineOp(
   class extends BaseOp {
     static id = "frag" as const;
     static description = "Fragment shader operation";
-    static numInputs = 1;
-    static numOutputs = 1;
-    static params: OpParam[] = [
+    numInputs = 1;
+    numOutputs = 1;
+    params: OpParam[] = [
       {
         displayName: "Fragment shader body",
         varName: "fragBody",
@@ -326,7 +374,7 @@ const opFrag = defineOp(
         return;
       }
 
-      const fragBody = paramValues["fragBody"] as string;
+      const fragBody = this.getParamValue(paramValues, "fragBody") as string;
 
       const hasTime = fragBody.includes("time");
 
@@ -375,9 +423,9 @@ const opTimeMachine = defineOp(
   class extends BaseOp {
     static id = "timeMachine" as const;
     static description = "Time machine operation";
-    static numInputs = 2;
-    static numOutputs = 1;
-    static params: OpParam[] = [
+    numInputs = 2;
+    numOutputs = 1;
+    params: OpParam[] = [
       {
         displayName: "Number of frames",
         varName: "numFrames",
@@ -457,7 +505,7 @@ const opTimeMachine = defineOp(
 
       const width = tex.width;
       const height = tex.height;
-      const depth = paramValues["numFrames"] as number;
+      const depth = this.getParamValue(paramValues, "numFrames") as number;
 
       if (
         this.frames.width !== width ||
@@ -534,9 +582,9 @@ function fragOp(numInputs: number, fragBody: string, params: OpParam[] = []) {
   `;
 
   return class extends BaseOp {
-    static numInputs = numInputs;
-    static numOutputs = 1;
-    static params = params;
+    numInputs = numInputs;
+    numOutputs = 1;
+    params = params;
 
     private program: ShaderProgram;
     private outFbo: Fbo;
@@ -565,7 +613,7 @@ function fragOp(numInputs: number, fragBody: string, params: OpParam[] = []) {
           ...Object.fromEntries(
             params.map((p) => [
               p.varName,
-              ["1f", Number(paramValues[p.varName] ?? 0)],
+              ["1f", Number(this.getParamValue(paramValues, p.varName) ?? 0)],
             ]),
           ),
           ...Object.fromEntries(
@@ -619,7 +667,7 @@ const opKal = defineOp(
   class extends fragOp(
     1,
     `
-      vec2 uvFlip = uv + vec2(sin(uv.y / period) * strength, cos(uv.x / period) * strength);
+      vec2 uvFlip = uv + vec2(sin(uv.y / size) * strength, cos(uv.x / size) * strength);
       gl_FragColor = texture2D(tex1, uvFlip);
     `,
     [
@@ -633,8 +681,8 @@ const opKal = defineOp(
         step: 0.001,
       },
       {
-        displayName: "Period",
-        varName: "period",
+        displayName: "Size",
+        varName: "size",
         type: "number",
         defaultValue: 0.03,
         min: 0,
@@ -645,8 +693,104 @@ const opKal = defineOp(
   ) {
     static id = "kal" as const;
     static description = "Kaleidoscope effect";
+
+    renderTop(props: TopProps) {
+      return <OpKal {...props} instance={this} />;
+    }
   },
 );
+
+const OpKal = (props: TopProps) => {
+  const { data, instance, paramValuesUP } = props;
+
+  return (
+    <div className="text-xs">
+      Wiggle <SentenceHandle idx={0} /> with strength{" "}
+      <SentenceParam
+        varName="strength"
+        instance={instance}
+        paramValues={data.paramValues}
+        paramValuesUP={paramValuesUP}
+      />{" "}
+      and size{" "}
+      <SentenceParam
+        varName="size"
+        instance={instance}
+        paramValues={data.paramValues}
+        paramValuesUP={paramValuesUP}
+      />
+    </div>
+  );
+};
+
+const SentenceHandle = ({ idx }: { idx: number }) => {
+  const handleClasses = clsx`
+    nodrag
+    w-3 h-3
+    [&.clickconnecting]:bg-red-600
+    border-none
+
+    !static transform-none
+  `;
+
+  return (
+    <Handle
+      type="target"
+      position={Position.Top}
+      id={idxToInputHandle(idx)}
+      className={clsx(handleClasses, "inline-block !transform-none rounded-sm")}
+    />
+  );
+};
+
+const SentenceParam = ({
+  varName,
+  instance,
+  paramValues,
+  paramValuesUP,
+}: {
+  varName: string;
+  instance: BaseOp;
+  paramValues: Record<string, unknown>;
+  paramValuesUP: UpdateProxy<Record<string, unknown>>;
+}) => {
+  const param = instance.params?.find((p) => p.varName === varName);
+  if (!param) {
+    throw new Error(`Parameter ${varName} not found`);
+  }
+  if (param.type === "number") {
+    const tooltip = (
+      <div className="flex flex-row items-center gap-2">
+        <div className="text-xs">{param.min}</div>
+        <Slider
+          className="w-32"
+          value={[instance.getParamValue(paramValues, varName)]}
+          min={param.min}
+          max={param.max}
+          step={param.step}
+          onValueChange={(value) => {
+            if (instance.params) {
+              const param = instance.params.find((p) => p.varName === varName);
+              if (param) {
+                paramValuesUP[varName].$set(parseFloat(value.toString()));
+              }
+            }
+          }}
+        />
+        <div className="text-xs">{param.max}</div>
+      </div>
+    );
+    return (
+      <Tooltip content={tooltip} delayDuration={0}>
+        <span className="underline decoration-dotted">
+          {instance.getParamValue(paramValues, varName)}
+        </span>
+      </Tooltip>
+    );
+  }
+
+  throw new Error(`Unsupported parameter type: ${param.type}`);
+};
 
 const opDisplace = defineOp(
   class extends fragOp(
@@ -686,8 +830,22 @@ const opMinus = defineOp(
   ) {
     static id = "minus" as const;
     static description = "Subtract two images";
+
+    renderTop(props: TopProps) {
+      return <OpMinus {...props} instance={this} />;
+    }
   },
 );
+
+const OpMinus = (props: TopProps) => {
+  const { data, instance, paramValuesUP } = props;
+
+  return (
+    <div className="text-xs">
+      <SentenceHandle idx={0} /> - <SentenceHandle idx={1} />
+    </div>
+  );
+};
 
 const opBlend = defineOp(
   class extends fragOp(
@@ -700,8 +858,22 @@ const opBlend = defineOp(
   ) {
     static id = "blend" as const;
     static description = "Blend two images";
+
+    renderTop(props: TopProps) {
+      return <OpBlend {...props} instance={this} />;
+    }
   },
 );
+
+const OpBlend = (props: TopProps) => {
+  const { data, instance, paramValuesUP } = props;
+
+  return (
+    <div className="text-xs">
+      Blend <SentenceHandle idx={0} /> with <SentenceHandle idx={1} />
+    </div>
+  );
+};
 
 const opTimes = defineOp(
   class extends fragOp(
@@ -879,7 +1051,7 @@ export const opsInGroups = [
 
 export type AnyOpId = (typeof opsInGroups)[number][1][number]["id"];
 
-export const ops = opsInGroups.flatMap(
+const ops = opsInGroups.flatMap(
   (group) => group[1] as unknown as OpClass<AnyOpId>[],
 );
 
@@ -914,21 +1086,10 @@ export function inputHandleToIdx(handle: string | null | undefined): number {
   return parseInt(handle.slice("input-".length)) - 1;
 }
 
-export function defaultParamValues(opId: AnyOpId): Record<string, any> {
-  const op = opById(opId);
-  if (!op.params) return {};
-
-  return Object.fromEntries(
-    op.params.map((param) => {
-      return [param.varName, param.defaultValue];
-    }),
-  );
-}
-
 export function runFlow(
   nodes: OpNode[],
   edges: Edge[],
-  runtimes: Record<string, OpInstance>,
+  runtimes: Record<string, BaseOp>,
   ctx: OmniCanvasContextType,
 ) {
   // clean up old runtimes
@@ -963,7 +1124,7 @@ export function runFlow(
     const op = opById(node.data.opId);
     const runtime = runtimes[nodeId];
 
-    const inputs = _.range(op.numInputs).map((i) => {
+    const inputs = _.range(runtime.numInputs).map((i) => {
       const edge = edges.find(
         (e) => e.target === nodeId && e.targetHandle === idxToInputHandle(i),
       );

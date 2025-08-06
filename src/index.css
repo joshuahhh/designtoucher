@@ -94,3 +94,15 @@ body {
 #root {
   height: 100vh;
 }
+
+@font-face {
+  font-display: swap;
+  font-family: "Varela Round";
+  font-style: normal;
+  font-weight: 400;
+  src: url("./varela-round-v20-latin-regular.woff2") format("woff2");
+}
+
+.react-flow__edges {
+  z-index: 1001;
+}

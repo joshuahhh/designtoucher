@@ -21,6 +21,8 @@ import {
   useState,
 } from "react";
 import { assert } from "./assert.js";
+import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
+import { codeMirrorSetup } from "./codeMirrorSetup.js";
 import {
   deleteFbo,
   destroyTex3D,
@@ -131,9 +133,6 @@ const opWebcam = defineOp(
 
     constructor(ctx: OmniCanvasContextType, nodeId: string) {
       super(ctx, nodeId);
-
-      console.log("constructing cam, here's the trace");
-      console.trace("opWebcam constructor trace");
 
       (async () => {
         // gotta do this first on Safari
@@ -438,9 +437,28 @@ const opFrag = defineOp(
       deleteFbo(this.outFbo);
       this.compiled = null;
     }
+
+    renderTop(props: TopProps) {
+      return <OpFrag {...props} instance={this} />;
+    }
   },
 );
 
+const OpFrag = ({ phony, paramValues, paramValuesUP, instance }: TopProps) => {
+  return (
+    <>
+      <Sentence>
+        Feed <SentenceHandle idx={0} phony={phony} /> into fragment shader
+      </Sentence>
+      <CodeMirrorControlled
+        className="nodrag text-xs"
+        value={instance.getParamValue(paramValues, "fragBody") as string}
+        extensions={codeMirrorSetup}
+        setValue={paramValuesUP["fragBody"].$set}
+      />
+    </>
+  );
+};
 const opTimeMachine = defineOp(
   class extends BaseOp {
     static id = "timeMachine" as const;
@@ -770,7 +788,10 @@ const SentenceHandle = ({ idx, phony }: { idx: number; phony: boolean }) => {
     inline-block
     border-2 border-solid border-black rounded-sm
   `,
-    { "w-3 h-3": !sourceRuntime, "h-4": sourceRuntime },
+    {
+      "w-3 h-3": !sourceRuntime,
+      "h-4 align-text-bottom": sourceRuntime,
+    },
   );
 
   return phony ? (
@@ -847,6 +868,8 @@ const StableWidthSpan = forwardRef<
       {...otherProps}
       style={{
         ...otherProps.style,
+        // color: dragging ? "red" : "inherit",
+        display: "inline-block",
         minWidth: dragging ? minWidth : "inherit",
       }}
     />
@@ -867,10 +890,6 @@ const SentenceParamNumber = ({
   param: OpParam & { type: "number" };
 }) => {
   const [dragging, setDragging] = useState(false);
-
-  if (varName === "strength") {
-    console.log("dragging", dragging, varName, paramValues[varName]);
-  }
 
   const tooltip = (
     <div className="flex flex-row items-center gap-2">
@@ -921,8 +940,24 @@ const opDisplace = defineOp(
   ) {
     static id = "displace" as const;
     static description = "Displace input based on X / Y inputs";
+
+    renderTop(props: TopProps) {
+      return <OpDisplace {...props} instance={this} />;
+    }
   },
 );
+
+const OpDisplace = (props: TopProps) => {
+  const { instance, paramValues, paramValuesUP, phony } = props;
+
+  return (
+    <Sentence>
+      Push <SentenceHandle idx={0} phony={phony} /> in X by{" "}
+      <SentenceHandle idx={1} phony={phony} /> and in Y by{" "}
+      <SentenceHandle idx={2} phony={phony} />
+    </Sentence>
+  );
+};
 
 const opBlack = defineOp(
   class extends fragOp(
@@ -964,9 +999,7 @@ const OpMinus = ({ phony }: TopProps) => {
 };
 
 const Sentence = ({ children }: { children: ReactNode }) => {
-  return (
-    <span className="text-xs flex flex-row items-center gap-1">{children}</span>
-  );
+  return <span className="text-xs font-['Varela_Round'] ">{children}</span>;
 };
 
 const opBlend = defineOp(
@@ -1018,15 +1051,35 @@ const opTimes = defineOp(
   ) {
     static id = "times" as const;
     static description = "Multiply image by number";
+
+    renderTop(props: TopProps) {
+      return <OpTimes {...props} instance={this} />;
+    }
   },
 );
+
+const OpTimes = ({ phony, instance, paramValues, paramValuesUP }: TopProps) => {
+  return (
+    <Sentence>
+      Math: <SentenceHandle idx={0} phony={phony} /> ✕{" "}
+      <SentenceHandle idx={1} phony={phony} /> ( ✕{" "}
+      <SentenceParam
+        varName="alpha"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />{" "}
+      )
+    </Sentence>
+  );
+};
 
 const opLFO = defineOp(
   class extends fragOp(
     0,
     `
       float t = mod(time, period) / period;
-      float value = (sin(t * 2.0 * 3.14159 + phase) + 1.0) * amplitude / 2.0;
+      float value = (sin(t * 2.0 * 3.14159 + phase * 3.14159 / 180.0) + 1.0) * amplitude / 2.0;
       gl_FragColor = vec4(value, value, value, 1.0);
     `,
     [
@@ -1053,16 +1106,50 @@ const opLFO = defineOp(
         varName: "phase",
         type: "number",
         defaultValue: 0,
-        min: -Math.PI,
-        max: Math.PI,
+        min: -180,
+        max: 180,
         step: 0.01,
       },
     ],
   ) {
     static id = "lfo" as const;
     static description = "Low-frequency oscillator";
+
+    renderTop(props: TopProps) {
+      return <OpLFO {...props} instance={this} />;
+    }
   },
 );
+
+const OpLFO = (props: TopProps) => {
+  const { instance, paramValues, paramValuesUP, phony } = props;
+
+  return (
+    <Sentence>
+      Oscillate with amplitude{" "}
+      <SentenceParam
+        varName="amplitude"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />{" "}
+      , period{" "}
+      <SentenceParam
+        varName="period"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />{" "}
+      , and phase{" "}
+      <SentenceParam
+        varName="phase"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />
+    </Sentence>
+  );
+};
 
 const opGradient = defineOp(
   class extends fragOp(
@@ -1172,7 +1259,7 @@ const OpSNoise = ({
 }: TopProps) => {
   return (
     <Sentence>
-      Make simplex noise with strength{" "}
+      Make <b>simplex noise</b> with strength{" "}
       <SentenceParam
         varName="strength"
         instance={instance}

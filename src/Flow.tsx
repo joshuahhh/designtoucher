@@ -100,7 +100,7 @@ export function OpNodeView(props: NodeProps<OpNode>) {
   `;
 
   return (
-    <div className="font-['Varela_Round'] flex flex-col items-center border border-gray-300 rounded-md bg-gray-100 p-2 !-z-10">
+    <div className="flex flex-col items-center border border-gray-300 rounded-md bg-gray-100 p-2 !-z-10">
       {/* <NodeResizer
         color="#ff0071"
         isVisible={selected}

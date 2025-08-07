@@ -1,4 +1,5 @@
 import { up } from "@engraft/update-proxy";
+import { Theme } from "@radix-ui/themes";
 import {
   addEdge,
   applyEdgeChanges,
@@ -312,80 +313,45 @@ const Param = (props: {
   }
 };
 
-const initialNodes: OpNode[] = [
-  {
-    id: "n1",
-    position: { x: 0, y: 0 },
-    data: { opId: "cam", paramValues: {} },
-    type: "operation",
-  },
-  {
-    id: "n2",
-    position: { x: 100, y: 100 },
-    data: { opId: "kal", paramValues: {} },
-    type: "operation",
-  },
-  // {
-  //   id: "n3",
-  //   position: { x: 200, y: 200 },
-  //   data: { opId: "minus" },
-  //   type: "operation",
-  // },
-];
-
-const initialEdges = [
-  {
-    id: "n1-n2",
-    source: "n1",
-    sourceHandle: "output-1",
-    target: "n2",
-    targetHandle: "input-1",
-  },
-  // {
-  //   id: "n1-n3",
-  //   source: "n1",
-  //   sourceHandle: "output-1",
-  //   target: "n3",
-  //   targetHandle: "input-1",
-  // },
-  // {
-  //   id: "n2-n3",
-  //   source: "n2",
-  //   sourceHandle: "output-1",
-  //   target: "n3",
-  //   targetHandle: "input-2",
-  // },
-];
-
 const nodeTypes: NodeTypes = {
   operation: OpNodeView,
 };
 
-export const Flow = () => (
+export const Flow = ({
+  flow,
+  setFlow,
+}: {
+  flow: Flow;
+  setFlow: Dispatch<SetStateAction<Flow>>;
+}) => (
   <div className="flex w-full h-full overflow-hidden box-border">
     <ReactFlowProvider>
       <OmniCanvasHost>
-        <FlowInner />
+        <Theme appearance="light" className="w-full h-full">
+          <FlowInner flow={flow} setFlow={setFlow} />
+        </Theme>
       </OmniCanvasHost>
     </ReactFlowProvider>
   </div>
 );
 
-type Flow = {
+export type Flow = {
   nodes: OpNode[];
   edges: Edge[];
 };
 
 const getId = () => `n${Math.random().toString(16).slice(2)}`;
 
-const FlowInner = () => {
+const FlowInner = ({
+  flow,
+  setFlow,
+}: {
+  flow: Flow;
+  setFlow: Dispatch<SetStateAction<Flow>>;
+}) => {
   const ctx = useContext(OmniCanvasContext);
   const { screenToFlowPosition } = useReactFlow();
 
-  const [flow, setFlow] = useLocalStorage<Flow>("flow", () => ({
-    nodes: initialNodes,
-    edges: initialEdges,
-  }));
   const flowUP = up(setFlow);
 
   const [viewport, setViewport] = useLocalStorage<Viewport>("viewport", () => ({
@@ -588,6 +554,12 @@ const Sidebar = ({
     [ctx],
   );
 
+  const noopParamValuesUP = useMemo(
+    () => up<Record<string, any>>(() => {}),
+    [],
+  );
+  const noopParamValues = useMemo(() => ({}), []);
+
   return (
     <div
       className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
@@ -619,8 +591,8 @@ const Sidebar = ({
                     >
                       {op.renderTop?.({
                         instance: op,
-                        paramValuesUP: up(() => {}),
-                        paramValues: {},
+                        paramValuesUP: noopParamValuesUP,
+                        paramValues: noopParamValues,
                         phony: true,
                       })}
                     </div>

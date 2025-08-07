@@ -1,15 +1,18 @@
 {
-  "name": "my-vite",
+  "name": "designtoucher",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "lib/lib.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "careful-build": "tsc && vite build",
     "test:watch": "vitest watch",
     "test:run": "vitest run",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "build-lib": "rm -rf lib && tsc --project tsconfig.lib.json && copyfiles -u 1 \"src/**/*.{js,css,woff2}\" lib",
+    "prepublishOnly": "npm run build-lib"
   },
   "dependencies": {
     "@codemirror/state": "^6.5.2",
@@ -23,8 +26,8 @@
     "jsfeat": "^0.0.8",
     "lodash": "^4.17.21",
     "lygia": "^1.3.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-merge-refs": "3.0.2",
     "react-router-dom": "6.22.1",
     "uuid": "^11.1.0"
@@ -39,6 +42,7 @@
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "10.4.19",
+    "copyfiles": "2.4.1",
     "eslint": "^9.18.0",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-react-hooks": "^5.1.0",

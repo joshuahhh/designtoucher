@@ -1,5 +1,5 @@
 const files = import.meta.glob(
-  "/node_modules/lygia/**/*.glsl",
+  "../node_modules/lygia/**/*.glsl",
   { query: "?raw", import: "default", eager: true }, // → each key = file path, each value = file text
 );
 

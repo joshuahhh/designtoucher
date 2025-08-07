@@ -130,9 +130,12 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       }
       canvas.style.transform = `translateY(${window.scrollY}px)`;
 
+      const { left: canvasLeft, top: canvasTop } =
+        canvas.getBoundingClientRect();
+
       guestCommandsRef.current.forEach((command, div) => {
         const rectCSS = div.getBoundingClientRect();
-        const bottomCSS = hCSS - rectCSS.bottom;
+        const bottomCSS = hCSS - (rectCSS.bottom - canvasTop);
 
         if (
           rectCSS.bottom < 0 ||
@@ -142,7 +145,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
         )
           return;
 
-        const left = Math.floor(rectCSS.left * dpr);
+        const left = Math.floor((rectCSS.left - canvasLeft) * dpr);
         const bottom = Math.floor(bottomCSS * dpr);
         const width = Math.ceil(rectCSS.width * dpr) + 1;
         const height = Math.ceil(rectCSS.height * dpr) + 1;
@@ -161,16 +164,16 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <canvas
-        ref={setCanvas}
-        // TODO: don't love the z-index here
-        className="absolute left-0 top-0 w-full h-full pointer-events-none z-[1]"
-      />
       {contextValue && (
         <OmniCanvasContext.Provider value={contextValue}>
           {children}
         </OmniCanvasContext.Provider>
       )}
+      <canvas
+        ref={setCanvas}
+        // TODO: don't love the z-index here
+        className="absolute left-0 top-0 w-full h-full pointer-events-none z-[1]"
+      />
     </>
   );
 }

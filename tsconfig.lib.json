@@ -7,14 +7,13 @@
     "skipLibCheck": true,
     "strict": true,
 
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
+    "outDir": "lib",
+    "rootDir": "src",
+    "noCheck": true,
     "jsx": "react-jsx",
-    "allowJs": true
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "declaration": true
   },
   "include": ["src"]
 }

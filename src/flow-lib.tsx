@@ -952,8 +952,8 @@ const OpDisplace = (props: TopProps) => {
 
   return (
     <Sentence>
-      Push <SentenceHandle idx={0} phony={phony} /> in X by{" "}
-      <SentenceHandle idx={1} phony={phony} /> and in Y by{" "}
+      Displace <SentenceHandle idx={0} phony={phony} /> by X:{" "}
+      <SentenceHandle idx={1} phony={phony} /> Y:{" "}
       <SentenceHandle idx={2} phony={phony} />
     </Sentence>
   );
@@ -1140,7 +1140,7 @@ const OpLFO = (props: TopProps) => {
         paramValues={paramValues}
         paramValuesUP={paramValuesUP}
       />{" "}
-      , and phase{" "}
+      , phase{" "}
       <SentenceParam
         varName="phase"
         instance={instance}

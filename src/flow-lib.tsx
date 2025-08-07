@@ -10,7 +10,6 @@ import {
 } from "@xyflow/react";
 import clsx from "clsx";
 import _ from "lodash";
-import mergeRefs from "merge-refs/src/index.js";
 import {
   createContext,
   createRef,
@@ -20,6 +19,7 @@ import {
   useLayoutEffect,
   useState,
 } from "react";
+import { mergeRefs } from "react-merge-refs";
 import { assert } from "./assert.js";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import { codeMirrorSetup } from "./codeMirrorSetup.js";
@@ -864,7 +864,7 @@ const StableWidthSpan = forwardRef<
 
   return (
     <span
-      ref={mergeRefs(ref, forwardedRef)}
+      ref={mergeRefs([ref, forwardedRef])}
       {...otherProps}
       style={{
         ...otherProps.style,

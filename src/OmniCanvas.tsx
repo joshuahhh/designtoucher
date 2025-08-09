@@ -1,6 +1,10 @@
+import { autoUpdate } from "@floating-ui/dom";
 import { clsx } from "clsx";
 import React, {
   createContext,
+  forwardRef,
+  HTMLAttributes,
+  ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -9,6 +13,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { newTex, ShaderProgram, Tex } from "./mygl.js";
 
 export interface DrawArgs {
@@ -25,6 +30,8 @@ export type OmniCanvasContextType = {
   ): void;
   draw(args: DrawArgs): void;
   emptyTex: Tex;
+  underlayDiv: HTMLDivElement;
+  overlayDiv: HTMLDivElement;
 };
 
 export const OmniCanvasContext = createContext<OmniCanvasContextType>(
@@ -32,7 +39,9 @@ export const OmniCanvasContext = createContext<OmniCanvasContextType>(
 );
 
 export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
+  const [underlayDiv, setUnderlayDiv] = useState<HTMLDivElement | null>(null);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [overlayDiv, setOverlayDiv] = useState<HTMLDivElement | null>(null);
   const [gl, setGl] = useState<WebGL2RenderingContext | null>(null);
 
   // Map each guest <div> to its draw callback
@@ -63,7 +72,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
   }, [canvas]);
 
   const contextValue: OmniCanvasContextType | null = useMemo(() => {
-    if (!gl) return null;
+    if (!gl || !underlayDiv || !overlayDiv) return null;
 
     const program = new ShaderProgram(
       gl,
@@ -108,8 +117,8 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
 
     const emptyTex = newTex(gl, 1280, 720);
 
-    return { gl, setGuestCommand, draw, emptyTex };
-  }, [gl]);
+    return { gl, setGuestCommand, draw, emptyTex, overlayDiv, underlayDiv };
+  }, [gl, overlayDiv, underlayDiv]);
 
   useEffect(() => {
     if (!gl || !canvas) return;
@@ -164,15 +173,21 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {contextValue && (
-        <OmniCanvasContext.Provider value={contextValue}>
-          {children}
-        </OmniCanvasContext.Provider>
-      )}
+      <div ref={setUnderlayDiv} className="absolute inset-0">
+        {contextValue && (
+          <OmniCanvasContext.Provider value={contextValue}>
+            {children}
+          </OmniCanvasContext.Provider>
+        )}
+      </div>
       <canvas
         ref={setCanvas}
         // TODO: don't love the z-index here
         className="absolute left-0 top-0 w-full h-full pointer-events-none z-[1]"
+      />
+      <div
+        ref={setOverlayDiv}
+        className="absolute left-0 top-0 w-full h-full z-[2] pointer-events-none [&>*]:pointer-events-auto"
       />
     </>
   );
@@ -218,3 +233,53 @@ export function Monitor({ tex, className }: { tex: Tex; className?: string }) {
     />
   );
 }
+
+export const OmniCanvasOverlay = forwardRef<
+  HTMLDivElement,
+  {
+    children: ReactNode;
+    strategy?: "absolute" | "fixed";
+  } & HTMLAttributes<HTMLDivElement>
+>(({ children, strategy = "absolute", ...rest }, ref) => {
+  const { overlayDiv } = useContext(OmniCanvasContext);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // Expose the anchor ref if parent passed one
+  useLayoutEffect(() => {
+    if (!ref) return;
+    if (typeof ref === "function") ref(anchorRef.current!);
+    else
+      (ref as React.MutableRefObject<HTMLDivElement | null>).current =
+        anchorRef.current;
+  }, [ref]);
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    const wrapper = wrapperRef.current;
+    if (!anchor || !wrapper || !overlayDiv) return;
+
+    wrapper.style.position = strategy;
+    wrapper.style.willChange = "transform,width,height";
+
+    const update = () => {
+      const r = anchor.getBoundingClientRect();
+      wrapper.style.transform = `translate(${Math.round(r.left)}px, ${Math.round(
+        r.top,
+      )}px)`;
+      wrapper.style.width = `${Math.round(r.width)}px`;
+      wrapper.style.height = `${Math.round(r.height)}px`;
+    };
+
+    update();
+    return autoUpdate(anchor, wrapper, update);
+  }, [overlayDiv, strategy]);
+
+  return (
+    <>
+      <div ref={anchorRef} {...rest} />
+      {overlayDiv &&
+        createPortal(<div ref={wrapperRef}>{children}</div>, overlayDiv)}
+    </>
+  );
+});

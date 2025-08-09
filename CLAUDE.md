@@ -84,11 +84,12 @@ DesignToucher is a visual programming environment for real-time image processing
 When making changes, Claude Code should:
 1. Implement the requested changes
 2. **Run Prettier to format all changed files**
-3. Ask the user to test the changes and confirm they work correctly
-4. **Wait for user confirmation before committing**
-5. Only commit after receiving positive feedback
-6. Use clear, concise commit messages with Claude Code attribution
-7. Each commit should represent a logical unit of work
+3. **Run `yarn tsc` to type-check the changes**
+4. Ask the user to test the changes and confirm they work correctly (never run build commands - the user runs their own dev server)
+5. **Wait for user confirmation before committing**
+6. Only commit after receiving positive feedback
+7. Use clear, concise commit messages with Claude Code attribution
+8. Each commit should represent a logical unit of work
 
 ### Code Formatting
 

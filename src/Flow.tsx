@@ -33,6 +33,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { assertNever } from "./assert.js";
 import "./flow-base.css";
 import {
@@ -53,7 +54,9 @@ import {
   Monitor,
   OmniCanvasContext,
   OmniCanvasContextType,
+  OmniCanvasGuest,
   OmniCanvasHost,
+  OmniCanvasOverlay,
 } from "./OmniCanvas.js";
 import { CopyPaste, useNodeData } from "./react-flow-util.js";
 import { useLocalStorage } from "./useLocalStorage.js";
@@ -68,8 +71,23 @@ const VideoOutputHandle = ({
   nodeId: string;
   tex: Tex | null | undefined;
 }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const handleFullscreenClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsFullscreen(true);
+    setIsHovered(false);
+  }, []);
+
   return (
-    <div style={{ width: 200 }} className="relative">
+    <div
+      style={{ width: 200 }}
+      className="relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <Handle
         type="source"
         position={Position.Bottom}
@@ -86,7 +104,36 @@ const VideoOutputHandle = ({
             }}
           />
         )}
+        {tex && isHovered && !isFullscreen && (
+          <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full">
+            <button
+              onClick={handleFullscreenClick}
+              className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
+              title="View fullscreen"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </OmniCanvasOverlay>
+        )}
       </Handle>
+      {isFullscreen && tex && (
+        <FullscreenModal
+          tex={tex}
+          onClose={() => {
+            setIsFullscreen(false);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -644,5 +691,70 @@ const Sidebar = ({
         </div>
       </div>
     </div>
+  );
+};
+
+const FullscreenModal = ({
+  tex,
+  onClose,
+}: {
+  tex: Tex;
+  onClose: () => void;
+}) => {
+  const { underlayDiv, draw } = useContext(OmniCanvasContext);
+
+  const command = useCallback(
+    (viewport: [number, number, number, number]) => {
+      draw({ texture: tex.texture, viewport });
+    },
+    [draw, tex.texture],
+  );
+
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", listener);
+    return () => {
+      window.removeEventListener("keydown", listener);
+    };
+  }, [onClose]);
+
+  const aspectRatio = tex.width / tex.height;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black grid place-items-center [container-type:size]">
+      <OmniCanvasOverlay className="absolute inset-0">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+          title="Press ESC to close"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </OmniCanvasOverlay>
+
+      <OmniCanvasGuest
+        command={command}
+        className={`bg-gray-300`}
+        style={{
+          width: `min(100cqw,calc(100cqh*${aspectRatio}))`,
+          aspectRatio: aspectRatio,
+        }}
+      />
+    </div>,
+    underlayDiv,
   );
 };

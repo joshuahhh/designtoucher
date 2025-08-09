@@ -19,6 +19,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStoreApi,
   useUpdateNodeInternals,
   Viewport,
 } from "@xyflow/react";
@@ -46,6 +47,8 @@ import {
   opsInGroups,
   runFlow,
 } from "./flow-lib.js";
+import { getHandleClasses } from "./Handles.js";
+import { Tex } from "./mygl.js";
 import {
   Monitor,
   OmniCanvasContext,
@@ -57,6 +60,36 @@ import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
 // import "./xy-theme.css";
+
+const VideoOutputHandle = ({
+  nodeId,
+  tex,
+}: {
+  nodeId: string;
+  tex: Tex | null | undefined;
+}) => {
+  return (
+    <div style={{ width: 200 }} className="relative">
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id={idxToOutputHandle(0)}
+        className={clsx(getHandleClasses(true), { "border-dashed": !tex })}
+      >
+        {tex ? (
+          <Monitor tex={tex} className="pointer-events-none" />
+        ) : (
+          <div
+            style={{
+              width: 200,
+              aspectRatio: "1.77778 / 1",
+            }}
+          />
+        )}
+      </Handle>
+    </div>
+  );
+};
 
 export function OpNodeView(props: NodeProps<OpNode>) {
   const [data, setData] = useNodeData(props);
@@ -90,15 +123,6 @@ export function OpNodeView(props: NodeProps<OpNode>) {
   }
 
   const outputs = runtime.outputs;
-
-  const handleClasses = clsx`
-    nodrag
-    w-5 h-5
-    [&.clickconnecting]:bg-red-600
-    border-none
-
-    static transform-none
-  `;
 
   return (
     <div
@@ -154,26 +178,7 @@ export function OpNodeView(props: NodeProps<OpNode>) {
             );
           })}
         </div> */}
-        {outputs[0] ? (
-          <div style={{ width: 200 }} className="relative">
-            <Handle
-              type="source"
-              position={Position.Bottom}
-              id={idxToOutputHandle(0)}
-              className="w-[200px] nodrag border-4 border-black rounded-sm transition-all duration-100 [&.clickconnecting]:border-red-600 hover:border-gray-700"
-            >
-              <Monitor tex={outputs[0]} className="pointer-events-none" />
-            </Handle>
-          </div>
-        ) : (
-          <div
-            className="bg-gray-300 border-2 border-gray-400 border-dashed rounded-sm transition-all duration-100 hover:bg-gray-200"
-            style={{
-              width: 200,
-              aspectRatio: "1.77778 / 1",
-            }}
-          />
-        )}
+        <VideoOutputHandle nodeId={props.id} tex={outputs[0]} />
       </div>
       {/* {selected && (
         <div className="operation-node-params below">
@@ -453,6 +458,12 @@ const FlowInner = ({
     };
   }, []);
 
+  const store = useStoreApi();
+
+  const onPaneClick = useCallback(() => {
+    store.setState({ connectionClickStartHandle: null });
+  }, [store]);
+
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">
@@ -473,6 +484,7 @@ const FlowInner = ({
             onDrop={onDrop}
             nodeOrigin={[0.5, 0.5]}
             className="[--xy-edge-stroke-default:#000]"
+            onPaneClick={onPaneClick}
           >
             <MiniMap zoomable pannable />
             <Controls />

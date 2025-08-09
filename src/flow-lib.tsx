@@ -23,6 +23,7 @@ import { mergeRefs } from "react-merge-refs";
 import { assert } from "./assert.js";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import { codeMirrorSetup } from "./codeMirrorSetup.js";
+import { getHandleClasses } from "./Handles.js";
 import {
   deleteFbo,
   destroyTex,
@@ -857,8 +858,6 @@ const opMedian = defineOp(
           }
         `;
 
-        console.log("fsSource", fsSource);
-
         this.program = new ShaderProgram(
           this.ctx.gl,
           `
@@ -1371,22 +1370,17 @@ const SentenceHandle = ({ idx, phony }: { idx: number; phony: boolean }) => {
   );
   const flowContext = useContext(FlowContext);
 
-  const sourceRuntime =
-    flowContext && edge ? flowContext.runtimes[edge.source] : undefined;
+  const sourceOutput =
+    flowContext && edge
+      ? flowContext.runtimes[edge.source].outputs[
+          outputHandleToIdx(edge.sourceHandle)
+        ]
+      : null;
 
-  const className = clsx(
-    `
-    nodrag
-    [&.clickconnecting]:bg-red-600
-
-    inline-block
-    border-2 border-solid border-black rounded-sm
-  `,
-    {
-      "w-3 h-3": !sourceRuntime,
-      "h-4 align-text-bottom": sourceRuntime,
-    },
-  );
+  const className = clsx(getHandleClasses(false), {
+    "w-3 h-3": !sourceOutput,
+    "h-4 align-text-bottom": sourceOutput,
+  });
 
   return phony ? (
     <div className={className} />
@@ -1397,11 +1391,8 @@ const SentenceHandle = ({ idx, phony }: { idx: number; phony: boolean }) => {
       id={idxToInputHandle(idx)}
       className={className}
     >
-      {sourceRuntime && sourceRuntime.outputs[0] ? (
-        <Monitor
-          tex={sourceRuntime.outputs[0]}
-          className="pointer-events-none"
-        />
+      {sourceOutput ? (
+        <Monitor tex={sourceOutput} className="pointer-events-none" />
       ) : null}
     </Handle>
   );

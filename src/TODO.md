@@ -36,3 +36,5 @@ flow stuff:
 [ ] make obs camera work
 [ ] make video into median work
 [ ] full-screen mode
+
+[ ] fix deploy

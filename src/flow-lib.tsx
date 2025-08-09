@@ -25,6 +25,7 @@ import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import { codeMirrorSetup } from "./codeMirrorSetup.js";
 import {
   deleteFbo,
+  destroyTex,
   destroyTex3D,
   ensureFboSize,
   Fbo,
@@ -36,6 +37,10 @@ import {
   Tex3D,
 } from "./mygl.js";
 import { Monitor, OmniCanvasContextType } from "./OmniCanvas.js";
+import {
+  medianNetworkFromSortingNetwork,
+  parberryPairwiseNetwork,
+} from "./sorting-networks.js";
 import { toposortFromEdges } from "./toposort.js";
 import { popFront, pushBack, pushFront } from "./util.js";
 import { startStream, stopStream, WebcamStream } from "./webcam.js";
@@ -256,6 +261,97 @@ const opWebcam = defineOp(
   },
 );
 
+const opVideo = defineOp(
+  class extends BaseOp {
+    static id = "video" as const;
+    static description = "Video input";
+    numInputs = 0;
+    numOutputs = 1;
+    params: OpParam[] = [];
+    video: HTMLVideoElement | null = null;
+    tex: Tex | null = null;
+
+    run({ paramValues }: RunProps) {
+      const { gl } = this.ctx;
+
+      if (!this.video) {
+        return;
+      }
+
+      if (!this.tex) {
+        console.log(
+          "Creating new texture for video",
+          this.video.videoWidth,
+          this.video.videoHeight,
+        );
+        this.tex = newTex(
+          this.ctx.gl,
+          this.video.videoWidth,
+          this.video.videoHeight,
+        );
+      }
+
+      gl.bindTexture(gl.TEXTURE_2D, this.tex.texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        this.video,
+      );
+      this.tex.width = this.video.videoWidth;
+      this.tex.height = this.video.videoHeight;
+
+      this.outputs = [this.tex];
+    }
+
+    destroy() {
+      if (this.video) {
+        this.video.pause();
+        this.video.srcObject = null;
+        this.video = null;
+      }
+      if (this.tex) {
+        destroyTex(this.ctx.gl, this.tex);
+        this.tex = null;
+      }
+    }
+
+    renderTop(props: TopProps) {
+      return <OpVideo {...props} instance={this} />;
+    }
+  },
+);
+
+const OpVideo = ({ instance }: TopProps) => {
+  return (
+    <Sentence>
+      Video file{" "}
+      <span className="underline decoration-dotted">
+        <input
+          type="file"
+          accept="video/*"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              const file = e.target.files[0];
+              const video = document.createElement("video");
+              video.src = URL.createObjectURL(file);
+              video.crossOrigin = "anonymous";
+              video.loop = true;
+              video.muted = true;
+              video.play();
+              (instance as any).video = video;
+            }
+          }}
+          className="text-[80%] w-36"
+        />
+      </span>
+    </Sentence>
+  );
+};
+
 const opDelay = defineOp(
   class extends BaseOp {
     static id = "delay" as const;
@@ -459,6 +555,7 @@ const OpFrag = ({ phony, paramValues, paramValuesUP, instance }: TopProps) => {
     </>
   );
 };
+
 const opTimeMachine = defineOp(
   class extends BaseOp {
     static id = "timeMachine" as const;
@@ -599,6 +696,503 @@ const opTimeMachine = defineOp(
       this.ctx.gl.deleteFramebuffer(this.fbo);
     }
   },
+);
+
+const opSwitch = defineOp(
+  class extends BaseOp {
+    static id = "switch" as const;
+    static description = "Switch between inputs";
+    numInputs = 3; // doesn't matter
+    numOutputs = 1;
+    params: OpParam[] = [
+      {
+        displayName: "Input index",
+        varName: "inputIndex",
+        type: "number",
+        defaultValue: 0,
+        min: 0,
+        max: 2,
+        step: 1,
+      },
+    ];
+    run({ inputs, paramValues }: RunProps) {
+      const index = this.getParamValue(paramValues, "inputIndex") as number;
+      if (index < 0 || index >= inputs.length) {
+        throw new Error(`Input index out of bounds: ${index}`);
+      }
+      this.outputs = [inputs[index]];
+    }
+    destroy() {
+      // nothing to destroy
+    }
+    renderTop(props: TopProps) {
+      return (
+        <Sentence>
+          Switch to input <SentenceHandle idx={0} phony={props.phony} />{" "}
+          <SentenceHandle idx={1} phony={props.phony} />{" "}
+          <SentenceHandle idx={2} phony={props.phony} />{" "}
+          <SentenceParam
+            varName="inputIndex"
+            instance={this}
+            paramValues={props.paramValues}
+            paramValuesUP={props.paramValuesUP}
+          />
+        </Sentence>
+      );
+    }
+  },
+);
+
+const opMedian = defineOp(
+  class extends BaseOp {
+    static id = "median" as const;
+    static description = "Time machine median";
+    numInputs = 1;
+    numOutputs = 1;
+    params: OpParam[] = [
+      {
+        displayName: "Number of frames",
+        varName: "numFrames",
+        type: "number",
+        min: 1,
+        max: 91,
+        step: 2,
+        defaultValue: 15,
+      },
+    ];
+
+    private frames: Tex3D;
+    private head: number = 0;
+    private fbo: WebGLFramebuffer;
+
+    private program: ShaderProgram | null = null;
+    private programDepth: number = 0;
+    private outFbo: Fbo;
+
+    constructor(ctx: OmniCanvasContextType, nodeId: string) {
+      super(ctx, nodeId);
+      this.frames = newTex3D(ctx.gl, 1, 1, 1);
+      this.fbo = ctx.gl.createFramebuffer()!;
+      this.outputs = [null];
+      this.outFbo = newFbo(ctx.gl);
+    }
+
+    run({ inputs, paramValues }: RunProps) {
+      const { gl, draw } = this.ctx;
+      const tex = inputs[0];
+      if (!tex) {
+        this.outputs = [null];
+        return;
+      }
+
+      const width = tex.width;
+      const height = tex.height;
+      const depth = this.getParamValue(paramValues, "numFrames") as number;
+
+      if (!this.program || depth !== this.programDepth) {
+        this.programDepth = depth;
+
+        const network = medianNetworkFromSortingNetwork(
+          parberryPairwiseNetwork(depth),
+        );
+        const medianIndex = Math.floor(depth / 2);
+
+        const fsSource = `
+          #version 300 es
+          precision mediump float;
+          precision mediump sampler3D;
+          uniform sampler3D uTex3D;
+          uniform int       uDepth;
+
+          in vec2 vUV;
+          out vec4 frag;
+
+          const int MAX_Z = 128; // set to your max texture depth
+
+          void main() {
+            float ${_.range(depth)
+              .map((i) => `r${i}`)
+              .join(", ")};
+            float ${_.range(depth)
+              .map((i) => `g${i}`)
+              .join(", ")};
+            float ${_.range(depth)
+              .map((i) => `b${i}`)
+              .join(", ")};
+
+            // collect per-slice samples
+            ${_.range(depth)
+              .map(
+                (z) => `
+              {
+                float w = (float(${z}) + 0.5) / float(uDepth);
+                vec4 v = texture(uTex3D, vec3(vUV, w));
+                r${z} = v.r; g${z} = v.g; b${z} = v.b;
+              }
+            `,
+              )
+              .join("\n")}
+
+            // apply median network to each channel
+            ${["r", "g", "b"]
+              .map((channel) =>
+                network.comps
+                  .map(
+                    ([a, b]) => `
+                      {
+                        float mn = min(${channel}${a}, ${channel}${b});
+                        float mx = max(${channel}${a}, ${channel}${b});
+                        ${channel}${a} = mn;
+                        ${channel}${b} = mx;
+                      }
+                    `,
+                  )
+                  .join("\n"),
+              )
+              .join("\n")}
+
+            // output the median value
+            frag = vec4(r${medianIndex}, g${medianIndex}, b${medianIndex}, 1.0);
+            // frag = r0 == r30 ? vec4(0.0, 1.0, 0.0, 1.0) : vec4(1.0, 0.0, 0.0, 1.0);
+          }
+        `;
+
+        console.log("fsSource", fsSource);
+
+        this.program = new ShaderProgram(
+          this.ctx.gl,
+          `
+            #version 300 es
+            in vec2 position;
+            out vec2 vUV;
+            void main() {
+              vUV = 0.5 * (position + 1.0);
+              gl_Position = vec4(position, 0.0, 1.0);
+            }
+          `,
+          fsSource,
+        );
+        if (false) {
+          this.program = new ShaderProgram(
+            this.ctx.gl,
+            `
+            #version 300 es
+            in vec2 position;
+            out vec2 vUV;
+            void main() {
+              vUV = 0.5 * (position + 1.0);
+              gl_Position = vec4(position, 0.0, 1.0);
+            }
+          `,
+            `
+            #version 300 es
+            precision mediump float;
+            precision mediump sampler3D;
+            uniform sampler3D uTex3D;
+            uniform int       uDepth;
+
+            in vec2 vUV;
+            out vec4 frag;
+
+            const int MAX_Z = 128; // set to your max texture depth
+
+            // partially select so a[k] is the k-th smallest; also makes a[0..k] sorted
+            float medianOfN(inout float a[MAX_Z], int N) {
+              int k = N / 2;
+              for (int i = 0; i <= k; ++i) {
+                int m = i;
+                for (int j = i + 1; j < N; ++j)
+                  if (a[j] < a[m]) m = j;
+                float t = a[i]; a[i] = a[m]; a[m] = t;
+              }
+              return (N & 1) == 1 ? a[k] : 0.5 * (a[k - 1] + a[k]);
+            }
+
+            vec3 medianAlongW_RGB(sampler3D tex3D, vec2 uv) {
+              ivec3 sz = textureSize(tex3D, 0);
+              int N = min(sz.z, MAX_Z);
+
+              float r[MAX_Z], g[MAX_Z], b[MAX_Z];
+
+              // collect per-slice samples once
+              for (int z = 0; z < N; ++z) {
+                float w = (float(z) + 0.5) / float(sz.z);
+                vec3 v = texture(tex3D, vec3(uv, w)).rgb;
+                r[z] = v.r; g[z] = v.g; b[z] = v.b;
+              }
+
+              // per-channel medians
+              float mr = medianOfN(r, N);
+              float mg = medianOfN(g, N);
+              float mb = medianOfN(b, N);
+
+              return vec3(mr, mg, mb);
+            }
+
+            void main(){
+              frag = vec4(medianAlongW_RGB(uTex3D, vUV), 1.0);
+            }
+          `,
+          );
+        }
+      }
+
+      if (
+        this.frames.width !== width ||
+        this.frames.height !== height ||
+        this.frames.depth !== depth
+      ) {
+        if (this.frames) {
+          destroyTex3D(gl, this.frames);
+        }
+        this.frames = newTex3D(gl, width, height, depth);
+        this.head = 0;
+      }
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.framebufferTextureLayer(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        this.frames.texture,
+        0,
+        this.head,
+      );
+
+      draw({
+        texture: tex.texture,
+        targetFramebuffer: this.fbo,
+        viewport: [0, 0, width, height],
+      });
+
+      this.head = (this.head + 1) % this.frames.depth;
+
+      ensureFboSize(this.outFbo, width, height);
+
+      this.program.run({
+        viewport: [0, 0, width, height],
+        uniforms: {
+          uTex3D: ["sampler3D", this.frames.texture],
+          uDepth: ["1i", this.frames.depth],
+        },
+        fullscreen: true,
+        targetFramebuffer: this.outFbo.framebuffer,
+      });
+
+      this.outputs = [this.outFbo.tex];
+    }
+
+    destroy() {
+      destroyTex3D(this.ctx.gl, this.frames);
+      deleteFbo(this.outFbo);
+      this.ctx.gl.deleteFramebuffer(this.fbo);
+    }
+
+    renderTop(props: TopProps) {
+      return <OpMedian {...props} instance={this} />;
+    }
+  },
+);
+
+const OpMedian = ({
+  phony,
+  paramValues,
+  paramValuesUP,
+  instance,
+}: TopProps) => (
+  <Sentence>
+    Median of <SentenceHandle idx={0} phony={phony} /> with{" "}
+    <SentenceParam
+      varName="numFrames"
+      instance={instance}
+      paramValues={paramValues}
+      paramValuesUP={paramValuesUP}
+    />{" "}
+    frames
+  </Sentence>
+);
+
+const opMedianOld = defineOp(
+  class extends BaseOp {
+    static id = "median_old" as const;
+    static description = "Time machine median";
+    numInputs = 1;
+    numOutputs = 1;
+    params: OpParam[] = [
+      {
+        displayName: "Number of frames",
+        varName: "numFrames",
+        type: "number",
+        min: 1,
+        max: 200,
+        step: 1,
+        defaultValue: 100,
+      },
+    ];
+
+    private frames: Tex3D;
+    private head: number = 0;
+    private fbo: WebGLFramebuffer;
+
+    private program: ShaderProgram | null = null;
+    private programDepth: number = 0;
+    private outFbo: Fbo;
+
+    constructor(ctx: OmniCanvasContextType, nodeId: string) {
+      super(ctx, nodeId);
+      this.frames = newTex3D(ctx.gl, 1, 1, 1);
+      this.fbo = ctx.gl.createFramebuffer()!;
+      this.outputs = [null];
+      this.outFbo = newFbo(ctx.gl);
+    }
+
+    run({ inputs, paramValues }: RunProps) {
+      const { gl, draw } = this.ctx;
+      const tex = inputs[0];
+      if (!tex) {
+        this.outputs = [null];
+        return;
+      }
+
+      const width = tex.width;
+      const height = tex.height;
+      const depth = 31; // this.getParamValue(paramValues, "numFrames") as number;
+
+      if (!this.program || depth !== this.programDepth) {
+        this.programDepth = depth;
+        this.program = new ShaderProgram(
+          this.ctx.gl,
+          `
+            #version 300 es
+            in vec2 position;
+            out vec2 vUV;
+            void main() {
+              vUV = 0.5 * (position + 1.0);
+              gl_Position = vec4(position, 0.0, 1.0);
+            }
+          `,
+          `
+            #version 300 es
+            precision mediump float;
+            precision mediump sampler3D;
+            uniform sampler3D uTex3D;
+            uniform int       uDepth;
+
+            in vec2 vUV;
+            out vec4 frag;
+
+            const int MAX_Z = 128; // set to your max texture depth
+
+            // partially select so a[k] is the k-th smallest; also makes a[0..k] sorted
+            float medianOfN(inout float a[MAX_Z], int N) {
+              int k = N / 2;
+              for (int i = 0; i <= k; ++i) {
+                int m = i;
+                for (int j = i + 1; j < N; ++j)
+                  if (a[j] < a[m]) m = j;
+                float t = a[i]; a[i] = a[m]; a[m] = t;
+              }
+              return (N & 1) == 1 ? a[k] : 0.5 * (a[k - 1] + a[k]);
+            }
+
+            vec3 medianAlongW_RGB(sampler3D tex3D, vec2 uv) {
+              ivec3 sz = textureSize(tex3D, 0);
+              int N = min(sz.z, MAX_Z);
+
+              float r[MAX_Z], g[MAX_Z], b[MAX_Z];
+
+              // collect per-slice samples once
+              for (int z = 0; z < N; ++z) {
+                float w = (float(z) + 0.5) / float(sz.z);
+                vec3 v = texture(tex3D, vec3(uv, w)).rgb;
+                r[z] = v.r; g[z] = v.g; b[z] = v.b;
+              }
+
+              // per-channel medians
+              float mr = medianOfN(r, N);
+              float mg = medianOfN(g, N);
+              float mb = medianOfN(b, N);
+
+              return vec3(mr, mg, mb);
+            }
+
+            void main(){
+              frag = vec4(medianAlongW_RGB(uTex3D, vUV), 1.0);
+            }
+          `,
+        );
+      }
+
+      if (
+        this.frames.width !== width ||
+        this.frames.height !== height ||
+        this.frames.depth !== depth
+      ) {
+        if (this.frames) {
+          destroyTex3D(gl, this.frames);
+        }
+        this.frames = newTex3D(gl, width, height, depth);
+        this.head = 0;
+      }
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.framebufferTextureLayer(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        this.frames.texture,
+        0,
+        this.head,
+      );
+
+      draw({
+        texture: tex.texture,
+        targetFramebuffer: this.fbo,
+        viewport: [0, 0, width, height],
+      });
+
+      this.head = (this.head + 1) % this.frames.depth;
+
+      ensureFboSize(this.outFbo, width, height);
+
+      this.program.run({
+        viewport: [0, 0, width, height],
+        uniforms: {
+          uTex3D: ["sampler3D", this.frames.texture],
+        },
+        fullscreen: true,
+        targetFramebuffer: this.outFbo.framebuffer,
+      });
+
+      this.outputs = [this.outFbo.tex];
+    }
+
+    destroy() {
+      destroyTex3D(this.ctx.gl, this.frames);
+      deleteFbo(this.outFbo);
+      this.ctx.gl.deleteFramebuffer(this.fbo);
+    }
+
+    renderTop(props: TopProps) {
+      return <OpMedianOld {...props} instance={this} />;
+    }
+  },
+);
+
+const OpMedianOld = ({
+  phony,
+  paramValues,
+  paramValuesUP,
+  instance,
+}: TopProps) => (
+  <Sentence>
+    OLD Feed <SentenceHandle idx={0} phony={phony} /> into median with{" "}
+    <SentenceParam
+      varName="numFrames"
+      instance={instance}
+      paramValues={paramValues}
+      paramValuesUP={paramValuesUP}
+    />{" "}
+    frames
+  </Sentence>
 );
 
 function fragOp(numInputs: number, fragBody: string, params: OpParam[] = []) {
@@ -977,7 +1571,7 @@ const opMinus = defineOp(
     `
       vec3 tex1Color = vec3(texture2D(tex1, uv));
       vec3 tex2Color = vec3(texture2D(tex2, uv));
-      gl_FragColor = vec4(tex1Color - tex2Color, 1.0);
+      gl_FragColor = vec4(abs(tex1Color - tex2Color), 1.0);
     `,
   ) {
     static id = "minus" as const;
@@ -992,8 +1586,9 @@ const opMinus = defineOp(
 const OpMinus = ({ phony }: TopProps) => {
   return (
     <Sentence>
-      Math: <SentenceHandle idx={0} phony={phony} /> -{" "}
-      <SentenceHandle idx={1} phony={phony} />
+      Math: abs(
+      <SentenceHandle idx={0} phony={phony} /> -{" "}
+      <SentenceHandle idx={1} phony={phony} />)
     </Sentence>
   );
 };
@@ -1285,12 +1880,12 @@ const OpSNoise = ({
 };
 
 export const opsInGroups = [
-  ["Sources", [opWebcam]],
+  ["Sources", [opWebcam, opVideo]],
   ["Generators", [opLFO, opGradient, opBlack, opSNoise]],
   ["Space", [opHFlip, opVFlip, opKal, opDisplace]],
   ["Color", [opSteps]],
-  ["Combiners", [opMinus, opBlend, opTimes]],
-  ["Time", [opDelay, opTimeMachine]],
+  ["Combiners", [opSwitch, opMinus, opBlend, opTimes]],
+  ["Time", [opDelay, opTimeMachine, opMedian, opMedianOld]],
   ["Power", [opFrag]],
 ] as const;
 

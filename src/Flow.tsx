@@ -436,6 +436,18 @@ const FlowInner = ({
     [screenToFlowPosition, draggedOpId, flowUP.nodes],
   );
 
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => {
+      if (e.key === "r") {
+        setRuntimes({});
+      }
+    };
+    window.addEventListener("keydown", listener);
+    return () => {
+      window.removeEventListener("keydown", listener);
+    };
+  }, []);
+
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">

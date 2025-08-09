@@ -26,3 +26,13 @@ flow stuff:
 [ ] undo/redo
 [ ] save videos / screenshots
 [ ] patchwork version
+[ ] YouTube input
+[ ] parameter automation (timelines?)
+
+[ ] faster median
+[ ] manage dangling edges... delete edge when node is deleted?
+[ ] better selection feedback
+
+[ ] make obs camera work
+[ ] make video into median work
+[ ] full-screen mode

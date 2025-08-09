@@ -29,7 +29,7 @@ flow stuff:
 [ ] YouTube input
 [ ] parameter automation (timelines?)
 
-[ ] faster median
+[x] faster median
 [ ] manage dangling edges... delete edge when node is deleted?
 [ ] better selection feedback
 

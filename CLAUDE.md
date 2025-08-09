@@ -75,6 +75,23 @@ DesignToucher is a visual programming environment for real-time image processing
 
 - The application requires HTTPS for webcam access (handled by basicSsl plugin)
 - TypeScript strict mode with separate build configs for app and library
-- Tailwind CSS for styling with custom flow-specific styles
+- **Styling**: Uses Tailwind CSS with inline classes. The `xy-theme.css` file is NOT imported - all styling is done via Tailwind utility classes applied directly to components
 - ESLint configuration for code quality
 - Uses Vite for fast development builds
+
+### Git Workflow
+
+When making changes, Claude Code should:
+1. Implement the requested changes
+2. **Run Prettier to format all changed files**
+3. Ask the user to test the changes and confirm they work correctly
+4. **Wait for user confirmation before committing**
+5. Only commit after receiving positive feedback
+6. Use clear, concise commit messages with Claude Code attribution
+7. Each commit should represent a logical unit of work
+
+### Code Formatting
+
+- **Always run Prettier before asking for feedback or committing**
+- Command: `npx prettier --write <files>`
+- Prettier automatically formats code according to project standards

@@ -101,7 +101,18 @@ export function OpNodeView(props: NodeProps<OpNode>) {
   `;
 
   return (
-    <div className="flex flex-col items-center border border-gray-300 rounded-md bg-gray-100 p-2 !-z-10">
+    <div
+      className={clsx(
+        "flex flex-col items-center border rounded-md bg-gray-100 p-2 !-z-10 transition-all duration-100",
+        selected
+          ? [
+              "border-blue-400 border-2",
+              "shadow-lg shadow-blue-200/20",
+              "ring-1 ring-blue-300/15",
+            ]
+          : ["border-gray-300", "hover:border-blue-300 hover:shadow-sm"],
+      )}
+    >
       {/* <NodeResizer
         color="#ff0071"
         isVisible={selected}
@@ -149,23 +160,17 @@ export function OpNodeView(props: NodeProps<OpNode>) {
               type="source"
               position={Position.Bottom}
               id={idxToOutputHandle(0)}
-              className={`
-                w-[200px]
-                nodrag
-                [&.clickconnecting]:border-red-600
-
-                border-4 border-solid border-black rounded-sm
-              `}
+              className="w-[200px] nodrag border-4 border-black rounded-sm transition-all duration-100 [&.clickconnecting]:border-red-600 hover:border-gray-700"
             >
               <Monitor tex={outputs[0]} className="pointer-events-none" />
             </Handle>
           </div>
         ) : (
           <div
+            className="bg-gray-300 border-2 border-gray-400 border-dashed rounded-sm transition-all duration-100 hover:bg-gray-200"
             style={{
               width: 200,
               aspectRatio: "1.77778 / 1",
-              backgroundColor: "lightgray",
             }}
           />
         )}

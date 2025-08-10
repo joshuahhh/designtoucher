@@ -42,30 +42,6 @@ async function supportsResolution(
   }
 }
 
-async function findSupportedResolutions(
-  deviceId: string,
-): Promise<[number, number][]> {
-  const candidates = [
-    [3840, 2160],
-    [2560, 1440],
-    [1920, 1080],
-    [1600, 900],
-    [1280, 720],
-    [1024, 576],
-    [960, 540],
-    [640, 480],
-    [320, 240],
-  ];
-
-  const results = [];
-  for (const [w, h] of candidates) {
-    if (await supportsResolution(deviceId, w, h)) {
-      results.push([w, h] as [number, number]);
-    }
-  }
-  return results;
-}
-
 export async function startStream(
   deviceId: string,
   width: number,
@@ -94,7 +70,7 @@ export async function startStream(
   // };
 
   const supportedResolutions = await findSupportedResolutions(deviceId);
-  console.log("Supported resolutions:", supportedResolutions);
+  console.log("Supported resolutions:", deviceId, supportedResolutions);
 
   const constraints: MediaStreamConstraints = {
     video: {
@@ -411,4 +387,77 @@ export function screenshotAsCanvas(stream: WebcamStream) {
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(stream.video, 0, 0, canvas.width, canvas.height);
   return canvas;
+}
+
+let enumerateCamerasPromise: Promise<MediaDeviceInfo[]> | null = null;
+export function enumerateCameras() {
+  if (!enumerateCamerasPromise) {
+    enumerateCamerasPromise = enumerateCamerasForReal();
+  }
+  return enumerateCamerasPromise;
+}
+
+async function enumerateCamerasForReal() {
+  if (!navigator.mediaDevices) {
+    throw new Error(
+      "navigator.mediaDevices not available; are we in a SECURE CONTEXT, like a bunch of goddamned SECRET AGENTS?",
+    );
+  }
+
+  // gotta do this first on Safari
+  console.log("Requesting webcam access...");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+    });
+    stream.getTracks().forEach((track) => track.stop());
+  } catch (e) {
+    // ignore
+    console.log("Ignoring getUserMedia error:", e);
+  }
+
+  const allDevices = await navigator.mediaDevices.enumerateDevices();
+  const cams = allDevices.filter((d) => d.kind === "videoinput");
+
+  return cams;
+}
+
+let findSupportedResolutionsPromises: {
+  [deviceId: string]: Promise<[number, number][]>;
+} = {};
+async function findSupportedResolutions(
+  deviceId: string,
+): Promise<[number, number][]> {
+  if (!findSupportedResolutionsPromises[deviceId]) {
+    findSupportedResolutionsPromises[deviceId] =
+      findSupportedResolutionsForReal(deviceId);
+  }
+  return findSupportedResolutionsPromises[deviceId];
+}
+
+async function findSupportedResolutionsForReal(
+  deviceId: string,
+): Promise<[number, number][]> {
+  const candidates = [
+    [3840, 2160],
+    [2560, 1440],
+    [1920, 1080],
+    [1600, 900],
+    [1280, 720],
+    [1024, 576],
+    [960, 540],
+    [640, 480],
+    [320, 240],
+  ];
+
+  const results: [number, number][] = [];
+  await Promise.all(
+    candidates.map(async (candidate) => {
+      const [w, h] = candidate;
+      if (await supportsResolution(deviceId, w, h)) {
+        results.push([w, h] as [number, number]);
+      }
+    }),
+  );
+  return results;
 }

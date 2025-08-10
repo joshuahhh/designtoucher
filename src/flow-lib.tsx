@@ -44,7 +44,12 @@ import {
 } from "./sorting-networks.js";
 import { toposortFromEdges } from "./toposort.js";
 import { popFront, pushBack, pushFront } from "./util.js";
-import { startStream, stopStream, WebcamStream } from "./webcam.js";
+import {
+  enumerateCameras,
+  startStream,
+  stopStream,
+  WebcamStream,
+} from "./webcam.js";
 
 type RunProps = {
   inputs: (Tex | null)[];
@@ -169,28 +174,7 @@ const opWebcam = defineOp(
       super(ctx, nodeId);
 
       (async () => {
-        // gotta do this first on Safari
-
-        console.log("Requesting webcam access...");
-
-        if (!navigator.mediaDevices) {
-          throw new Error(
-            "navigator.mediaDevices not available; are we in a SECURE CONTEXT, like a bunch of goddamned SECRET AGENTS?",
-          );
-        }
-
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-          });
-          stream.getTracks().forEach((track) => track.stop());
-        } catch (e) {
-          // ignore
-          console.log("Ignoring getUserMedia error:", e);
-        }
-
-        const allDevices = await navigator.mediaDevices.enumerateDevices();
-        const cams = allDevices.filter((d) => d.kind === "videoinput");
+        const cams = await enumerateCameras();
 
         // find facetime cam
         let camToUse = cams.find((d) => d.label.includes("FaceTime"));

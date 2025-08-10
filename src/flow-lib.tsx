@@ -170,30 +170,14 @@ const opWebcam = defineOp(
     tex: Tex | null = null;
     hflipOp: BaseOp | null = null;
 
+    cams: MediaDeviceInfo[] | null = null;
+    defaultDeviceId: string | null = null;
+
     constructor(ctx: OmniCanvasContextType, nodeId: string) {
       super(ctx, nodeId);
 
       (async () => {
-        const cams = await enumerateCameras();
-
-        // find facetime cam
-        let camToUse = cams.find((d) => d.label.includes("FaceTime"));
-        // const facetimeCam = cams.find((d) => d.label.includes("OBS"));
-        if (!camToUse) {
-          console.warn("No FaceTime camera found, using first video input");
-          if (cams.length === 0) {
-            throw new Error("No video input devices found");
-          }
-          camToUse = cams[0];
-        }
-
-        this.webcamStream = await startStream(camToUse.deviceId, 1920);
-
-        console.log(
-          "Webcam stream started",
-          this.webcamStream.width,
-          this.webcamStream.height,
-        );
+        this.cams = await enumerateCameras();
       })();
 
       this.outputs = [null];
@@ -202,8 +186,51 @@ const opWebcam = defineOp(
     run({ paramValues }: RunProps) {
       const { gl } = this.ctx;
 
-      if (!this.webcamStream) {
+      if (!this.cams) {
         return;
+      }
+
+      const deviceId = paramValues["deviceId"] ?? this.defaultDeviceId;
+
+      // TODO: this is extremely chaotic code; I don't like it
+      // concretely: I think switching cameras causes a cascade of open operations
+      // and the lack of access to paramValues sucks
+      // but... it just barely works
+
+      if (!this.webcamStream || this.webcamStream.deviceId !== deviceId) {
+        if (deviceId) {
+          // try to find the camera by deviceId
+          const cam = this.cams.find((d) => d.deviceId === deviceId);
+          if (cam) {
+            (async () => {
+              this.webcamStream = await startStream(cam.deviceId, 1920);
+            })();
+            return;
+          }
+        }
+
+        // find facetime cam
+        let camToUse = this.cams.find((d) => d.label.includes("FaceTime"));
+        // const facetimeCam = cams.find((d) => d.label.includes("OBS"));
+        if (!camToUse) {
+          console.warn("No FaceTime camera found, using first video input");
+          if (this.cams.length === 0) {
+            throw new Error("No video input devices found");
+          }
+          camToUse = this.cams[0];
+        }
+
+        this.defaultDeviceId = camToUse.deviceId;
+        (async () => {
+          this.webcamStream = await startStream(camToUse.deviceId, 1920);
+        })();
+        return;
+
+        // console.log(
+        //   "Webcam stream started",
+        //   this.webcamStream.width,
+        //   this.webcamStream.height,
+        // );
       }
 
       if (!this.tex) {
@@ -235,7 +262,7 @@ const opWebcam = defineOp(
       this.tex.width = this.webcamStream.width;
       this.tex.height = this.webcamStream.height;
 
-      if (this.getParamValue(paramValues, "hflip")) {
+      if (!this.webcamStream.facingMode.includes("environment")) {
         if (!this.hflipOp) {
           this.hflipOp = new opHFlip(this.ctx, this.nodeId + "-hflip");
         }
@@ -264,15 +291,34 @@ const opWebcam = defineOp(
     }
 
     renderTop(props: TopProps) {
-      return (
-        <Sentence>
-          Use input{" "}
-          <span className="underline decoration-dotted">FaceTime camera</span>
-        </Sentence>
-      );
+      return <OpWebcam {...props} instance={this} />;
     }
   },
 );
+
+const OpWebcam = ({ instance, paramValues, paramValuesUP }: TopProps) => {
+  const cams = (instance as any).cams as MediaDeviceInfo[] | null;
+  return (
+    <Sentence>
+      Use input{" "}
+      {/* <span className="underline decoration-dotted">FaceTime camera</span> */}
+      {cams ? (
+        <SentenceParamSelect
+          varName="deviceId"
+          paramValues={paramValues}
+          paramValuesUP={paramValuesUP}
+          options={cams.map((cam) => ({
+            label: cam.label,
+            value: cam.deviceId,
+          }))}
+          defaultValue=""
+        />
+      ) : (
+        "..."
+      )}
+    </Sentence>
+  );
+};
 
 const opVideo = defineOp(
   class extends BaseOp {
@@ -1522,6 +1568,37 @@ const SentenceParamNumber = ({
         {instance.getParamValue(paramValues, varName)}
       </StableWidthSpan>
     </Tooltip>
+  );
+};
+
+// we're breaking off from "params" here. that stuff sucks
+const SentenceParamSelect = ({
+  varName,
+  paramValues,
+  paramValuesUP,
+  options,
+  defaultValue,
+}: {
+  varName: string;
+  paramValues: Record<string, unknown>;
+  paramValuesUP: UpdateProxy<Record<string, unknown>>;
+  options: { value: string; label: string }[];
+  defaultValue: string;
+}) => {
+  return (
+    <select
+      value={(paramValues[varName] as string) ?? defaultValue}
+      className="text-xs font-['Varela_Round'] bg-transparent border-b border"
+      onChange={(e) => {
+        paramValuesUP[varName].$set(e.target.value);
+      }}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
   );
 };
 

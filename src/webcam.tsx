@@ -17,9 +17,11 @@ export type Webcam = {
 };
 
 export type WebcamStream = {
+  deviceId: string;
   video: HTMLVideoElement | HTMLImageElement;
   width: number;
   height: number;
+  facingMode: string[];
 };
 
 async function supportsResolution(
@@ -42,7 +44,26 @@ async function supportsResolution(
   }
 }
 
+// TODO: very hacky approach here!
+
+let startStreamPromises: {
+  [deviceIdPlusWidth: string]: Promise<WebcamStream>;
+} = {};
 export async function startStream(
+  deviceId: string,
+  width: number,
+): Promise<WebcamStream> {
+  const deviceIdPlusWidth = `${deviceId}-${width}`;
+  if (!startStreamPromises[deviceIdPlusWidth]) {
+    startStreamPromises[deviceIdPlusWidth] = startStreamForReal(
+      deviceId,
+      width,
+    );
+  }
+  return startStreamPromises[deviceIdPlusWidth];
+}
+
+export async function startStreamForReal(
   deviceId: string,
   width: number,
 ): Promise<WebcamStream> {
@@ -86,6 +107,8 @@ export async function startStream(
   console.log("Starting webcam stream with constraints:", constraints);
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
   console.log("Webcam stream started", stream);
+  const caps = stream.getVideoTracks()[0].getCapabilities();
+  console.log("Webcam capabilities:", caps);
   video.srcObject = stream;
   video.play();
 
@@ -99,9 +122,11 @@ export async function startStream(
   console.log("loaded vid at", video.videoWidth, "x", video.videoHeight);
 
   return {
+    deviceId,
     video,
     width: video.videoWidth,
     height: video.videoHeight,
+    facingMode: caps.facingMode ?? [],
   };
 }
 
@@ -180,9 +205,11 @@ export const useWebcam = ({
       img.src = imgOverride;
       img.onload = () => {
         setStream({
+          deviceId: "img-override",
           video: img,
           width: img.width,
           height: img.height,
+          facingMode: ["environment"],
         });
       };
       return;
@@ -197,9 +224,11 @@ export const useWebcam = ({
       video.muted = true;
       video.onloadeddata = () => {
         setStream({
+          deviceId: "vid-override",
           video,
           width: video.videoWidth,
           height: video.videoHeight,
+          facingMode: ["environment"],
         });
       };
       video.play();

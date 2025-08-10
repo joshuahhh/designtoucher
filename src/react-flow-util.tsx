@@ -1,7 +1,9 @@
 import {
+  Edge,
   Node,
   NodeProps,
   ReactFlowInstance,
+  useOnSelectionChange,
   useReactFlow,
 } from "@xyflow/react";
 import {
@@ -123,4 +125,21 @@ export const useCopyPaste = (rfInstance: ReactFlowInstance | null) => {
       window.removeEventListener("paste", onPasteCapture);
     };
   }, [onCopyCapture, onPasteCapture]);
+};
+
+export const useReactFlowSelection = <
+  NodeType extends Node = Node,
+  EdgeType extends Edge = Edge,
+>() => {
+  const [selectedNodes, setSelectedNodes] = useState<NodeType[]>([]);
+  const [selectedEdges, setSelectedEdges] = useState<EdgeType[]>([]);
+
+  useOnSelectionChange<NodeType, EdgeType>({
+    onChange: useCallback(({ nodes, edges }) => {
+      setSelectedNodes(nodes);
+      setSelectedEdges(edges);
+    }, []),
+  });
+
+  return { selectedNodes, selectedEdges };
 };

@@ -58,7 +58,11 @@ import {
   OmniCanvasHost,
   OmniCanvasOverlay,
 } from "./OmniCanvas.js";
-import { CopyPaste, useNodeData } from "./react-flow-util.js";
+import {
+  CopyPaste,
+  useNodeData,
+  useReactFlowSelection,
+} from "./react-flow-util.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
@@ -466,10 +470,18 @@ const FlowInner = ({
   }, []);
 
   const store = useStoreApi();
+  const { getNodes, getEdges, deleteElements } = useReactFlow();
 
   const onPaneClick = useCallback(() => {
     store.setState({ connectionClickStartHandle: null });
   }, [store]);
+
+  const deleteSelected = useCallback(() => {
+    const selectedNodes = getNodes().filter((node) => node.selected);
+    const selectedEdges = getEdges().filter((edge) => edge.selected);
+
+    deleteElements({ nodes: selectedNodes, edges: selectedEdges });
+  }, [getNodes, getEdges, deleteElements]);
 
   return (
     <div className="w-full h-full flex">
@@ -504,6 +516,8 @@ const FlowInner = ({
           isSidebarExpanded={isSidebarExpanded}
           setIsSidebarExpanded={setIsSidebarExpanded}
         />
+
+        <DeleteToolbar onDelete={deleteSelected} />
       </div>
       <Sidebar
         isSidebarExpanded={isSidebarExpanded}
@@ -511,6 +525,37 @@ const FlowInner = ({
         ctx={ctx}
       />
     </div>
+  );
+};
+
+const DeleteToolbar = ({ onDelete }: { onDelete: () => void }) => {
+  const { selectedNodes, selectedEdges } = useReactFlowSelection<Node, Edge>();
+  const hasSelection = selectedNodes.length > 0 || selectedEdges.length > 0;
+
+  if (!hasSelection) {
+    return null;
+  }
+
+  return (
+    <button
+      onClick={onDelete}
+      className="absolute top-4 left-4 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors"
+      title="Delete selected items"
+    >
+      <svg
+        className="w-4 h-4 text-red-600"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+        />
+      </svg>
+    </button>
   );
 };
 

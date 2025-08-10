@@ -530,7 +530,7 @@ const FlowInner = ({
             onDragOver={onDragOver}
             onDrop={onDrop}
             nodeOrigin={[0.5, 0.5]}
-            className="[--xy-edge-stroke-default:#000]"
+            className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
             onPaneClick={onPaneClick}
           >
             <MiniMap zoomable pannable />

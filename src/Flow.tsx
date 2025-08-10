@@ -197,48 +197,8 @@ export function OpNodeView(props: NodeProps<OpNode>) {
         phony: false,
       }) ?? <div className="above">{opClass.id}</div>}
       <div className="operation-node-body relative mt-1">
-        {/* <div className="flex flex-col justify-center gap-2.5 absolute left-0 h-full -translate-x-1/2">
-          {_.range(runtime.numInputs).map((i) => {
-            const handle = idxToInputHandle(i);
-            return (
-              <Handle
-                key={handle}
-                type="target"
-                position={Position.Left}
-                id={handle}
-                className={handleClasses}
-              />
-            );
-          })}
-        </div> */}
-        {/* <div className="flex flex-col justify-center gap-2.5 absolute right-0 h-full translate-x-1/2">
-          {_.range(runtime.numOutputs).map((i) => {
-            const handle = idxToOutputHandle(i);
-            return (
-              <Handle
-                key={handle}
-                type="source"
-                position={Position.Right}
-                id={handle}
-                className={handleClasses}
-              />
-            );
-          })}
-        </div> */}
         <VideoOutputHandle nodeId={props.id} tex={outputs[0]} />
       </div>
-      {/* {selected && (
-        <div className="operation-node-params below">
-          {runtime.params?.map((param) => (
-            <Param
-              key={param.varName}
-              param={param}
-              data={data}
-              setData={setData}
-            />
-          ))}
-        </div>
-      )} */}
     </div>
   );
 }

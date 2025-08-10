@@ -1,5 +1,5 @@
 import { UpdateProxy } from "@engraft/update-proxy";
-import { Slider, Tooltip } from "@radix-ui/themes";
+import { Popover, Slider } from "@radix-ui/themes";
 import {
   Edge,
   Handle,
@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import clsx from "clsx";
 import _ from "lodash";
+import { Popover as PopoverPrimitive } from "radix-ui";
 import {
   createContext,
   createRef,
@@ -1560,14 +1561,20 @@ const SentenceParamNumber = ({
     </div>
   );
   return (
-    <Tooltip content={tooltip} delayDuration={0}>
-      <StableWidthSpan
-        dragging={dragging}
-        className="underline decoration-dotted tabular-nums"
-      >
-        {instance.getParamValue(paramValues, varName)}
-      </StableWidthSpan>
-    </Tooltip>
+    <Popover.Root>
+      <Popover.Trigger>
+        <StableWidthSpan
+          dragging={dragging}
+          className="underline decoration-dotted tabular-nums"
+        >
+          {instance.getParamValue(paramValues, varName)}
+        </StableWidthSpan>
+      </Popover.Trigger>
+      <Popover.Content side="top" size="1">
+        <PopoverPrimitive.Arrow />
+        {tooltip}
+      </Popover.Content>
+    </Popover.Root>
   );
 };
 

@@ -101,7 +101,35 @@ export abstract class BaseOp {
   abstract numInputs: number;
   abstract numOutputs: number;
   params?: OpParam[] | undefined;
-  renderTop?(props: TopProps): ReactNode;
+
+  getClass(): OpClass<string> {
+    return this.constructor as OpClass<string>;
+  }
+
+  // TODO: provisional stop-gap
+  renderTop(props: TopProps): ReactNode {
+    return (
+      <Sentence>
+        <div className="flex gap-2">
+          ⌛<pre>{this.getClass().id}</pre>
+          {_.range(this.numInputs).map((i) => (
+            <SentenceHandle key={i} idx={i} phony={props.phony} />
+          ))}
+        </div>
+        {this.params?.map((param, i) => (
+          <div key={i} className="flex gap-2">
+            <label htmlFor={param.varName}>{param.displayName}</label>
+            <SentenceParam
+              varName={param.varName}
+              instance={this}
+              paramValues={props.paramValues}
+              paramValuesUP={props.paramValuesUP}
+            />
+          </div>
+        ))}
+      </Sentence>
+    );
+  }
 
   getParamValue(paramValues: Record<string, any>, paramName: string): any {
     const value = paramValues[paramName];

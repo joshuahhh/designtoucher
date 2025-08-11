@@ -36,8 +36,7 @@ flow stuff:
 [ ] make obs camera work
 [ ] make video into median work
 [x] full-screen mode
-
-- [ ] make full-screen mode prettier (no leakage of textures)
+  [ ] make full-screen mode prettier (no leakage of textures)
 
 [x] fix deploy
 

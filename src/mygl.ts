@@ -266,7 +266,7 @@ export class ShaderProgram {
           textureIdx = idx;
         });
       } else {
-        throw new Error(`Uniform ${name} not found in program`);
+        // we safely ignore uniforms that are not found
       }
     }
 

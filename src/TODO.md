@@ -44,3 +44,10 @@ flow stuff:
 [ ] ipad: fix camera freezing after a few min
 [ ] ipad: fix access to multiple cameras
 [ ] ipad: fix seeing red
+
+[ ] direct-manipulation for translation
+[ ] direct-manipulation stacking layers with blend modes
+[ ] color picker (could even have smaller output view?)
+[ ] fragment shader with 0, 2, 3, ... inputs?
+
+[ ] Lab color space?

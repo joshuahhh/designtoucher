@@ -458,7 +458,7 @@ const FlowInner = ({
 
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
-      if (e.key === "r") {
+      if (e.key === "r" && e.ctrlKey) {
         setRuntimes({});
       }
     };

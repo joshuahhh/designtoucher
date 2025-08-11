@@ -66,7 +66,6 @@ type TopProps = {
 
 export type OpClass<Id extends string> = {
   id: Id;
-  description: string;
   new (ctx: OmniCanvasContextType, nodeId: string): BaseOp;
 };
 
@@ -103,6 +102,10 @@ export abstract class BaseOp {
     public nodeId: string,
   ) {}
   abstract run(props: RunProps): void;
+  runLate?(props: RunProps): void;
+  getLateInputs(): number[] {
+    return [];
+  }
   abstract destroy(): void;
   abstract numInputs: number;
   abstract numOutputs: number;
@@ -152,10 +155,64 @@ export abstract class BaseOp {
   }
 }
 
+const opFeedbackBuffer = defineOp(
+  class extends BaseOp {
+    static id = "feedback-buffer" as const;
+
+    numInputs = 1;
+    numOutputs = 1;
+    params: OpParam[] = [];
+
+    fbo: Fbo;
+
+    constructor(ctx: OmniCanvasContextType, nodeId: string) {
+      super(ctx, nodeId);
+
+      this.fbo = newFbo(ctx.gl);
+      this.outputs = [this.fbo.tex];
+    }
+
+    run() {}
+    destroy() {
+      deleteFbo(this.fbo);
+    }
+
+    runLate({ inputs }: RunProps) {
+      const tex = inputs[0];
+      if (!tex) {
+        return;
+      }
+
+      ensureFboSize(this.fbo, tex.width, tex.height);
+      this.ctx.draw({
+        texture: tex.texture,
+        targetFramebuffer: this.fbo.framebuffer,
+        viewport: [0, 0, tex.width, tex.height],
+      });
+    }
+    getLateInputs(): number[] {
+      return [0];
+    }
+
+    renderTop(props: TopProps): ReactNode {
+      return <OpFeedbackBuffer {...props} instance={this} />;
+    }
+  },
+);
+
+const OpFeedbackBuffer = ({ instance, phony }: TopProps) => {
+  return (
+    <Sentence>
+      Feedback buffer
+      <SentenceHandle idx={0} phony={phony} />
+    </Sentence>
+  );
+};
+
 const opWebcam = defineOp(
   class extends BaseOp {
     static id = "cam" as const;
-    static description = "Camera input";
+
     numInputs = 0;
     numOutputs = 1;
     params: OpParam[] = [
@@ -324,7 +381,7 @@ const OpWebcam = ({ instance, paramValues, paramValuesUP }: TopProps) => {
 const opVideo = defineOp(
   class extends BaseOp {
     static id = "video" as const;
-    static description = "Video input";
+
     numInputs = 0;
     numOutputs = 1;
     params: OpParam[] = [];
@@ -415,7 +472,7 @@ const OpVideo = ({ instance }: TopProps) => {
 const opDelay = defineOp(
   class extends BaseOp {
     static id = "delay" as const;
-    static description = "Delay input by some number of frames";
+
     numInputs = 1;
     numOutputs = 1;
     params: OpParam[] = [
@@ -519,7 +576,7 @@ const OpDelay = (props: TopProps) => {
 const opFrag = defineOp(
   class extends BaseOp {
     static id = "frag" as const;
-    static description = "Fragment shader operation";
+
     numInputs = 1;
     numOutputs = 1;
     params: OpParam[] = [
@@ -619,7 +676,7 @@ const OpFrag = ({ phony, paramValues, paramValuesUP, instance }: TopProps) => {
 const opTimeMachine = defineOp(
   class extends BaseOp {
     static id = "timeMachine" as const;
-    static description = "Time machine operation";
+
     numInputs = 2;
     numOutputs = 1;
     params: OpParam[] = [
@@ -761,7 +818,7 @@ const opTimeMachine = defineOp(
 const opSwitch = defineOp(
   class extends BaseOp {
     static id = "switch" as const;
-    static description = "Switch between inputs";
+
     numInputs = 3; // doesn't matter
     numOutputs = 1;
     params: OpParam[] = [
@@ -806,7 +863,7 @@ const opSwitch = defineOp(
 const opMedian = defineOp(
   class extends BaseOp {
     static id = "median" as const;
-    static description = "Time machine median";
+
     numInputs = 1;
     numOutputs = 1;
     params: OpParam[] = [
@@ -1072,7 +1129,7 @@ const OpMedian = ({
 const opMedianOld = defineOp(
   class extends BaseOp {
     static id = "median_old" as const;
-    static description = "Time machine median";
+
     numInputs = 1;
     numOutputs = 1;
     params: OpParam[] = [
@@ -1338,7 +1395,6 @@ const opHFlip = defineOp(
     `,
   ) {
     static id = "hflip" as const;
-    static description = "Flip image horizontally";
   },
 );
 
@@ -1351,7 +1407,6 @@ const opVFlip = defineOp(
     `,
   ) {
     static id = "vflip" as const;
-    static description = "Flip image vertically";
   },
 );
 
@@ -1384,7 +1439,6 @@ const opKal = defineOp(
     ],
   ) {
     static id = "kal" as const;
-    static description = "Kaleidoscope effect";
 
     renderTop(props: TopProps) {
       return <OpKal {...props} instance={this} />;
@@ -1615,12 +1669,16 @@ const opDisplace = defineOp(
     `
       float x = texture2D(tex2, uv).r;
       float y = texture2D(tex3, uv).r;
-      gl_FragColor = texture2D(tex1, uv + vec2(x, y) / 3.0);
+      vec2 newUV = uv + vec2(x, y) / 3.0;
+      if (newUV.x < 0.0 || newUV.x > 1.0 || newUV.y < 0.0 || newUV.y > 1.0) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+      } else {
+        gl_FragColor = texture2D(tex1, newUV);
+      }
     `,
     [],
   ) {
     static id = "displace" as const;
-    static description = "Displace input based on X / Y inputs";
 
     renderTop(props: TopProps) {
       return <OpDisplace {...props} instance={this} />;
@@ -1648,7 +1706,6 @@ const opBlack = defineOp(
     `,
   ) {
     static id = "black" as const;
-    static description = "Black image";
   },
 );
 
@@ -1662,7 +1719,6 @@ const opMinus = defineOp(
     `,
   ) {
     static id = "minus" as const;
-    static description = "Subtract two images";
 
     renderTop(props: TopProps) {
       return <OpMinus {...props} instance={this} />;
@@ -1680,6 +1736,50 @@ const OpMinus = ({ phony }: TopProps) => {
   );
 };
 
+const opPlus = defineOp(
+  class extends fragOp(
+    2,
+    `
+      vec3 tex1Color = vec3(texture2D(tex1, uv));
+      vec3 tex2Color = vec3(texture2D(tex2, uv));
+      gl_FragColor = vec4(tex1Color + tex2Color + alpha, 1.0);
+    `,
+    [
+      {
+        displayName: "Alpha",
+        varName: "alpha",
+        type: "number",
+        defaultValue: 0,
+        min: -1,
+        max: 1,
+        step: 0.01,
+      },
+    ],
+  ) {
+    static id = "plus" as const;
+
+    renderTop(props: TopProps) {
+      return <OpPlus {...props} instance={this} />;
+    }
+  },
+);
+
+const OpPlus = ({ phony, instance, paramValues, paramValuesUP }: TopProps) => {
+  return (
+    <Sentence>
+      Math: <SentenceHandle idx={0} phony={phony} /> +{" "}
+      <SentenceHandle idx={1} phony={phony} /> ( +{" "}
+      <SentenceParam
+        varName="alpha"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />
+      )
+    </Sentence>
+  );
+};
+
 const Sentence = ({ children }: { children: ReactNode }) => {
   return <span className="text-xs font-['Varela_Round'] ">{children}</span>;
 };
@@ -1690,11 +1790,21 @@ const opBlend = defineOp(
     `
       vec3 tex1Color = vec3(texture2D(tex1, uv));
       vec3 tex2Color = vec3(texture2D(tex2, uv));
-      gl_FragColor = vec4(mix(tex1Color, tex2Color, 0.5), 1.0);
+      gl_FragColor = vec4(mix(tex1Color, tex2Color, ratio), 1.0);
     `,
+    [
+      {
+        displayName: "Ratio",
+        varName: "ratio",
+        type: "number",
+        defaultValue: 0.5,
+        min: 0,
+        max: 1,
+        step: 0.001,
+      },
+    ],
   ) {
     static id = "blend" as const;
-    static description = "Blend two images";
 
     renderTop(props: TopProps) {
       return <OpBlend {...props} instance={this} />;
@@ -1702,10 +1812,48 @@ const opBlend = defineOp(
   },
 );
 
-const OpBlend = ({ phony }: TopProps) => {
+const OpBlend = ({ instance, phony, paramValues, paramValuesUP }: TopProps) => {
   return (
     <Sentence>
       Blend <SentenceHandle idx={0} phony={phony} /> with{" "}
+      <SentenceHandle idx={1} phony={phony} /> at{" "}
+      <SentenceParam
+        varName="ratio"
+        instance={instance}
+        paramValues={paramValues}
+        paramValuesUP={paramValuesUP}
+      />{" "}
+    </Sentence>
+  );
+};
+
+const opLayer = defineOp(
+  // lol I guess I should do this just by drawing the second texture
+  // on top of the first? but it's easier to just use a frag shader.
+  // remember, this is all about drawing with transparency. no
+  // forgetting about any alpha channels.
+  class extends fragOp(
+    2,
+    `
+      vec4 A = texture2D(tex2, uv);
+      vec4 B = texture2D(tex1, uv);
+      float outA = B.a + A.a * (1.0 - B.a);
+      vec3 outRGB = (B.rgb * B.a + A.rgb * A.a * (1.0 - B.a)) / max(outA, 1e-6);
+      gl_FragColor = vec4(outRGB, outA);
+    `,
+  ) {
+    static id = "layer" as const;
+
+    renderTop(props: TopProps) {
+      return <OpLayer {...props} instance={this} />;
+    }
+  },
+);
+
+const OpLayer = ({ instance, phony, paramValues, paramValuesUP }: TopProps) => {
+  return (
+    <Sentence>
+      Layer <SentenceHandle idx={0} phony={phony} /> over{" "}
       <SentenceHandle idx={1} phony={phony} />
     </Sentence>
   );
@@ -1732,7 +1880,6 @@ const opTimes = defineOp(
     ],
   ) {
     static id = "times" as const;
-    static description = "Multiply image by number";
 
     renderTop(props: TopProps) {
       return <OpTimes {...props} instance={this} />;
@@ -1795,7 +1942,6 @@ const opLFO = defineOp(
     ],
   ) {
     static id = "lfo" as const;
-    static description = "Low-frequency oscillator";
 
     renderTop(props: TopProps) {
       return <OpLFO {...props} instance={this} />;
@@ -1855,7 +2001,6 @@ const opGradient = defineOp(
     ],
   ) {
     static id = "gradient" as const;
-    static description = "Generate a gradient";
   },
 );
 
@@ -1881,7 +2026,6 @@ const opSteps = defineOp(
     ],
   ) {
     static id = "steps" as const;
-    static description = "Reduce each channel to N steps";
   },
 );
 
@@ -1925,7 +2069,6 @@ const opSNoise = defineOp(
     ],
   ) {
     static id = "snoise" as const;
-    static description = "Generate 2D simplex noise";
 
     renderTop(props: TopProps) {
       return <OpSNoise {...props} />;
@@ -1971,8 +2114,8 @@ export const opsInGroups = [
   ["Generators", [opLFO, opGradient, opBlack, opSNoise]],
   ["Space", [opHFlip, opVFlip, opKal, opDisplace]],
   ["Color", [opSteps]],
-  ["Combiners", [opSwitch, opMinus, opBlend, opTimes]],
-  ["Time", [opDelay, opTimeMachine, opMedian, opMedianOld]],
+  ["Combiners", [opLayer, opSwitch, opMinus, opPlus, opBlend, opTimes]],
+  ["Time", [opFeedbackBuffer, opDelay, opTimeMachine, opMedian, opMedianOld]],
   ["Power", [opFrag]],
 ] as const;
 
@@ -2035,10 +2178,21 @@ export function runFlow(
     }
   });
 
+  let lateHandles = new Set<string>();
+  for (const runtime of Object.values(runtimes)) {
+    for (const idx of runtime.getLateInputs()) {
+      lateHandles.add(runtime.nodeId + "-" + idxToInputHandle(idx));
+    }
+  }
+
+  const upToDateEdges = edges.filter(
+    (edge) => !lateHandles.has(edge.target + "-" + edge.targetHandle),
+  );
+
   // toposort nodes based on edges
   const sorted = toposortFromEdges(
     nodes.map((n) => n.id),
-    edges.map((e) => [e.target, e.source]),
+    upToDateEdges.map((e) => [e.target, e.source]),
   );
   if (sorted.cyclic.size > 0)
     throw new Error("Cyclic dependencies detected in the flow");
@@ -2048,7 +2202,6 @@ export function runFlow(
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) throw new Error(`Node with id ${nodeId} not found`);
 
-    const op = opById(node.data.opId);
     const runtime = runtimes[nodeId];
 
     const inputs = _.range(runtime.numInputs).map((i) => {
@@ -2069,4 +2222,29 @@ export function runFlow(
       console.error(`Error running node ${nodeId}:`, error);
     }
   });
+
+  // run all the runLate operations
+  for (const runtime of Object.values(runtimes)) {
+    try {
+      const node = nodes.find((n) => n.id === runtime.nodeId);
+      if (!node) throw new Error(`Node with id ${runtime.nodeId} not found`);
+
+      const inputs = _.range(runtime.numInputs).map((i) => {
+        const edge = edges.find(
+          (e) =>
+            e.target === runtime.nodeId &&
+            e.targetHandle === idxToInputHandle(i),
+        );
+        if (!edge) {
+          return null;
+        }
+        return runtimes[edge.source].outputs[
+          outputHandleToIdx(edge.sourceHandle)
+        ];
+      });
+      runtime.runLate?.({ inputs, paramValues: node.data.paramValues });
+    } catch (error) {
+      console.error(`Error running late for node ${runtime.nodeId}:`, error);
+    }
+  }
 }

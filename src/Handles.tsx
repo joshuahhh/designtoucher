@@ -10,6 +10,11 @@ export const getHandleClasses = (isVideo: boolean = false) => {
     "[&.clickconnecting]:shadow-blue-200/20",
     "[&.clickconnecting]:ring-1",
     "[&.clickconnecting]:ring-blue-300/15",
+    "pointer-events-auto",
+    "[&.connectionindicator]:cursor-crosshair",
+    // react-flow wants events on handles to be directly on the
+    // handle, not on children, so I guess this makes that work?
+    "[&>*]:pointer-events-none",
   );
 
   if (isVideo) {

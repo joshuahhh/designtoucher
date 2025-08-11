@@ -30,11 +30,18 @@ flow stuff:
 [ ] parameter automation (timelines?)
 
 [x] faster median
-[ ] manage dangling edges... delete edge when node is deleted?
-[ ] better selection feedback
+[x] manage dangling edges... delete edge when node is deleted?
+[x] better selection feedback
 
 [ ] make obs camera work
 [ ] make video into median work
-[ ] full-screen mode
+[x] full-screen mode
 
-[ ] fix deploy
+- [ ] make full-screen mode prettier (no leakage of textures)
+
+[x] fix deploy
+
+[ ] ipad: less glitchy click-to-connect
+[ ] ipad: fix camera freezing after a few min
+[ ] ipad: fix access to multiple cameras
+[ ] ipad: fix seeing red

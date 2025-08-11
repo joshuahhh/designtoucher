@@ -54,7 +54,6 @@ import {
   Monitor,
   OmniCanvasContext,
   OmniCanvasContextType,
-  OmniCanvasGuest,
   OmniCanvasHost,
   OmniCanvasOverlay,
 } from "./OmniCanvas.js";
@@ -99,7 +98,7 @@ const VideoOutputHandle = ({
         className={clsx(getHandleClasses(true), { "border-dashed": !tex })}
       >
         {tex ? (
-          <Monitor tex={tex} className="pointer-events-none" />
+          <Monitor tex={tex} />
         ) : (
           <div
             style={{
@@ -109,7 +108,7 @@ const VideoOutputHandle = ({
           />
         )}
         {tex && isHovered && !isFullscreen && (
-          <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full">
+          <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full pointer-events-none">
             <button
               onClick={handleFullscreenClick}
               className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
@@ -706,14 +705,7 @@ const FullscreenModal = ({
   tex: Tex;
   onClose: () => void;
 }) => {
-  const { underlayDiv, draw } = useContext(OmniCanvasContext);
-
-  const command = useCallback(
-    (viewport: [number, number, number, number]) => {
-      draw({ texture: tex.texture, viewport });
-    },
-    [draw, tex.texture],
-  );
+  const { underlayDiv } = useContext(OmniCanvasContext);
 
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
@@ -751,14 +743,14 @@ const FullscreenModal = ({
         </button>
       </OmniCanvasOverlay>
 
-      <OmniCanvasGuest
-        command={command}
-        className={`bg-gray-300`}
+      <div
         style={{
           width: `min(100cqw,calc(100cqh*${aspectRatio}))`,
           aspectRatio: aspectRatio,
         }}
-      />
+      >
+        <Monitor tex={tex} />
+      </div>
     </div>,
     underlayDiv,
   );

@@ -44,6 +44,8 @@ flow stuff:
 [ ] ipad: fix camera freezing after a few min
 [ ] ipad: fix access to multiple cameras
 [ ] ipad: fix seeing red
+[x] ipad: fix stuff cut off at bottom
+[ ] ipad: lasso selection
 
 [ ] direct-manipulation for translation
 [ ] direct-manipulation stacking layers with blend modes

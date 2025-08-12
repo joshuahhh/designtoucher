@@ -34,6 +34,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { FaExpandArrowsAlt, FaTrash } from "react-icons/fa";
 import { assertNever } from "./assert.js";
 import "./flow-base.css";
 import {
@@ -114,17 +115,7 @@ const VideoOutputHandle = ({
               className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
               title="View fullscreen"
             >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
+              <FaExpandArrowsAlt />
             </button>
           </OmniCanvasOverlay>
         )}
@@ -344,10 +335,11 @@ export const Flow = ({
   flow: Flow;
   setFlow: Dispatch<SetStateAction<Flow>>;
 }) => (
-  <div className="flex w-full h-full overflow-hidden box-border">
+  <div className="flex w-full h-full overflow-hidden box-border relative">
     <ReactFlowProvider>
       <OmniCanvasHost>
-        <Theme appearance="light" className="w-full h-full">
+        {/* !min-h-[initial] is to override some default radix-theme thing that uses dvh and messes up height on ipad (!!!) */}
+        <Theme appearance="light" className="w-full h-full !min-h-[initial]">
           <FlowInner flow={flow} setFlow={setFlow} />
         </Theme>
       </OmniCanvasHost>
@@ -487,7 +479,6 @@ const FlowInner = ({
       <div className="flex-1 relative">
         <FlowContext.Provider value={{ runtimes: runtimesRef.current }}>
           <ReactFlow
-            attributionPosition="top-right"
             nodes={flow.nodes}
             edges={flow.edges}
             onNodesChange={onNodesChange}
@@ -503,6 +494,7 @@ const FlowInner = ({
             nodeOrigin={[0.5, 0.5]}
             className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
             onPaneClick={onPaneClick}
+            proOptions={{ hideAttribution: true }}
           >
             <MiniMap zoomable pannable />
             <Controls />
@@ -516,7 +508,7 @@ const FlowInner = ({
           setIsSidebarExpanded={setIsSidebarExpanded}
         />
 
-        <DeleteToolbar onDelete={deleteSelected} />
+        <Toolbar onDelete={deleteSelected} />
       </div>
       <Sidebar
         isSidebarExpanded={isSidebarExpanded}
@@ -527,34 +519,36 @@ const FlowInner = ({
   );
 };
 
-const DeleteToolbar = ({ onDelete }: { onDelete: () => void }) => {
+const Toolbar = ({ onDelete }: { onDelete: () => void }) => {
   const { selectedNodes, selectedEdges } = useReactFlowSelection<Node, Edge>();
   const hasSelection = selectedNodes.length > 0 || selectedEdges.length > 0;
 
-  if (!hasSelection) {
-    return null;
-  }
+  // const isMultiTouch =
+  //   navigator.maxTouchPoints !== undefined && navigator.maxTouchPoints > 1;
 
   return (
-    <button
-      onClick={onDelete}
-      className="absolute top-4 left-4 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors"
-      title="Delete selected items"
-    >
-      <svg
-        className="w-4 h-4 text-red-600"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-        />
-      </svg>
-    </button>
+    <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 select-none">
+      {/* {isMultiTouch && (
+        <button
+          className="bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-colors"
+          title="Lasso selection on hold"
+          onPointerDown={onLassoPointerDown}
+          onPointerUp={onLassoPointerUp}
+        >
+          <LuLasso className="w-4 h-4 text-grey-600" />
+        </button>
+      )} */}
+
+      {hasSelection && (
+        <button
+          onClick={onDelete}
+          className="bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors"
+          title="Delete selected items"
+        >
+          <FaTrash className="w-4 h-4 text-red-600" />
+        </button>
+      )}
+    </div>
   );
 };
 

@@ -72,15 +72,11 @@
   }
 }
 
-body {
-  /* overflow: hidden; */
-  /* background-color: black; */
-  height: 100vh;
-  overflow: hidden;
-}
-
+html,
+body,
 #root {
-  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
 }
 
 @font-face {

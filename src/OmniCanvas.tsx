@@ -4,7 +4,6 @@ import React, {
   createContext,
   forwardRef,
   HTMLAttributes,
-  ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -182,12 +181,15 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       </div>
       <canvas
         ref={setCanvas}
-        // TODO: don't love the z-index here
+        // TODO:
+        // - don't love the z-index here
+        // - canvas doesn't want to be inset-0 – it wants to be
+        //   left-0 top-0 w-full h-full
         className="absolute left-0 top-0 w-full h-full pointer-events-none z-[1]"
       />
       <div
         ref={setOverlayDiv}
-        className="absolute left-0 top-0 w-full h-full z-[2] pointer-events-none"
+        className="absolute inset-0 z-[2] pointer-events-none"
       />
     </>
   );
@@ -245,11 +247,8 @@ export function Monitor({
 
 export const OmniCanvasOverlay = forwardRef<
   HTMLDivElement,
-  {
-    children: ReactNode;
-    strategy?: "absolute" | "fixed";
-  } & HTMLAttributes<HTMLDivElement>
->(({ children, strategy = "absolute", ...rest }, ref) => {
+  HTMLAttributes<HTMLDivElement>
+>(({ children, ...rest }, ref) => {
   const { overlayDiv } = useContext(OmniCanvasContext);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -268,7 +267,7 @@ export const OmniCanvasOverlay = forwardRef<
     const wrapper = wrapperRef.current;
     if (!anchor || !wrapper || !overlayDiv) return;
 
-    wrapper.style.position = strategy;
+    wrapper.style.position = "absolute";
     wrapper.style.willChange = "transform,width,height";
 
     const update = () => {
@@ -282,7 +281,7 @@ export const OmniCanvasOverlay = forwardRef<
 
     update();
     return autoUpdate(anchor, wrapper, update);
-  }, [overlayDiv, strategy]);
+  }, [overlayDiv]);
 
   return (
     <>

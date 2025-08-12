@@ -43,7 +43,8 @@ flow stuff:
 [ ] ipad: less glitchy click-to-connect
 [ ] ipad: fix camera freezing after a few min
 [ ] ipad: fix access to multiple cameras
-[ ] ipad: fix seeing red
+  - not fixable: https://stackoverflow.com/questions/71698132/how-can-i-get-ios-to-have-2-video-streams
+[x] ipad: fix seeing red
 [x] ipad: fix stuff cut off at bottom
 [ ] ipad: lasso selection
 
@@ -53,3 +54,13 @@ flow stuff:
 [ ] fragment shader with 0, 2, 3, ... inputs?
 
 [ ] Lab color space?
+
+[ ] video moshing
+[ ] glfx.js stuff
+[ ] lygia stuff
+
+[x] remote cameras
+  [ ] control resolution
+  [ ] select camera
+  [ ] make pretty
+[ ] remote monitors

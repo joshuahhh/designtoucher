@@ -10,6 +10,8 @@ import {
 } from "@xyflow/react";
 import clsx from "clsx";
 import _ from "lodash";
+import { Peer } from "peerjs";
+import { QRCodeSVG } from "qrcode.react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import {
   createContext,
@@ -20,10 +22,12 @@ import {
   useLayoutEffect,
   useState,
 } from "react";
+import { LuQrCode } from "react-icons/lu";
 import { mergeRefs } from "react-merge-refs";
 import { assert } from "./assert.js";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import { codeMirrorSetup } from "./codeMirrorSetup.js";
+import { CopyButton } from "./CopyButton.js";
 import { getHandleClasses } from "./Handles.js";
 import {
   deleteFbo,
@@ -386,6 +390,125 @@ const OpWebcam = ({ instance, paramValues, paramValuesUP }: TopProps) => {
         />
       ) : (
         "..."
+      )}
+    </Sentence>
+  );
+};
+
+const opRemoteCam = defineOp(
+  class extends BaseOp {
+    static id = "remote-cam" as const;
+
+    numInputs = 0;
+    numOutputs = 1;
+
+    webcamStream: WebcamStream | null = null;
+    video: HTMLVideoElement = document.createElement("video");
+    id: string | null = null;
+    tex: Tex | null = null;
+
+    constructor(ctx: OmniCanvasContextType, nodeId: string) {
+      super(ctx, nodeId);
+
+      const peer = new Peer();
+
+      peer.on("open", (id) => {
+        this.id = id;
+      });
+
+      // Answer incoming media calls; we don't send any tracks
+      peer.on("call", (call) => {
+        console.log("got a call!", call);
+        call.answer(); // receive-only
+        call.on("stream", (stream) => {
+          console.log("got a stream!", stream);
+          this.video.srcObject = stream;
+          this.video.play();
+        });
+        call.on("error", (e) => console.error("Call error:", e));
+        call.on("close", () => console.log("Call closed"));
+      });
+
+      peer.on("error", (e) => console.error("Peer error:", e));
+
+      this.outputs = [this.tex];
+    }
+
+    run({ paramValues }: RunProps) {
+      const { gl } = this.ctx;
+
+      const video = assuredlyVideo(this.video);
+
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        return;
+      }
+      console.log("video", video.readyState);
+
+      if (!this.tex) {
+        console.log(
+          "Creating new texture for remote cam",
+          video.videoWidth,
+          video.videoHeight,
+        );
+        this.tex = newTex(
+          this.ctx.gl,
+          this.video.videoWidth,
+          this.video.videoHeight,
+        );
+        this.outputs = [this.tex];
+      }
+
+      gl.bindTexture(gl.TEXTURE_2D, this.tex.texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      // console.log("BEFORE texSubImage2D");
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        video,
+      );
+    }
+
+    destroy() {
+      if (this.webcamStream) {
+        stopStream(this.webcamStream);
+        this.webcamStream = null;
+      }
+    }
+
+    renderTop(props: TopProps) {
+      return <OpRemoteCam {...props} instance={this} />;
+    }
+  },
+);
+
+const OpRemoteCam = ({ instance, paramValues, paramValuesUP }: TopProps) => {
+  const id = (instance as any).id;
+  const senderUrl = window.location.href + "#sender/" + id;
+  return (
+    <Sentence>
+      Use remote camera
+      {id === null ? (
+        "..."
+      ) : (
+        <>
+          {" "}
+          <CopyButton text={senderUrl} />
+          <Popover.Root>
+            <Popover.Trigger>
+              <div className="inline">
+                <LuQrCode />
+              </div>
+            </Popover.Trigger>
+            <Popover.Content side="top" size="1">
+              <PopoverPrimitive.Arrow />
+              <QRCodeSVG value={senderUrl} />
+            </Popover.Content>
+          </Popover.Root>
+        </>
       )}
     </Sentence>
   );
@@ -2123,7 +2246,7 @@ const OpSNoise = ({
 };
 
 export const opsInGroups = [
-  ["Sources", [opWebcam, opVideo]],
+  ["Sources", [opWebcam, opVideo, opRemoteCam]],
   ["Generators", [opLFO, opGradient, opBlack, opSNoise]],
   ["Space", [opHFlip, opVFlip, opKal, opDisplace]],
   ["Color", [opSteps]],

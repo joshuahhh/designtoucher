@@ -209,6 +209,12 @@ const OpFeedbackBuffer = ({ instance, phony }: TopProps) => {
   );
 };
 
+function assuredlyVideo(
+  video: HTMLVideoElement | HTMLImageElement,
+): HTMLVideoElement {
+  return video as HTMLVideoElement;
+}
+
 const opWebcam = defineOp(
   class extends BaseOp {
     static id = "cam" as const;
@@ -291,6 +297,13 @@ const opWebcam = defineOp(
         // );
       }
 
+      const video = assuredlyVideo(this.webcamStream.video);
+
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        console.warn("webcam lost readiness", this.nodeId, video.readyState);
+        return;
+      }
+
       if (!this.tex) {
         console.log(
           "Creating new texture for webcam stream",
@@ -314,7 +327,7 @@ const opWebcam = defineOp(
         0,
         gl.RGBA,
         gl.UNSIGNED_BYTE,
-        this.webcamStream.video,
+        video,
       );
       // console.log("AFTER texSubImage2D");
       this.tex.width = this.webcamStream.width;

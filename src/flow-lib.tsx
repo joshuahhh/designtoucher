@@ -22,7 +22,7 @@ import {
   useLayoutEffect,
   useState,
 } from "react";
-import { LuQrCode } from "react-icons/lu";
+import { LuCopy, LuQrCode } from "react-icons/lu";
 import { mergeRefs } from "react-merge-refs";
 import { assert } from "./assert.js";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
@@ -488,28 +488,45 @@ const opRemoteCam = defineOp(
 const OpRemoteCam = ({ instance, paramValues, paramValuesUP }: TopProps) => {
   const id = (instance as any).id;
   const senderUrl = window.location.href + "#sender/" + id;
+
+  if (id === null) {
+    return (
+      <Sentence>
+        Use remote camera <span className="italic">[loading...]</span>
+      </Sentence>
+    );
+  }
+
+  const buttonClassName = clsx(
+    "border border-gray-300 rounded-md p-1 shadow-sm hover:bg-gray-50 transition-colors",
+  );
+
   return (
     <Sentence>
-      Use remote camera
-      {id === null ? (
-        "..."
-      ) : (
-        <>
-          {" "}
-          <CopyButton text={senderUrl} />
-          <Popover.Root>
-            <Popover.Trigger>
-              <div className="inline">
-                <LuQrCode />
-              </div>
-            </Popover.Trigger>
-            <Popover.Content side="top" size="1">
-              <PopoverPrimitive.Arrow />
-              <QRCodeSVG value={senderUrl} />
-            </Popover.Content>
-          </Popover.Root>
-        </>
-      )}
+      <div>Use remote camera @ {id.slice(0, 8)}</div>
+      <div className="flex gap-2">
+        <CopyButton text={senderUrl} className={buttonClassName}>
+          <LuCopy className="inline-block" />
+          Copy URL
+        </CopyButton>
+        <Popover.Root>
+          <Popover.Trigger>
+            <button
+              className={clsx(
+                "inline-flex items-center gap-1",
+                buttonClassName,
+              )}
+            >
+              <LuQrCode className="inline-block" />
+              Show URL QR
+            </button>
+          </Popover.Trigger>
+          <Popover.Content side="top" size="1">
+            <PopoverPrimitive.Arrow />
+            <QRCodeSVG value={senderUrl} />
+          </Popover.Content>
+        </Popover.Root>
+      </div>
     </Sentence>
   );
 };
@@ -1917,7 +1934,7 @@ const OpPlus = ({ phony, instance, paramValues, paramValuesUP }: TopProps) => {
 };
 
 const Sentence = ({ children }: { children: ReactNode }) => {
-  return <span className="text-xs font-['Varela_Round'] ">{children}</span>;
+  return <div className="text-xs font-['Varela_Round'] ">{children}</div>;
 };
 
 const opBlend = defineOp(

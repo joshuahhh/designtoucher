@@ -62,5 +62,7 @@ flow stuff:
 [x] remote cameras
   [ ] control resolution
   [ ] select camera
-  [ ] make pretty
+  [x] make pretty
+  [ ] give them nice names
+  [ ] some kinda persistence, multiple viewers, etc
 [ ] remote monitors

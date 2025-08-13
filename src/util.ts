@@ -99,3 +99,40 @@ export function objectKeys<T extends object>(obj: T): (keyof T)[] {
 }
 
 export const tuple = <T extends any[]>(xs: readonly [...T]): T => xs as T;
+
+export function log<T>(obj: T, prefix: string = ""): T {
+  console.log(prefix, obj);
+  return obj;
+}
+
+export const instrumentOld = (obj: any) =>
+  new Proxy(obj, {
+    get(t, p, r) {
+      const v = Reflect.get(t, p, r);
+      return typeof v !== "function"
+        ? v
+        : new Proxy(v, {
+            apply(f, th, a) {
+              console.log("🔍", String(p), ...a);
+              return Reflect.apply(f, th, a);
+            },
+            construct(f, a, n) {
+              console.log("🔍", String(p), ...a);
+              return Reflect.construct(f, a, n);
+            },
+          });
+    },
+  });
+
+export const instrument = (o: any) =>
+  new Proxy(o, {
+    get(t, p, r) {
+      const v = Reflect.get(t, p, r);
+      return typeof v === "function"
+        ? function (...a: any[]) {
+            console.log("🔍", String(p), ...a);
+            return Reflect.apply(v, t, a);
+          }
+        : v;
+    },
+  });

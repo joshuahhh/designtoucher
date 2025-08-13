@@ -20,7 +20,6 @@ import {
   ReactFlowProvider,
   useReactFlow,
   useStoreApi,
-  useUpdateNodeInternals,
   Viewport,
 } from "@xyflow/react";
 import { clsx } from "clsx";
@@ -37,18 +36,7 @@ import { createPortal } from "react-dom";
 import { FaExpandArrowsAlt, FaTrash } from "react-icons/fa";
 import { assertNever } from "./assert.js";
 import "./flow-base.css";
-import {
-  AnyOpId,
-  FlowContext,
-  idxToOutputHandle,
-  opById,
-  OpInstance,
-  OpNode,
-  OpNodeData,
-  OpParam,
-  opsInGroups,
-  runFlow,
-} from "./flow-lib.js";
+import { OpParam } from "./flow-lib.js";
 import { getHandleClasses } from "./Handles.js";
 import { Tex } from "./mygl.js";
 import {
@@ -58,6 +46,22 @@ import {
   OmniCanvasHost,
   OmniCanvasOverlay,
 } from "./OmniCanvas.js";
+import {
+  AnyOpId,
+  AnyOpInstance,
+  FlowContext,
+  getOpId,
+  makeOutputHandleId,
+  PhonyContext,
+  SentenceHandle,
+} from "./ops-core.js";
+import {
+  opById,
+  OpNode,
+  OpNodeData,
+  opsInGroups,
+  runFlow,
+} from "./ops-flow.js";
 import {
   CopyPaste,
   useNodeData,
@@ -95,7 +99,8 @@ const VideoOutputHandle = ({
       <Handle
         type="source"
         position={Position.Bottom}
-        id={idxToOutputHandle(0)}
+        // TODO: customize
+        id={makeOutputHandleId(nodeId, "out")}
         className={clsx(getHandleClasses(true), { "border-dashed": !tex })}
       >
         {tex ? (
@@ -145,25 +150,30 @@ export function OpNodeView(props: NodeProps<OpNode>) {
   //   };
   // }, [props.id]);
 
-  const { runtimes } = useContext(FlowContext);
+  const { opInstances } = useContext(FlowContext);
 
-  const opClass = opById(data.opId);
-  const runtime = runtimes[props.id];
-
-  const updateNodeInternals = useUpdateNodeInternals();
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // console.log("Updating node internals for", props.id);
-      updateNodeInternals(props.id);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [props.id, updateNodeInternals]);
+  const op = opById(data.opId);
+  const runtime = opInstances[props.id]?.runtime;
 
   if (!runtime) {
     return null;
   }
 
-  const outputs = runtime.outputs;
+  // const updateNodeInternals = useUpdateNodeInternals();
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     // console.log("Updating node internals for", props.id);
+  //     updateNodeInternals(props.id);
+  //   }, 1000);
+  //   return () => clearInterval(interval);
+  // }, [props.id, updateNodeInternals]);
+
+  if (!runtime) {
+    return null;
+  }
+
+  // TODO: customize this
+  const output = (runtime as any).out;
 
   return (
     <div
@@ -184,14 +194,14 @@ export function OpNodeView(props: NodeProps<OpNode>) {
         minWidth={100}
         minHeight={30}
       /> */}
-      {runtime.renderTop?.({
-        paramValues: data.paramValues,
-        paramValuesUP: dataUP.paramValues,
-        instance: runtime,
-        phony: false,
-      }) ?? <div className="above">{opClass.id}</div>}
+      <op.RenderTop
+        paramValues={data.paramValues}
+        paramValuesUP={dataUP.paramValues}
+        runtime={runtime}
+        Handle={SentenceHandle}
+      />
       <div className="operation-node-body relative mt-1">
-        <VideoOutputHandle nodeId={props.id} tex={outputs[0]} />
+        <VideoOutputHandle nodeId={props.id} tex={output} />
       </div>
     </div>
   );
@@ -372,7 +382,9 @@ const FlowInner = ({
     zoom: 2,
   }));
 
-  const [runtimes, setRuntimes] = useState<Record<string, OpInstance>>({});
+  const [opInstances, setOpInstances] = useState<Record<string, AnyOpInstance>>(
+    {},
+  );
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
 
@@ -388,16 +400,16 @@ const FlowInner = ({
   );
 
   const flowRef = useRefForCallback(flow);
-  const runtimesRef = useRefForCallback(runtimes);
+  const opInstancesRef = useRefForCallback(opInstances);
 
   useEffect(() => {
     return animate(() => {
       // run the flow
       // console.log("Running flow");
-      runFlow(flowRef.current.nodes, flowRef.current.edges, runtimes, ctx);
-      setRuntimes((prevRuntimes) => ({ ...prevRuntimes }));
+      runFlow(flowRef.current.nodes, flowRef.current.edges, opInstances, ctx);
+      setOpInstances((prevRuntimes) => ({ ...prevRuntimes }));
     });
-  }, [flowRef, runtimes, ctx]);
+  }, [flowRef, opInstances, ctx]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -451,7 +463,7 @@ const FlowInner = ({
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if (e.key === "r" && e.ctrlKey) {
-        setRuntimes({});
+        setOpInstances({});
       }
     };
     window.addEventListener("keydown", listener);
@@ -477,7 +489,7 @@ const FlowInner = ({
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">
-        <FlowContext.Provider value={{ runtimes: runtimesRef.current }}>
+        <FlowContext.Provider value={{ opInstances: opInstancesRef.current }}>
           <ReactFlow
             nodes={flow.nodes}
             edges={flow.edges}
@@ -615,19 +627,6 @@ const Sidebar = ({
     [setDraggedOpId],
   );
 
-  const instantiatedOps = useMemo(
-    () =>
-      Object.fromEntries(
-        opsInGroups.flatMap(([groupName, groupOps]) =>
-          groupOps.map((opClass) => {
-            const op = new opClass(ctx, undefined as any);
-            return [opClass.id, op];
-          }),
-        ),
-      ),
-    [ctx],
-  );
-
   const noopParamValuesUP = useMemo(
     () => up<Record<string, any>>(() => {}),
     [],
@@ -635,60 +634,43 @@ const Sidebar = ({
   const noopParamValues = useMemo(() => ({}), []);
 
   return (
-    <div
-      className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
-        isSidebarExpanded ? "w-60 opacity-100" : "w-0 opacity-0"
-      } overflow-hidden z-[2]`}
-    >
-      <div className="pt-4 px-4 h-full flex flex-col">
-        <h3 className="text-lg font-semibold text-gray-800">Components</h3>
-        <div className="overflow-auto">
-          {opsInGroups.map(([groupName, groupOps]) => (
-            <div key={groupName} className="my-8">
-              <h4 className="text-sm text-gray-600 mb-2 font-bold">
-                {groupName}
-              </h4>
-              <div className="grid grid-cols-1 gap-2">
-                {groupOps.map((opClass) => {
-                  const op = instantiatedOps[opClass.id];
-
-                  if (!op.renderTop) {
-                    return null; // Skip if no renderTop method
-                  }
-
-                  return (
+    <PhonyContext.Provider value={{ phony: true }}>
+      <div
+        className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
+          isSidebarExpanded ? "w-60 opacity-100" : "w-0 opacity-0"
+        } overflow-hidden z-[2]`}
+      >
+        <div className="pt-4 px-4 h-full flex flex-col">
+          <h3 className="text-lg font-semibold text-gray-800">Components</h3>
+          <div className="overflow-auto">
+            {opsInGroups.map(([groupName, groupOps]) => (
+              <div key={groupName} className="my-8">
+                <h4 className="text-sm text-gray-600 mb-2 font-bold">
+                  {groupName}
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  {groupOps.map((op) => (
                     <div
-                      key={opClass.id}
+                      key={op.id}
                       draggable
-                      onDragStart={(event) => onDragStart(event, opClass.id)}
+                      onDragStart={(event) => onDragStart(event, getOpId(op))}
                       className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
                     >
-                      {op.renderTop?.({
-                        instance: op,
-                        paramValuesUP: noopParamValuesUP,
-                        paramValues: noopParamValues,
-                        phony: true,
-                      })}
+                      <op.RenderTop
+                        runtime={null}
+                        paramValuesUP={noopParamValuesUP}
+                        paramValues={noopParamValues}
+                        Handle={SentenceHandle}
+                      />
                     </div>
-                  );
-                  // <div
-                  //   key={op.id}
-                  //   draggable
-                  //   onDragStart={(event) => onDragStart(event, op.id)}
-                  //   className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
-                  // >
-                  //   <div className="font-medium text-gray-900">{op.id}</div>
-                  //   <div className="text-xs text-gray-500 mt-1">
-                  //     {op.description}
-                  //   </div>
-                  // </div>
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </PhonyContext.Provider>
   );
 };
 

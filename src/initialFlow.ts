@@ -1,17 +1,18 @@
 import { Flow } from "./Flow.js";
+import { AnyOpId } from "./ops-core.js";
 
 export const initialFlow: Flow = {
   nodes: [
     {
       id: "n1",
       position: { x: 0, y: 0 },
-      data: { opId: "cam", paramValues: {} },
+      data: { opId: "cam" as AnyOpId, paramValues: {} },
       type: "operation",
     },
     {
       id: "n2",
       position: { x: 100, y: 100 },
-      data: { opId: "kal", paramValues: {} },
+      data: { opId: "h-flip" as AnyOpId, paramValues: {} },
       type: "operation",
     },
   ],
@@ -19,9 +20,9 @@ export const initialFlow: Flow = {
     {
       id: "n1-n2",
       source: "n1",
-      sourceHandle: "output-1",
+      sourceHandle: "n1:output:out",
       target: "n2",
-      targetHandle: "input-1",
+      targetHandle: "n2:input:tex1",
     },
   ],
 };

@@ -72,3 +72,30 @@ export function pushFront<T>(arr: T[], item: T): void {
 export function popFront<T>(arr: T[]): T | undefined {
   return arr.shift();
 }
+
+export type Entries<T> = {
+  [K in keyof T]: [K, T[K]];
+}[keyof T][];
+
+export function objectEntries<T extends object>(obj: T): Entries<T> {
+  return Object.entries(obj) as Entries<T>;
+}
+
+export type FromEntries<T> =
+  T extends ReadonlyArray<
+    readonly [infer K extends string | number | symbol, infer _V]
+  >
+    ? { [key in K]: Extract<T[number], readonly [key, any]>[1] }
+    : never;
+
+export function objectFromEntries<
+  T extends ReadonlyArray<readonly [PropertyKey, any]>,
+>(entries: T): FromEntries<T> {
+  return Object.fromEntries(entries) as FromEntries<T>;
+}
+
+export function objectKeys<T extends object>(obj: T): (keyof T)[] {
+  return Object.keys(obj) as (keyof T)[];
+}
+
+export const tuple = <T extends any[]>(xs: readonly [...T]): T => xs as T;

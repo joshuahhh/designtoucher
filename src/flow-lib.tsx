@@ -1,34 +1,17 @@
 import { UpdateProxy } from "@engraft/update-proxy";
-import { Popover, Slider } from "@radix-ui/themes";
-import {
-  Edge,
-  Handle,
-  Node,
-  Position,
-  useEdges,
-  useNodeId,
-} from "@xyflow/react";
+import { Popover } from "@radix-ui/themes";
+import { Edge, Node } from "@xyflow/react";
 import clsx from "clsx";
 import _ from "lodash";
 import { Peer } from "peerjs";
 import { QRCodeSVG } from "qrcode.react";
 import { Popover as PopoverPrimitive } from "radix-ui";
-import {
-  createContext,
-  createRef,
-  forwardRef,
-  ReactNode,
-  useContext,
-  useLayoutEffect,
-  useState,
-} from "react";
+import { ReactNode } from "react";
 import { LuCopy, LuQrCode } from "react-icons/lu";
-import { mergeRefs } from "react-merge-refs";
 import { assert } from "./assert.js";
 import { CodeMirrorControlled } from "./CodeMirrorControlled.js";
 import { codeMirrorSetup } from "./codeMirrorSetup.js";
 import { CopyButton } from "./CopyButton.js";
-import { getHandleClasses } from "./Handles.js";
 import {
   deleteFbo,
   destroyTex,
@@ -42,38 +25,45 @@ import {
   Tex,
   Tex3D,
 } from "./mygl.js";
-import { Monitor, OmniCanvasContextType } from "./OmniCanvas.js";
+import { OmniCanvasContextType } from "./OmniCanvas.js";
 import {
   medianNetworkFromSortingNetwork,
   parberryPairwiseNetwork,
 } from "./sorting-networks.js";
 import { toposortFromEdges } from "./toposort.js";
 import { popFront, pushBack, pushFront } from "./util.js";
-import {
-  enumerateCameras,
-  startStream,
-  stopStream,
-  WebcamStream,
-} from "./webcam.js";
+import { stopStream, WebcamStream } from "./webcam.js";
 
-type RunProps = {
-  inputs: (Tex | null)[];
+type RunProps<InputKey extends string> = {
+  inputs: Record<InputKey, Tex | null>;
   paramValues: Record<string, unknown>;
 };
 
-type TopProps = {
+type RenderTopProps<InputKey extends string, OutputKey extends string> = {
   paramValues: Record<string, unknown>;
   paramValuesUP: UpdateProxy<Record<string, unknown>>;
-  instance: BaseOp;
+  instance: OpInstance<InputKey, OutputKey> | null;
   phony: boolean;
 };
 
-export type OpClass<Id extends string> = {
+export type OpClass<
+  Id extends string,
+  InputKey extends string,
+  OutputKey extends string,
+> = {
   id: Id;
-  new (ctx: OmniCanvasContextType, nodeId: string): BaseOp;
+  new (
+    ctx: OmniCanvasContextType,
+    nodeId: string,
+  ): OpInstance<InputKey, OutputKey>;
+  renderTop: (props: RenderTopProps<InputKey, OutputKey>) => ReactNode;
 };
 
-function defineOp<Id extends string>(cls: OpClass<Id>) {
+export function defineOp<
+  Id extends string,
+  InputKey extends string,
+  OutputKey extends string,
+>(cls: OpClass<Id, InputKey, OutputKey>) {
   return cls;
 }
 
@@ -98,51 +88,56 @@ export type OpParam = {
     }
 );
 
-export abstract class BaseOp {
-  outputs: (Tex | null)[] = [];
+export function genericRenderTop<
+  InputKey extends string,
+  OutputKey extends string,
+>(
+  props: RenderTopProps<InputKey, OutputKey>,
+  instance: OpInstance<InputKey, OutputKey>,
+  inputs: InputKey[],
+): ReactNode {
+  return (
+    <Sentence>
+      <div className="flex gap-2">
+        ⌛<pre>{instance.getClass().id}</pre>
+        {inputs.map((key) => (
+          <SentenceHandle key={key} handleKey={key} phony={props.phony} />
+        ))}
+      </div>
+      {instance.params?.map((param, i) => (
+        <div key={i} className="flex gap-2">
+          <label htmlFor={param.varName}>{param.displayName}</label>
+          <SentenceParam
+            varName={param.varName}
+            instance={instance}
+            paramValues={props.paramValues}
+            paramValuesUP={props.paramValuesUP}
+          />
+        </div>
+      ))}
+    </Sentence>
+  );
+}
+
+export abstract class OpInstance<
+  InputKey extends string,
+  OutputKey extends string,
+> {
+  outputs: { [key in OutputKey]: Tex | null } = {} as any;
 
   constructor(
     public ctx: OmniCanvasContextType,
     public nodeId: string,
   ) {}
-  abstract run(props: RunProps): void;
-  runLate?(props: RunProps): void;
-  getLateInputs(): number[] {
+  abstract run(props: RunProps<InputKey>): void;
+  runLate?(props: RunProps<InputKey>): void;
+  getLateInputs(): InputKey[] {
     return [];
   }
   abstract destroy(): void;
   abstract numInputs: number;
   abstract numOutputs: number;
   params?: OpParam[] | undefined;
-
-  getClass(): OpClass<string> {
-    return this.constructor as OpClass<string>;
-  }
-
-  // TODO: provisional stop-gap
-  renderTop(props: TopProps): ReactNode {
-    return (
-      <Sentence>
-        <div className="flex gap-2">
-          ⌛<pre>{this.getClass().id}</pre>
-          {_.range(this.numInputs).map((i) => (
-            <SentenceHandle key={i} idx={i} phony={props.phony} />
-          ))}
-        </div>
-        {this.params?.map((param, i) => (
-          <div key={i} className="flex gap-2">
-            <label htmlFor={param.varName}>{param.displayName}</label>
-            <SentenceParam
-              varName={param.varName}
-              instance={this}
-              paramValues={props.paramValues}
-              paramValuesUP={props.paramValuesUP}
-            />
-          </div>
-        ))}
-      </Sentence>
-    );
-  }
 
   getParamValue(paramValues: Record<string, any>, paramName: string): any {
     const value = paramValues[paramName];
@@ -159,244 +154,8 @@ export abstract class BaseOp {
   }
 }
 
-const opFeedbackBuffer = defineOp(
-  class extends BaseOp {
-    static id = "feedback-buffer" as const;
-
-    numInputs = 1;
-    numOutputs = 1;
-    params: OpParam[] = [];
-
-    fbo: Fbo;
-
-    constructor(ctx: OmniCanvasContextType, nodeId: string) {
-      super(ctx, nodeId);
-
-      this.fbo = newFbo(ctx.gl);
-      this.outputs = [this.fbo.tex];
-    }
-
-    run() {}
-    destroy() {
-      deleteFbo(this.fbo);
-    }
-
-    runLate({ inputs }: RunProps) {
-      const tex = inputs[0];
-      if (!tex) {
-        return;
-      }
-
-      ensureFboSize(this.fbo, tex.width, tex.height);
-      this.ctx.draw({
-        texture: tex.texture,
-        targetFramebuffer: this.fbo.framebuffer,
-        viewport: [0, 0, tex.width, tex.height],
-      });
-    }
-    getLateInputs(): number[] {
-      return [0];
-    }
-
-    renderTop(props: TopProps): ReactNode {
-      return <OpFeedbackBuffer {...props} instance={this} />;
-    }
-  },
-);
-
-const OpFeedbackBuffer = ({ instance, phony }: TopProps) => {
-  return (
-    <Sentence>
-      Feedback buffer
-      <SentenceHandle idx={0} phony={phony} />
-    </Sentence>
-  );
-};
-
-function assuredlyVideo(
-  video: HTMLVideoElement | HTMLImageElement,
-): HTMLVideoElement {
-  return video as HTMLVideoElement;
-}
-
-const opWebcam = defineOp(
-  class extends BaseOp {
-    static id = "cam" as const;
-
-    numInputs = 0;
-    numOutputs = 1;
-    params: OpParam[] = [
-      {
-        displayName: "Flip horizontally",
-        varName: "hflip",
-        type: "boolean",
-        defaultValue: true,
-      },
-    ];
-
-    webcamStream: WebcamStream | null = null;
-    tex: Tex | null = null;
-    hflipOp: BaseOp | null = null;
-
-    cams: MediaDeviceInfo[] | null = null;
-    defaultDeviceId: string | null = null;
-
-    constructor(ctx: OmniCanvasContextType, nodeId: string) {
-      super(ctx, nodeId);
-
-      (async () => {
-        this.cams = await enumerateCameras();
-      })();
-
-      this.outputs = [null];
-    }
-
-    run({ paramValues }: RunProps) {
-      const { gl } = this.ctx;
-
-      if (!this.cams) {
-        return;
-      }
-
-      const deviceId = paramValues["deviceId"] ?? this.defaultDeviceId;
-
-      // TODO: this is extremely chaotic code; I don't like it
-      // concretely: I think switching cameras causes a cascade of open operations
-      // and the lack of access to paramValues sucks
-      // but... it just barely works
-
-      if (!this.webcamStream || this.webcamStream.deviceId !== deviceId) {
-        if (deviceId) {
-          // try to find the camera by deviceId
-          const cam = this.cams.find((d) => d.deviceId === deviceId);
-          if (cam) {
-            (async () => {
-              this.webcamStream = await startStream(cam.deviceId, 1920);
-            })();
-            return;
-          }
-        }
-
-        // find facetime cam
-        let camToUse = this.cams.find((d) => d.label.includes("FaceTime"));
-        // const facetimeCam = cams.find((d) => d.label.includes("OBS"));
-        if (!camToUse) {
-          console.warn("No FaceTime camera found, using first video input");
-          if (this.cams.length === 0) {
-            throw new Error("No video input devices found");
-          }
-          camToUse = this.cams[0];
-        }
-
-        this.defaultDeviceId = camToUse.deviceId;
-        (async () => {
-          this.webcamStream = await startStream(camToUse.deviceId, 1920);
-        })();
-        return;
-
-        // console.log(
-        //   "Webcam stream started",
-        //   this.webcamStream.width,
-        //   this.webcamStream.height,
-        // );
-      }
-
-      const video = assuredlyVideo(this.webcamStream.video);
-
-      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-        console.warn("webcam lost readiness", this.nodeId, video.readyState);
-        return;
-      }
-
-      if (!this.tex) {
-        console.log(
-          "Creating new texture for webcam stream",
-          this.webcamStream.width,
-          this.webcamStream.height,
-        );
-        this.tex = newTex(
-          this.ctx.gl,
-          this.webcamStream.width,
-          this.webcamStream.height,
-        );
-      }
-
-      gl.bindTexture(gl.TEXTURE_2D, this.tex.texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      // console.log("BEFORE texSubImage2D");
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        video,
-      );
-      // console.log("AFTER texSubImage2D");
-      this.tex.width = this.webcamStream.width;
-      this.tex.height = this.webcamStream.height;
-
-      if (!this.webcamStream.facingMode.includes("environment")) {
-        if (!this.hflipOp) {
-          this.hflipOp = new opHFlip(this.ctx, this.nodeId + "-hflip");
-        }
-
-        this.hflipOp.run({
-          inputs: [this.tex],
-          paramValues: {},
-        });
-
-        this.outputs = [this.hflipOp.outputs[0]];
-      } else {
-        if (this.hflipOp) {
-          this.hflipOp.destroy();
-          this.hflipOp = null;
-        }
-
-        this.outputs = [this.tex];
-      }
-    }
-
-    destroy() {
-      if (this.webcamStream) {
-        stopStream(this.webcamStream);
-        this.webcamStream = null;
-      }
-    }
-
-    renderTop(props: TopProps) {
-      return <OpWebcam {...props} instance={this} />;
-    }
-  },
-);
-
-const OpWebcam = ({ instance, paramValues, paramValuesUP }: TopProps) => {
-  const cams = (instance as any).cams as MediaDeviceInfo[] | null;
-  return (
-    <Sentence>
-      Use input{" "}
-      {/* <span className="underline decoration-dotted">FaceTime camera</span> */}
-      {cams ? (
-        <SentenceParamSelect
-          varName="deviceId"
-          paramValues={paramValues}
-          paramValuesUP={paramValuesUP}
-          options={cams.map((cam) => ({
-            label: cam.label,
-            value: cam.deviceId,
-          }))}
-          defaultValue=""
-        />
-      ) : (
-        "..."
-      )}
-    </Sentence>
-  );
-};
-
 const opRemoteCam = defineOp(
-  class extends BaseOp {
+  class extends OpInstance {
     static id = "remote-cam" as const;
 
     numInputs = 0;
@@ -532,7 +291,7 @@ const OpRemoteCam = ({ instance, paramValues, paramValuesUP }: TopProps) => {
 };
 
 const opVideo = defineOp(
-  class extends BaseOp {
+  class extends OpInstance {
     static id = "video" as const;
 
     numInputs = 0;
@@ -623,7 +382,7 @@ const OpVideo = ({ instance }: TopProps) => {
 };
 
 const opDelay = defineOp(
-  class extends BaseOp {
+  class extends OpInstance {
     static id = "delay" as const;
 
     numInputs = 1;
@@ -727,7 +486,7 @@ const OpDelay = (props: TopProps) => {
 };
 
 const opFrag = defineOp(
-  class extends BaseOp {
+  class extends OpInstance {
     static id = "frag" as const;
 
     numInputs = 1;
@@ -827,7 +586,7 @@ const OpFrag = ({ phony, paramValues, paramValuesUP, instance }: TopProps) => {
 };
 
 const opTimeMachine = defineOp(
-  class extends BaseOp {
+  class extends OpInstance {
     static id = "timeMachine" as const;
 
     numInputs = 2;
@@ -969,7 +728,7 @@ const opTimeMachine = defineOp(
 );
 
 const opSwitch = defineOp(
-  class extends BaseOp {
+  class extends OpInstance {
     static id = "switch" as const;
 
     numInputs = 3; // doesn't matter
@@ -1014,7 +773,7 @@ const opSwitch = defineOp(
 );
 
 const opMedian = defineOp(
-  class extends BaseOp {
+  class extends OpInstance {
     static id = "median" as const;
 
     numInputs = 1;
@@ -1280,7 +1039,7 @@ const OpMedian = ({
 );
 
 const opMedianOld = defineOp(
-  class extends BaseOp {
+  class extends OpInstance {
     static id = "median_old" as const;
 
     numInputs = 1;
@@ -1483,7 +1242,7 @@ function fragOp(numInputs: number, fragBody: string, params: OpParam[] = []) {
     void main(){ uv = 0.5*(position+1.0); gl_Position = vec4(position,0.0,1.0); }
   `;
 
-  return class extends BaseOp {
+  return class extends OpInstance {
     numInputs = numInputs;
     numOutputs = 1;
     params = params;
@@ -1622,200 +1381,6 @@ const OpKal = (props: TopProps) => {
   );
 };
 
-export const FlowContext = createContext<{
-  runtimes: Record<string, BaseOp>;
-}>(undefined!);
-
-const SentenceHandle = ({ idx, phony }: { idx: number; phony: boolean }) => {
-  // figure out if we're downstream of a node
-  const edges = useEdges();
-  const nodeId = useNodeId();
-  const edge = edges.find(
-    (edge) =>
-      edge.target === nodeId && edge.targetHandle === idxToInputHandle(idx),
-  );
-  const flowContext = useContext(FlowContext);
-
-  const sourceOutput =
-    flowContext && edge
-      ? flowContext.runtimes[edge.source].outputs[
-          outputHandleToIdx(edge.sourceHandle)
-        ]
-      : null;
-
-  const className = clsx(getHandleClasses(false), {
-    "w-3 h-3": !sourceOutput,
-    "h-4 align-text-bottom": sourceOutput,
-  });
-
-  return phony ? (
-    <div className={className} />
-  ) : (
-    <Handle
-      type="target"
-      position={Position.Top}
-      id={idxToInputHandle(idx)}
-      className={className}
-    >
-      {sourceOutput ? (
-        <Monitor tex={sourceOutput} className="pointer-events-none" />
-      ) : null}
-    </Handle>
-  );
-};
-
-const SentenceParam = ({
-  varName,
-  instance,
-  paramValues,
-  paramValuesUP,
-}: {
-  varName: string;
-  instance: BaseOp;
-  paramValues: Record<string, unknown>;
-  paramValuesUP: UpdateProxy<Record<string, unknown>>;
-}) => {
-  const param = instance.params?.find((p) => p.varName === varName);
-  if (!param) {
-    throw new Error(`Parameter ${varName} not found`);
-  }
-  if (param.type === "number") {
-    return (
-      <SentenceParamNumber
-        varName={varName}
-        instance={instance}
-        paramValues={paramValues}
-        paramValuesUP={paramValuesUP}
-        param={param}
-      />
-    );
-  }
-
-  throw new Error(`Unsupported parameter type: ${param.type}`);
-};
-
-const StableWidthSpan = forwardRef<
-  HTMLSpanElement,
-  {
-    dragging?: boolean;
-  } & React.HTMLAttributes<HTMLSpanElement>
->(({ dragging, ...otherProps }, forwardedRef) => {
-  const ref = createRef<HTMLSpanElement>();
-  const [minWidth, setMinWidth] = useState(0);
-
-  useLayoutEffect(() => {
-    if (dragging && ref.current) {
-      const w = ref.current.offsetWidth;
-      setMinWidth((prev) => Math.max(prev, w));
-    }
-    if (!dragging) {
-      setMinWidth(0); // release lock
-    }
-  }, [dragging, ref]);
-
-  return (
-    <span
-      ref={mergeRefs([ref, forwardedRef])}
-      {...otherProps}
-      style={{
-        ...otherProps.style,
-        // color: dragging ? "red" : "inherit",
-        display: "inline-block",
-        minWidth: dragging ? minWidth : "inherit",
-      }}
-    />
-  );
-});
-
-const SentenceParamNumber = ({
-  varName,
-  instance,
-  paramValues,
-  paramValuesUP,
-  param,
-}: {
-  varName: string;
-  instance: BaseOp;
-  paramValues: Record<string, unknown>;
-  paramValuesUP: UpdateProxy<Record<string, unknown>>;
-  param: OpParam & { type: "number" };
-}) => {
-  const [dragging, setDragging] = useState(false);
-
-  const tooltip = (
-    <div className="flex flex-row items-center gap-2">
-      <div className="text-xs">{param.min}</div>
-      <Slider
-        className="w-32"
-        value={[instance.getParamValue(paramValues, varName)]}
-        min={param.min}
-        max={param.max}
-        step={param.step}
-        onValueChange={(value) => {
-          if (instance.params) {
-            const param = instance.params.find((p) => p.varName === varName);
-            if (param) {
-              paramValuesUP[varName].$set(parseFloat(value.toString()));
-            }
-          }
-          setDragging(true);
-        }}
-        onValueCommit={() => {
-          setDragging(false);
-        }}
-      />
-      <div className="text-xs">{param.max}</div>
-    </div>
-  );
-  return (
-    <Popover.Root>
-      <Popover.Trigger>
-        <StableWidthSpan
-          dragging={dragging}
-          className="underline decoration-dotted tabular-nums"
-        >
-          {instance.getParamValue(paramValues, varName)}
-        </StableWidthSpan>
-      </Popover.Trigger>
-      <Popover.Content side="top" size="1">
-        <PopoverPrimitive.Arrow />
-        {tooltip}
-      </Popover.Content>
-    </Popover.Root>
-  );
-};
-
-// we're breaking off from "params" here. that stuff sucks
-const SentenceParamSelect = ({
-  varName,
-  paramValues,
-  paramValuesUP,
-  options,
-  defaultValue,
-}: {
-  varName: string;
-  paramValues: Record<string, unknown>;
-  paramValuesUP: UpdateProxy<Record<string, unknown>>;
-  options: { value: string; label: string }[];
-  defaultValue: string;
-}) => {
-  return (
-    <select
-      value={(paramValues[varName] as string) ?? defaultValue}
-      className="text-xs font-['Varela_Round'] bg-transparent border-b border"
-      onChange={(e) => {
-        paramValuesUP[varName].$set(e.target.value);
-      }}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
-};
-
 const opDisplace = defineOp(
   class extends fragOp(
     3,
@@ -1931,10 +1496,6 @@ const OpPlus = ({ phony, instance, paramValues, paramValuesUP }: TopProps) => {
       )
     </Sentence>
   );
-};
-
-const Sentence = ({ children }: { children: ReactNode }) => {
-  return <div className="text-xs font-['Varela_Round'] ">{children}</div>;
 };
 
 const opBlend = defineOp(
@@ -2290,29 +1851,38 @@ export type OpNodeData = { opId: AnyOpId; paramValues: Record<string, any> };
 
 export type OpNode = Node<OpNodeData, "operation">;
 
-export function idxToOutputHandle(idx: number): string {
-  return `output-${idx + 1}`;
+// we have a great new convention for handles!
+// the handleId is nodeId:input:key or nodeId:output:key
+// where key is any old thing the node wants to use
+// (no using :s in the key, natch)
+
+export function makeInputHandleId(nodeId: string, key: string): string {
+  return `${nodeId}:input:${key}`;
 }
-export function idxToInputHandle(idx: number): string {
-  return `input-${idx + 1}`;
+export function makeOutputHandleId(nodeId: string, key: string): string {
+  return `${nodeId}:output:${key}`;
 }
-export function outputHandleToIdx(handle: string | null | undefined): number {
-  if (!handle?.startsWith("output-")) {
-    throw new Error(`Invalid output handle: ${handle}`);
-  }
-  return parseInt(handle.slice("output-".length)) - 1;
+export function parseInputHandleId(handleId: string): {
+  nodeId: string;
+  key: string;
+} {
+  const match = handleId.match(/^(.+):input:(.+)$/);
+  if (!match) throw new Error(`Invalid input handleId: ${handleId}`);
+  return { nodeId: match[1], key: match[2] };
 }
-export function inputHandleToIdx(handle: string | null | undefined): number {
-  if (!handle?.startsWith("input-")) {
-    throw new Error(`Invalid input handle: ${handle}`);
-  }
-  return parseInt(handle.slice("input-".length)) - 1;
+export function parseOutputHandleId(handleId: string): {
+  nodeId: string;
+  key: string;
+} {
+  const match = handleId.match(/^(.+):output:(.+)$/);
+  if (!match) throw new Error(`Invalid output handleId: ${handleId}`);
+  return { nodeId: match[1], key: match[2] };
 }
 
 export function runFlow(
   nodes: OpNode[],
   edges: Edge[],
-  runtimes: Record<string, BaseOp>,
+  runtimes: Record<string, OpInstance>,
   ctx: OmniCanvasContextType,
 ) {
   // clean up old runtimes
@@ -2333,22 +1903,46 @@ export function runFlow(
 
   let lateHandles = new Set<string>();
   for (const runtime of Object.values(runtimes)) {
-    for (const idx of runtime.getLateInputs()) {
-      lateHandles.add(runtime.nodeId + "-" + idxToInputHandle(idx));
+    for (const inputKey of runtime.getLateInputs()) {
+      lateHandles.add(makeInputHandleId(runtime.nodeId, inputKey));
     }
   }
 
-  const upToDateEdges = edges.filter(
-    (edge) => !lateHandles.has(edge.target + "-" + edge.targetHandle),
+  const onTimeEdges = edges.filter(
+    (edge) => !lateHandles.has(edge.targetHandle!),
   );
 
   // toposort nodes based on edges
   const sorted = toposortFromEdges(
     nodes.map((n) => n.id),
-    upToDateEdges.map((e) => [e.target, e.source]),
+    onTimeEdges.map((e) => [e.target, e.source]),
   );
   if (sorted.cyclic.size > 0)
     throw new Error("Cyclic dependencies detected in the flow");
+
+  function assembleInputs(nodeId: string, onTimeOnly: boolean) {
+    const inputEdges = (onTimeOnly ? onTimeEdges : edges).filter(
+      (e) => e.target === nodeId,
+    );
+
+    return Object.fromEntries(
+      inputEdges.map((edge) => {
+        const { nodeId, key: inputKey } = parseInputHandleId(
+          edge.targetHandle!,
+        );
+        const sourceRuntime = runtimes[nodeId];
+        if (!sourceRuntime) {
+          console.warn(
+            `Source runtime ${edge.source} not found for edge`,
+            edge,
+          );
+          return [inputKey, null];
+        }
+        const outputKey = parseOutputHandleId(edge.sourceHandle!).key;
+        return [inputKey, sourceRuntime.outputs[outputKey]];
+      }),
+    );
+  }
 
   // run operations in sorted order
   sorted.sorted.forEach((nodeId) => {
@@ -2357,20 +1951,11 @@ export function runFlow(
 
     const runtime = runtimes[nodeId];
 
-    const inputs = _.range(runtime.numInputs).map((i) => {
-      const edge = edges.find(
-        (e) => e.target === nodeId && e.targetHandle === idxToInputHandle(i),
-      );
-      if (!edge) {
-        return null;
-      }
-      return runtimes[edge.source].outputs[
-        outputHandleToIdx(edge.sourceHandle)
-      ];
-    });
-
     try {
-      runtime.run({ inputs, paramValues: node.data.paramValues });
+      runtime.run({
+        inputs: assembleInputs(nodeId, true),
+        paramValues: node.data.paramValues,
+      });
     } catch (error) {
       console.error(`Error running node ${nodeId}:`, error);
     }
@@ -2382,20 +1967,10 @@ export function runFlow(
       const node = nodes.find((n) => n.id === runtime.nodeId);
       if (!node) throw new Error(`Node with id ${runtime.nodeId} not found`);
 
-      const inputs = _.range(runtime.numInputs).map((i) => {
-        const edge = edges.find(
-          (e) =>
-            e.target === runtime.nodeId &&
-            e.targetHandle === idxToInputHandle(i),
-        );
-        if (!edge) {
-          return null;
-        }
-        return runtimes[edge.source].outputs[
-          outputHandleToIdx(edge.sourceHandle)
-        ];
+      runtime.runLate?.({
+        inputs: assembleInputs(runtime.nodeId, false),
+        paramValues: node.data.paramValues,
       });
-      runtime.runLate?.({ inputs, paramValues: node.data.paramValues });
     } catch (error) {
       console.error(`Error running late for node ${runtime.nodeId}:`, error);
     }

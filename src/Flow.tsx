@@ -39,10 +39,10 @@ import { assertNever } from "./assert.js";
 import "./flow-base.css";
 import {
   AnyOpId,
-  BaseOp,
   FlowContext,
   idxToOutputHandle,
   opById,
+  OpInstance,
   OpNode,
   OpNodeData,
   OpParam,
@@ -372,7 +372,7 @@ const FlowInner = ({
     zoom: 2,
   }));
 
-  const [runtimes, setRuntimes] = useState<Record<string, BaseOp>>({});
+  const [runtimes, setRuntimes] = useState<Record<string, OpInstance>>({});
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
 

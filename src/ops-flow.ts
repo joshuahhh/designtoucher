@@ -10,6 +10,7 @@
 
 import { Edge, Node } from "@xyflow/react";
 import _ from "lodash";
+import { assert } from "./assert.js";
 import { OmniCanvasContextType } from "./OmniCanvas.js";
 import {
   AnyOp,
@@ -24,8 +25,18 @@ import { toposortFromEdges } from "./toposort.js";
 
 const ops = _.map(
   import.meta.glob("./ops/*.tsx", { eager: true }),
-  (mod) => (mod as any).default as AnyOp,
+  (mod, filePath) => ({
+    ...((mod as any).default as AnyOp),
+    idFromFile: filePath.replace(/^\.\/ops\/(.*)\.tsx$/, "$1"),
+  }),
 );
+
+ops.forEach((op) => {
+  assert(
+    op.id === op.idFromFile,
+    `Operation id "${op.id}" does not match file name "${op.idFromFile}.tsx"`,
+  );
+});
 
 console.log("ops", ops);
 
@@ -38,12 +49,12 @@ export function opById(id: string): AnyOp {
 }
 
 export const opsInGroups = [
-  ["Sources", [opById("cam")]],
+  ["Sources", [opById("cam"), opById("remote-cam")]],
   ["Generators", [opById("solid")]],
   ["Space", [opById("h-flip")]],
   ["Time", [opById("feedback-buffer")]],
   ["Debug", [opById("no-op")]],
-] as const;
+];
 
 export type OpNodeData = { opId: AnyOpId; paramValues: Record<string, any> };
 
@@ -54,6 +65,7 @@ export function runFlow(
   edges: Edge[],
   opInstances: Record<string, AnyOpInstance>,
   ctx: OmniCanvasContextType,
+  setParams: (nodeId: string, params: Record<string, any>) => void,
 ) {
   // clean up old op instances
   for (const [nodeId, instance] of Object.entries(opInstances)) {
@@ -70,6 +82,8 @@ export function runFlow(
     if (!opInstances[node.id]) {
       const op = opById(node.data.opId);
       opInstances[node.id] = instantiateOp(op, ctx);
+      const params = op.initParams ? op.initParams() : {};
+      setParams(node.id, params);
     }
   });
 
@@ -101,9 +115,11 @@ export function runFlow(
 
     return Object.fromEntries(
       inputEdges.map((edge) => {
-        const { nodeId, key: inputKey } = parseInputHandleId(
-          edge.targetHandle!,
+        const { nodeId, key: outputKey } = parseOutputHandleId(
+          edge.sourceHandle!,
         );
+        const { key: inputKey } = parseInputHandleId(edge.targetHandle!);
+
         const sourceOpInstance = opInstances[nodeId];
         if (!sourceOpInstance) {
           console.warn(
@@ -112,7 +128,6 @@ export function runFlow(
           );
           return [inputKey, null];
         }
-        const outputKey = parseOutputHandleId(edge.sourceHandle!).key;
         return [inputKey, (sourceOpInstance.runtime as any)[outputKey]];
       }),
     );
@@ -127,12 +142,24 @@ export function runFlow(
     const runtime = opInstances[nodeId].runtime;
 
     try {
+      const inputs = assembleInputs(nodeId, true);
       op.run?.({
         runtime,
-        inputs: assembleInputs(nodeId, true),
+        inputs,
         paramValues: node.data.paramValues,
         ctx,
       });
+      // console.log(
+      //   "ran",
+      //   nodeId,
+      //   op.id,
+      //   "from",
+      //   _.mapValues(inputs, (tex) =>
+      //     isProbablyTex(tex) ? getFingerprint(tex.texture) : tex,
+      //   ),
+      //   "to",
+      //   getFingerprint(runtime.out.texture),
+      // );
     } catch (error) {
       console.error(`Error running node ${nodeId}:`, error);
     }

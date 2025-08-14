@@ -17,67 +17,88 @@ import { getHandleClasses } from "./Handles.js";
 import { Tex } from "./mygl.js";
 import { Monitor, OmniCanvasContextType } from "./OmniCanvas.js";
 
-export type Op<Runtime, InputKey extends string> = {
+export type Op<Runtime, InputKey extends string, ParamKey extends string> = {
   id: string;
   inputKeys?: InputKey[];
   inputKeysLate?: InputKey[];
-  initParams?: (ctx: OmniCanvasContextType) => Record<string, any>;
+  initParams?: () => Record<ParamKey, any>;
   initRuntime?: (ctx: OmniCanvasContextType) => Runtime;
+  initWithRuntime?: (props: {
+    ctx: OmniCanvasContextType;
+    runtime: Runtime;
+  }) => void;
   run?: (props: {
     runtime: Runtime;
     inputs: Record<InputKey, Tex | null>;
-    paramValues: Record<string, unknown>;
+    paramValues: Record<ParamKey, unknown>;
     ctx: OmniCanvasContextType;
   }) => void;
   runLate?: (props: {
     runtime: Runtime;
     inputs: Record<InputKey, Tex | null>;
-    paramValues: Record<string, unknown>;
+    paramValues: Record<ParamKey, unknown>;
     ctx: OmniCanvasContextType;
   }) => void;
   destroy?: (props: { runtime: Runtime; ctx: OmniCanvasContextType }) => void;
   RenderTop: (props: {
     runtime: Runtime | null;
-    paramValues: Record<string, unknown>;
-    paramValuesUP: UpdateProxy<Record<string, unknown>>;
+    paramValues: Record<ParamKey, unknown>;
+    paramValuesUP: UpdateProxy<Record<ParamKey, unknown>>;
     Handle: typeof SentenceHandle<InputKey>;
   }) => React.ReactNode;
 };
-export type AnyOp = Op<unknown, string>;
+export type AnyOp = Op<unknown, string, string>;
 
-export function defineOp<Runtime, InputKey extends string>(
-  op: Op<Runtime, InputKey>,
-) {
+export function defineOp<
+  Runtime,
+  InputKey extends string,
+  ParamKey extends string,
+>(op: Op<Runtime, InputKey, ParamKey>) {
   return op;
 }
 
-export type OpId<Runtime, InputKey extends string> = string & {
-  __op: Op<Runtime, InputKey>;
+export type OpId<
+  Runtime,
+  InputKey extends string,
+  ParamKey extends string,
+> = string & {
+  __op: Op<Runtime, InputKey, ParamKey>;
 };
-export type AnyOpId = OpId<unknown, string>;
+export type AnyOpId = OpId<unknown, string, string>;
 
-export function getOpId<Runtime, InputKey extends string>(
-  op: Op<Runtime, InputKey>,
-): OpId<Runtime, InputKey> {
-  return op.id as OpId<Runtime, InputKey>;
+export function getOpId<
+  Runtime,
+  InputKey extends string,
+  ParamKey extends string,
+>(op: Op<Runtime, InputKey, ParamKey>): OpId<Runtime, InputKey, ParamKey> {
+  return op.id as OpId<Runtime, InputKey, ParamKey>;
 }
 
-export type OpInstance<Runtime, InputKey extends string> = {
-  opId: OpId<Runtime, InputKey>;
+export type OpInstance<
+  Runtime,
+  InputKey extends string,
+  ParamKey extends string,
+> = {
+  opId: OpId<Runtime, InputKey, ParamKey>;
   runtime: Runtime;
 };
-export type AnyOpInstance = OpInstance<unknown, string>;
+export type AnyOpInstance = OpInstance<unknown, string, string>;
 
 export type OpInstanceOf<O> =
-  O extends Op<infer Runtime, infer InputKey>
-    ? OpInstance<Runtime, InputKey>
+  O extends Op<infer Runtime, infer InputKey, infer ParamKey>
+    ? OpInstance<Runtime, InputKey, ParamKey>
     : never;
 
-export function instantiateOp<Runtime, InputKey extends string>(
-  op: Op<Runtime, InputKey>,
+export function instantiateOp<
+  Runtime,
+  InputKey extends string,
+  ParamKey extends string,
+>(
+  op: Op<Runtime, InputKey, ParamKey>,
   ctx: OmniCanvasContextType,
-): OpInstance<Runtime, InputKey> {
+): OpInstance<Runtime, InputKey, ParamKey> {
   const runtime = op.initRuntime ? op.initRuntime(ctx) : ({} as Runtime);
+  op.initWithRuntime?.({ ctx, runtime });
   return { opId: getOpId(op), runtime };
 }
 

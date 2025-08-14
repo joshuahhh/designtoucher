@@ -245,10 +245,10 @@
     style-mod "^4.1.0"
     w3c-keyname "^2.2.4"
 
-"@engraft/update-proxy@^0.0.9":
-  version "0.0.9"
-  resolved "https://registry.yarnpkg.com/@engraft/update-proxy/-/update-proxy-0.0.9.tgz#4921c021e8516dbdbccc9f514277b0c9b12a171a"
-  integrity sha512-mYdIbh93y9lXnzkMXqero8s16n0y3nFZfgFzltasGEtS5btZLi6Q+EVKgQ7EWFDzFpVmqDmgw/F6RXRFB+TbFg==
+"@engraft/update-proxy@^0.0.10":
+  version "0.0.10"
+  resolved "https://registry.yarnpkg.com/@engraft/update-proxy/-/update-proxy-0.0.10.tgz#7248abce1ec63168bdbf0c6bffb79613b70afeae"
+  integrity sha512-gJUfoqxxHphkfmAf6dtTwa6fZkLgUe1/39yaIkg+WsEeo5xT5VClVoUDRt5ht5WVuWvOFQ0gbkG/s7KWy3IcQQ==
   dependencies:
     immutability-helper "^3.1.1"
 
@@ -3916,6 +3916,11 @@ radix-ui@^1.1.3:
     "@radix-ui/react-use-layout-effect" "1.1.1"
     "@radix-ui/react-use-size" "1.1.1"
     "@radix-ui/react-visually-hidden" "1.2.3"
+
+react-colorful@^5.6.1:
+  version "5.6.1"
+  resolved "https://registry.yarnpkg.com/react-colorful/-/react-colorful-5.6.1.tgz#7dc2aed2d7c72fac89694e834d179e32f3da563b"
+  integrity sha512-1exovf0uGTGyq5mXQT0zgQ80uvj2PCwvF8zY1RN9/vbJVSjSo3fsB/4L3ObbF7u70NduSiK4xu4Y6q1MHoUGEw==
 
 react-div-100vh@^0.7.0:
   version "0.7.0"

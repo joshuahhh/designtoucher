@@ -6,12 +6,16 @@ import {
   Sentence,
   SentenceParamSelect,
 } from "../ops-core.js";
-import { enumerateCameras, startStream, WebcamStream } from "../webcam.js";
+import {
+  assuredlyVideo,
+  enumerateCameras,
+  startStream,
+  WebcamStream,
+} from "../webcam.js";
 import h_flip from "./h-flip.js";
 
 export default defineOp({
   id: "cam" as const,
-  inputKeys: ["in"],
   initRuntime(ctx) {
     return {
       webcamStream: null as WebcamStream | null,
@@ -136,7 +140,7 @@ export default defineOp({
     const cams = props.runtime?.cams;
     return (
       <Sentence>
-        Use input{" "}
+        Camera{" "}
         {/* <span className="underline decoration-dotted">FaceTime camera</span> */}
         {cams ? (
           <SentenceParamSelect
@@ -155,9 +159,3 @@ export default defineOp({
     );
   },
 });
-
-function assuredlyVideo(
-  video: HTMLVideoElement | HTMLImageElement,
-): HTMLVideoElement {
-  return video as HTMLVideoElement;
-}

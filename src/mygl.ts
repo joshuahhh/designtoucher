@@ -302,6 +302,17 @@ export interface Tex {
   height: number;
 }
 
+export function isProbablyTex(tex: any): tex is Tex {
+  return (
+    tex &&
+    typeof tex === "object" &&
+    "texture" in tex &&
+    "width" in tex &&
+    "height" in tex &&
+    tex.texture instanceof WebGLTexture
+  );
+}
+
 export function newTex(
   gl: WebGL2RenderingContext,
   width: number,

@@ -105,25 +105,6 @@ export function log<T>(obj: T, prefix: string = ""): T {
   return obj;
 }
 
-export const instrumentOld = (obj: any) =>
-  new Proxy(obj, {
-    get(t, p, r) {
-      const v = Reflect.get(t, p, r);
-      return typeof v !== "function"
-        ? v
-        : new Proxy(v, {
-            apply(f, th, a) {
-              console.log("🔍", String(p), ...a);
-              return Reflect.apply(f, th, a);
-            },
-            construct(f, a, n) {
-              console.log("🔍", String(p), ...a);
-              return Reflect.construct(f, a, n);
-            },
-          });
-    },
-  });
-
 export const instrument = (o: any) =>
   new Proxy(o, {
     get(t, p, r) {
@@ -136,3 +117,12 @@ export const instrument = (o: any) =>
         : v;
     },
   });
+
+const objectFingerprints = new WeakMap<object, number>();
+let nextFingerprint = 0;
+export function getFingerprint(obj: object): number {
+  if (!objectFingerprints.has(obj)) {
+    objectFingerprints.set(obj, nextFingerprint++);
+  }
+  return objectFingerprints.get(obj)!;
+}

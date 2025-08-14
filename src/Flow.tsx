@@ -406,10 +406,20 @@ const FlowInner = ({
     return animate(() => {
       // run the flow
       // console.log("Running flow");
-      runFlow(flowRef.current.nodes, flowRef.current.edges, opInstances, ctx);
+      runFlow(
+        flowRef.current.nodes,
+        flowRef.current.edges,
+        opInstances,
+        ctx,
+        (nodeId, params) => {
+          flowUP.nodes.$all
+            .$if((n) => n.id === nodeId)
+            .data.paramValues.$set(params);
+        },
+      );
       setOpInstances((prevRuntimes) => ({ ...prevRuntimes }));
     });
-  }, [flowRef, opInstances, ctx]);
+  }, [flowRef, opInstances, ctx, flowUP]);
 
   const onConnect = useCallback(
     (params: Connection) => {

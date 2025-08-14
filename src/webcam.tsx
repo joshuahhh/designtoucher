@@ -490,3 +490,9 @@ async function findSupportedResolutionsForReal(
   );
   return results;
 }
+
+export function assuredlyVideo(
+  video: HTMLVideoElement | HTMLImageElement,
+): HTMLVideoElement {
+  return video as HTMLVideoElement;
+}

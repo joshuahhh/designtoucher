@@ -1,5 +1,5 @@
-import { ensureFboSize, newFbo } from "../mygl.js";
-import { defineOp, Sentence } from "../ops-core.js";
+import { ensureFboSize, newFbo } from "../../mygl.js";
+import { defineOp, Sentence } from "../../ops-core.js";
 
 export default defineOp({
   id: "feedback-buffer" as const,

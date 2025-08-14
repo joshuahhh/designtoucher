@@ -9,8 +9,6 @@
 // ] as const;
 
 import { Edge, Node } from "@xyflow/react";
-import _ from "lodash";
-import { assert } from "./assert.js";
 import { OmniCanvasContextType } from "./OmniCanvas.js";
 import {
   AnyOp,
@@ -21,24 +19,8 @@ import {
   parseInputHandleId,
   parseOutputHandleId,
 } from "./ops-core.js";
+import { ops } from "./ops/all-the-ops.js";
 import { toposortFromEdges } from "./toposort.js";
-
-const ops = _.map(
-  import.meta.glob("./ops/*.tsx", { eager: true }),
-  (mod, filePath) => ({
-    ...((mod as any).default as AnyOp),
-    idFromFile: filePath.replace(/^\.\/ops\/(.*)\.tsx$/, "$1"),
-  }),
-);
-
-ops.forEach((op) => {
-  assert(
-    op.id === op.idFromFile,
-    `Operation id "${op.id}" does not match file name "${op.idFromFile}.tsx"`,
-  );
-});
-
-console.log("ops", ops);
 
 export function opById(id: string): AnyOp {
   const found = ops.find((op) => op.id === id);
@@ -47,14 +29,6 @@ export function opById(id: string): AnyOp {
   }
   return found;
 }
-
-export const opsInGroups = [
-  ["Sources", [opById("cam"), opById("remote-cam")]],
-  ["Generators", [opById("solid")]],
-  ["Space", [opById("h-flip")]],
-  ["Time", [opById("feedback-buffer")]],
-  ["Debug", [opById("no-op")]],
-];
 
 export type OpNodeData = { opId: AnyOpId; paramValues: Record<string, any> };
 

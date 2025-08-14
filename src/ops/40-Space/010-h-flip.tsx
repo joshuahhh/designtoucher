@@ -1,5 +1,5 @@
-import { Sentence } from "../ops-core.js";
-import { defineFragOp } from "../ops-frag.js";
+import { Sentence } from "../../ops-core.js";
+import { defineFragOp } from "../../ops-frag.js";
 
 export default defineFragOp({
   id: "h-flip" as const,

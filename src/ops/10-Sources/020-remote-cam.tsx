@@ -3,10 +3,10 @@ import clsx from "clsx";
 import Peer from "peerjs";
 import { QRCodeSVG } from "qrcode.react";
 import { LuCopy, LuQrCode } from "react-icons/lu";
-import { CopyButton } from "../CopyButton.js";
-import { newTex, Tex } from "../mygl.js";
-import { defineOp, Sentence } from "../ops-core.js";
-import { stopStream, WebcamStream } from "../webcam.js";
+import { CopyButton } from "../../CopyButton.js";
+import { newTex, Tex } from "../../mygl.js";
+import { defineOp, Sentence } from "../../ops-core.js";
+import { stopStream, WebcamStream } from "../../webcam.js";
 
 export default defineOp({
   id: "remote-cam" as const,

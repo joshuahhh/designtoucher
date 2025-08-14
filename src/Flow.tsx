@@ -34,9 +34,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { FaExpandArrowsAlt, FaTrash } from "react-icons/fa";
-import { assertNever } from "./assert.js";
 import "./flow-base.css";
-import { OpParam } from "./flow-lib.js";
 import { getHandleClasses } from "./Handles.js";
 import { Tex } from "./mygl.js";
 import {
@@ -55,13 +53,8 @@ import {
   PhonyContext,
   SentenceHandle,
 } from "./ops-core.js";
-import {
-  opById,
-  OpNode,
-  OpNodeData,
-  opsInGroups,
-  runFlow,
-} from "./ops-flow.js";
+import { opById, OpNode, runFlow } from "./ops-flow.js";
+import { opsInGroups } from "./ops/all-the-ops.js";
 import {
   CopyPaste,
   useNodeData,
@@ -206,133 +199,6 @@ export function OpNodeView(props: NodeProps<OpNode>) {
     </div>
   );
 }
-
-const Param = (props: {
-  param: OpParam;
-  data: OpNodeData;
-  setData: Dispatch<SetStateAction<OpNodeData>>;
-}) => {
-  const { param, data, setData } = props;
-  const value = data.paramValues[param.varName];
-
-  const [automate, setAutomate] = useState<false | number>(false);
-  const automateRef = useRefForCallback(automate);
-
-  useEffect(() => {
-    return animate(() => {
-      setData((data) => {
-        if (!automateRef.current || param.type !== "number") return data;
-
-        const value = data.paramValues[param.varName];
-        const newValue = value + param.step * automateRef.current;
-        if (newValue <= param.min || newValue >= param.max) {
-          setAutomate(-automateRef.current);
-        }
-
-        return {
-          ...data,
-          paramValues: {
-            ...data.paramValues,
-            [param.varName]: newValue,
-          },
-        };
-      });
-    });
-  }, [automateRef, param, setData]);
-
-  if (param.type === "number") {
-    return (
-      <div
-        key={param.varName}
-        className="operation-node-param flex gap-1 group"
-      >
-        <label className="operation-node-param-label">
-          {param.displayName}
-        </label>
-        <input
-          className="nodrag w-20"
-          type="range"
-          min={param.min}
-          max={param.max}
-          step={param.step}
-          value={value}
-          onChange={(e) => {
-            setData((data) => ({
-              ...data,
-              paramValues: {
-                ...data.paramValues,
-                [param.varName]: Number(e.target.value),
-              },
-            }));
-          }}
-        />
-        <span className="operation-node-param-value">
-          {Number(value).toFixed(2)}
-        </span>
-        <span
-          className={`ml-2 ${automate ? "" : "group-hover:visible invisible"}`}
-        >
-          <input
-            className="nodrag ml-2"
-            type="checkbox"
-            checked={automate !== false}
-            onChange={(e) => setAutomate(e.target.checked ? 1 : false)}
-          />
-          ⌛
-        </span>
-      </div>
-    );
-  } else if (param.type === "string") {
-    return (
-      <div
-        key={param.varName}
-        className="operation-node-param flex flex-col gap-1"
-      >
-        <label className="operation-node-param-label">
-          {param.displayName}
-        </label>
-        <textarea
-          className="nodrag nocopypaste max-w-full font-mono"
-          style={{ fontSize: "0.5rem" }}
-          value={value}
-          onChange={(e) => {
-            setData((data) => ({
-              ...data,
-              paramValues: {
-                ...data.paramValues,
-                [param.varName]: e.target.value,
-              },
-            }));
-          }}
-        />
-      </div>
-    );
-  } else if (param.type === "boolean") {
-    return (
-      <div key={param.varName} className="operation-node-param flex gap-1">
-        <label className="operation-node-param-label">
-          {param.displayName}
-        </label>
-        <input
-          className="nodrag"
-          type="checkbox"
-          checked={value}
-          onChange={(e) => {
-            setData((data) => ({
-              ...data,
-              paramValues: {
-                ...data.paramValues,
-                [param.varName]: e.target.checked,
-              },
-            }));
-          }}
-        />
-      </div>
-    );
-  } else {
-    assertNever(param, `Unknown param type: ${(param as any).type}`);
-  }
-};
 
 const nodeTypes: NodeTypes = {
   operation: OpNodeView,

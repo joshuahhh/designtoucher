@@ -1,18 +1,18 @@
-import { newTex, Tex } from "../mygl.js";
+import { newTex, Tex } from "../../mygl.js";
 import {
   defineOp,
   instantiateOp,
   OpInstanceOf,
   Sentence,
   SentenceParamSelect,
-} from "../ops-core.js";
+} from "../../ops-core.js";
 import {
   assuredlyVideo,
   enumerateCameras,
   startStream,
   WebcamStream,
-} from "../webcam.js";
-import h_flip from "./h-flip.js";
+} from "../../webcam.js";
+import h_flip from "../40-Space/010-h-flip.js";
 
 export default defineOp({
   id: "cam" as const,

@@ -1,7 +1,7 @@
 import _ from "lodash";
 import { deleteFbo, ensureFboSize, newFbo, ShaderProgram } from "./mygl.js";
 import { defineOp, Op } from "./ops-core.js";
-import { getFingerprint, instrument, objectKeys, tuple } from "./util.js";
+import { instrument, objectKeys, tuple } from "./util.js";
 
 type FragOp<InputKey extends string, ParamKey extends string> = Pick<
   Op<{}, InputKey, ParamKey>,
@@ -54,17 +54,6 @@ export function defineFragOp<InputKey extends string, ParamKey extends string>(
     },
 
     run({ runtime, inputs, paramValues, ctx }) {
-      console.log("running frag op", fragOp.id, inputs);
-      const tex1 = (inputs as any).tex1;
-      if (tex1) {
-        console.log(
-          getFingerprint(tex1.texture),
-          "vs",
-          getFingerprint(runtime.out.texture),
-        );
-      }
-
-      // console.log("running frag op", fragOp.id, inputs);
       inputs = _.mapValues(inputs, (tex) => tex ?? ctx.emptyTex);
       const firstInputKey = objectKeys(inputs)[0] as InputKey | undefined;
       const firstInput = firstInputKey && inputs[firstInputKey];

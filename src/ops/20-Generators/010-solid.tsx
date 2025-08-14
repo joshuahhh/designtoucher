@@ -1,8 +1,8 @@
 import { Popover } from "@radix-ui/themes";
 import clsx from "clsx";
 import { RgbaColorPicker } from "react-colorful";
-import { Sentence } from "../ops-core.js";
-import { defineFragOp } from "../ops-frag.js";
+import { Sentence } from "../../ops-core.js";
+import { defineFragOp } from "../../ops-frag.js";
 
 export default defineFragOp({
   id: "solid" as const,

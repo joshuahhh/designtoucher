@@ -6,13 +6,18 @@ export const initialFlow: Flow = {
     {
       id: "n1",
       position: { x: 0, y: 0 },
-      data: { opId: "cam" as AnyOpId, paramValues: {} },
+      data: { opId: "cam" as AnyOpId, params: {} },
       type: "operation",
     },
     {
       id: "n2",
       position: { x: 100, y: 100 },
-      data: { opId: "h-flip" as AnyOpId, paramValues: {} },
+      data: {
+        opId: "flip" as AnyOpId,
+        params: {
+          horizontal: true,
+        },
+      },
       type: "operation",
     },
   ],

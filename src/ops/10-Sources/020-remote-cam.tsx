@@ -9,7 +9,7 @@ import { defineOp, Sentence } from "../../ops-core.js";
 import { stopStream, WebcamStream } from "../../webcam.js";
 
 export default defineOp({
-  id: "remote-cam" as const,
+  id: "remote-cam",
   initRuntime(ctx) {
     return {
       webcamStream: null as WebcamStream | null,
@@ -40,7 +40,7 @@ export default defineOp({
 
     peer.on("error", (e) => console.error("Peer error:", e));
   },
-  run({ runtime, inputs, paramValues, ctx }) {
+  run({ runtime, ctx }) {
     const { gl } = ctx;
 
     if (runtime.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {

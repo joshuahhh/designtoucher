@@ -12,15 +12,15 @@ import {
   startStream,
   WebcamStream,
 } from "../../webcam.js";
-import h_flip from "../40-Space/010-h-flip.js";
+import flip from "../40-Space/010-flip.js";
 
 export default defineOp({
-  id: "cam" as const,
+  id: "cam",
   initRuntime(ctx) {
     return {
       webcamStream: null as WebcamStream | null,
       tex: null as Tex | null,
-      hflipOp: null as OpInstanceOf<typeof h_flip> | null,
+      hflipOp: null as OpInstanceOf<typeof flip> | null,
 
       cams: null as MediaDeviceInfo[] | null,
       defaultDeviceId: null as string | null,
@@ -28,7 +28,10 @@ export default defineOp({
       out: null as Tex | null,
     };
   },
-  run({ runtime, inputs, paramValues, ctx }) {
+  initParams: () => ({
+    deviceId: null as string | null,
+  }),
+  run({ runtime, inputs, params, ctx }) {
     const { gl } = ctx;
 
     if (!runtime.cams) {
@@ -39,11 +42,11 @@ export default defineOp({
       return;
     }
 
-    const deviceId = paramValues["deviceId"] ?? runtime.defaultDeviceId;
+    const deviceId = params["deviceId"] ?? runtime.defaultDeviceId;
 
     // TODO: this is extremely chaotic code; I don't like it
     // concretely: I think switching cameras causes a cascade of open operations
-    // and the lack of access to paramValues sucks
+    // and the lack of access to params sucks
     // but... it just barely works
 
     if (!runtime.webcamStream || runtime.webcamStream.deviceId !== deviceId) {
@@ -113,20 +116,20 @@ export default defineOp({
     if (!runtime.webcamStream.facingMode.includes("environment")) {
       if (!runtime.hflipOp) {
         // TODO: fill in the op
-        runtime.hflipOp = instantiateOp(h_flip, ctx);
+        runtime.hflipOp = instantiateOp(flip, ctx);
       }
 
-      h_flip.run!({
+      flip.run!({
         runtime: runtime.hflipOp.runtime,
         inputs: { tex1: runtime.tex },
-        paramValues: {},
+        params: { horizontal: true },
         ctx,
       });
 
       runtime.out = (runtime.hflipOp.runtime as any).out as Tex;
     } else {
       if (runtime.hflipOp) {
-        h_flip.destroy!({
+        flip.destroy!({
           runtime: runtime.hflipOp.runtime,
           ctx,
         });
@@ -142,11 +145,11 @@ export default defineOp({
       <Sentence>
         Camera{" "}
         {/* <span className="underline decoration-dotted">FaceTime camera</span> */}
+        {/* TODO: figure out these coercions, initting of params, etc. */}
         {cams ? (
           <SentenceParamSelect
-            varName="deviceId"
-            paramValues={props.paramValues}
-            paramValuesUP={props.paramValuesUP}
+            value={props.params.deviceId!}
+            valueUP={props.paramsUP.deviceId.$as<string>()}
             options={cams.map((cam) => ({
               label: cam.label,
               value: cam.deviceId,

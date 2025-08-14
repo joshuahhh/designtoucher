@@ -17,11 +17,15 @@ import { getHandleClasses } from "./Handles.js";
 import { Tex } from "./mygl.js";
 import { Monitor, OmniCanvasContextType } from "./OmniCanvas.js";
 
-export type Op<Runtime, InputKey extends string, ParamKey extends string> = {
+export type Op<
+  Runtime,
+  InputKey extends string,
+  Params extends Record<string, unknown>,
+> = {
   id: string;
   inputKeys?: InputKey[];
   inputKeysLate?: InputKey[];
-  initParams?: () => Record<ParamKey, any>;
+  initParams?: () => Params;
   initRuntime?: (ctx: OmniCanvasContextType) => Runtime;
   initWithRuntime?: (props: {
     ctx: OmniCanvasContextType;
@@ -30,73 +34,77 @@ export type Op<Runtime, InputKey extends string, ParamKey extends string> = {
   run?: (props: {
     runtime: Runtime;
     inputs: Record<InputKey, Tex | null>;
-    paramValues: Record<ParamKey, unknown>;
+    params: Params;
     ctx: OmniCanvasContextType;
   }) => void;
   runLate?: (props: {
     runtime: Runtime;
     inputs: Record<InputKey, Tex | null>;
-    paramValues: Record<ParamKey, unknown>;
+    params: Params;
     ctx: OmniCanvasContextType;
   }) => void;
   destroy?: (props: { runtime: Runtime; ctx: OmniCanvasContextType }) => void;
   RenderTop: (props: {
     runtime: Runtime | null;
-    paramValues: Record<ParamKey, unknown>;
-    paramValuesUP: UpdateProxy<Record<ParamKey, unknown>>;
+    params: Params;
+    paramsUP: UpdateProxy<Params>;
     Handle: typeof SentenceHandle<InputKey>;
   }) => React.ReactNode;
 };
-export type AnyOp = Op<unknown, string, string>;
+export type AnyOp = Op<unknown, string, Record<string, unknown>>;
 
 export function defineOp<
   Runtime,
   InputKey extends string,
-  ParamKey extends string,
->(op: Op<Runtime, InputKey, ParamKey>) {
+  Params extends Record<string, unknown>,
+>(op: Op<Runtime, InputKey, Params>) {
   return op;
 }
 
 export type OpId<
   Runtime,
   InputKey extends string,
-  ParamKey extends string,
+  Params extends Record<string, unknown>,
 > = string & {
-  __op: Op<Runtime, InputKey, ParamKey>;
+  __op: Op<Runtime, InputKey, Params>;
 };
-export type AnyOpId = OpId<unknown, string, string>;
+export type AnyOpId = OpId<unknown, string, Record<string, unknown>>;
 
 export function getOpId<
   Runtime,
   InputKey extends string,
-  ParamKey extends string,
->(op: Op<Runtime, InputKey, ParamKey>): OpId<Runtime, InputKey, ParamKey> {
-  return op.id as OpId<Runtime, InputKey, ParamKey>;
+  Params extends Record<string, unknown>,
+>(op: Op<Runtime, InputKey, Params>): OpId<Runtime, InputKey, Params> {
+  return op.id as OpId<Runtime, InputKey, Params>;
 }
 
 export type OpInstance<
   Runtime,
   InputKey extends string,
-  ParamKey extends string,
+  Params extends Record<string, unknown>,
 > = {
-  opId: OpId<Runtime, InputKey, ParamKey>;
+  opId: OpId<Runtime, InputKey, Params>;
   runtime: Runtime;
 };
-export type AnyOpInstance = OpInstance<unknown, string, string>;
+export type AnyOpInstance = OpInstance<
+  unknown,
+  string,
+  Record<string, unknown>
+>;
 
 export type OpInstanceOf<O> =
-  O extends Op<infer Runtime, infer InputKey, infer ParamKey>
-    ? OpInstance<Runtime, InputKey, ParamKey>
+  O extends Op<infer Runtime, infer InputKey, infer Params>
+    ? OpInstance<Runtime, InputKey, Params>
     : never;
 
 export function instantiateOp<
   Runtime,
   InputKey extends string,
-  ParamKey extends string,
+  Params extends Record<string, unknown>,
 >(
-  op: Op<Runtime, InputKey, ParamKey>,
+  op: Op<Runtime, InputKey, Params>,
   ctx: OmniCanvasContextType,
-): OpInstance<Runtime, InputKey, ParamKey> {
+): OpInstance<Runtime, InputKey, Params> {
   const runtime = op.initRuntime ? op.initRuntime(ctx) : ({} as Runtime);
   op.initWithRuntime?.({ ctx, runtime });
   return { opId: getOpId(op), runtime };
@@ -192,16 +200,14 @@ const StableWidthSpan = forwardRef<
 });
 
 export const SentenceParamNumber = ({
-  varName,
-  paramValues,
-  paramValuesUP,
+  value,
+  valueUP,
   min,
   max,
   step,
 }: {
-  varName: string;
-  paramValues: Record<string, unknown>;
-  paramValuesUP: UpdateProxy<Record<string, unknown>>;
+  value: number;
+  valueUP: UpdateProxy<number>;
   min: number;
   max: number;
   step: number;
@@ -213,12 +219,12 @@ export const SentenceParamNumber = ({
       <div className="text-xs">{min}</div>
       <Slider
         className="w-32"
-        value={[paramValues[varName] as number]}
+        value={[value]}
         min={min}
         max={max}
         step={step}
         onValueChange={(value) => {
-          paramValuesUP[varName].$set(parseFloat(value.toString()));
+          valueUP.$set(parseFloat(value.toString()));
           setDragging(true);
         }}
         onValueCommit={() => {
@@ -235,7 +241,7 @@ export const SentenceParamNumber = ({
           dragging={dragging}
           className="underline decoration-dotted tabular-nums"
         >
-          {paramValues[varName] as number}
+          {value}
         </StableWidthSpan>
       </Popover.Trigger>
       <Popover.Content side="top" size="1">
@@ -246,22 +252,20 @@ export const SentenceParamNumber = ({
 };
 
 export const SentenceParamSelect = ({
-  varName,
-  paramValues,
-  paramValuesUP,
+  value,
+  valueUP,
   options,
 }: {
-  varName: string;
-  paramValues: Record<string, unknown>;
-  paramValuesUP: UpdateProxy<Record<string, unknown>>;
+  value: string;
+  valueUP: UpdateProxy<string>;
   options: { value: string; label: string }[];
 }) => {
   return (
     <select
-      value={paramValues[varName] as string}
+      value={value}
       className="text-xs font-['Varela_Round'] bg-transparent border-b border"
       onChange={(e) => {
-        paramValuesUP[varName].$set(e.target.value);
+        valueUP.$set(e.target.value);
       }}
     >
       {options.map((option) => (

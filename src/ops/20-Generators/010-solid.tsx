@@ -5,7 +5,7 @@ import { Sentence } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
 export default defineFragOp({
-  id: "solid" as const,
+  id: "solid",
   initParams() {
     return { r: 1, g: 0, b: 0, a: 1 };
   },
@@ -17,10 +17,10 @@ export default defineFragOp({
       "border border-gray-300 rounded-md p-1 shadow-sm hover:bg-gray-50 transition-colors",
     );
 
-    const r = props.paramValues.r as number;
-    const g = props.paramValues.g as number;
-    const b = props.paramValues.b as number;
-    const a = props.paramValues.a as number;
+    const r = props.params.r as number;
+    const g = props.params.g as number;
+    const b = props.params.b as number;
+    const a = props.params.a as number;
 
     return (
       <Sentence>
@@ -40,7 +40,7 @@ export default defineFragOp({
             <RgbaColorPicker
               color={{ r: r * 255, g: g * 255, b: b * 255, a: a }}
               onChange={(color) => {
-                props.paramValuesUP.$set({
+                props.paramsUP.$set({
                   r: color.r / 255,
                   g: color.g / 255,
                   b: color.b / 255,

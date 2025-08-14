@@ -300,6 +300,7 @@ export interface Tex {
   texture: WebGLTexture;
   width: number;
   height: number;
+  gl: WebGL2RenderingContext;
 }
 
 export function isProbablyTex(tex: any): tex is Tex {
@@ -346,11 +347,11 @@ export function newTex(
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  return { texture, width, height };
+  return { texture, width, height, gl };
 }
 
-export function destroyTex(gl: WebGL2RenderingContext, tex: Tex): void {
-  gl.deleteTexture(tex.texture);
+export function destroyTex(tex: Tex): void {
+  tex.gl.deleteTexture(tex.texture);
 }
 
 export interface Fbo {
@@ -377,19 +378,11 @@ export function newFbo(gl: WebGL2RenderingContext): Fbo {
   return { tex, framebuffer: fb, gl };
 }
 
-export function ensureFboSize(fbo: Fbo, width: number, height: number) {
-  if (fbo.tex.width === width && fbo.tex.height === height) return;
-  console.log(
-    "resizing FBO from",
-    fbo.tex.width,
-    fbo.tex.height,
-    "to",
-    width,
-    height,
-  );
-  fbo.tex.width = width;
-  fbo.tex.height = height;
-  const { gl, tex } = fbo;
+export function ensureTexSize(tex: Tex, width: number, height: number) {
+  if (tex.width === width && tex.height === height) return;
+  tex.width = width;
+  tex.height = height;
+  const { gl } = tex;
   gl.bindTexture(gl.TEXTURE_2D, tex.texture);
   gl.texImage2D(
     gl.TEXTURE_2D,
@@ -404,9 +397,13 @@ export function ensureFboSize(fbo: Fbo, width: number, height: number) {
   );
 }
 
-export function deleteFbo(fbo: Fbo) {
+export function ensureFboSize(fbo: Fbo, width: number, height: number) {
+  ensureTexSize(fbo.tex, width, height);
+}
+
+export function destroyFbo(fbo: Fbo) {
   const { gl, tex, framebuffer } = fbo;
-  destroyTex(gl, tex);
+  destroyTex(tex);
   gl.deleteFramebuffer(framebuffer);
 }
 
@@ -415,6 +412,7 @@ export interface Tex3D {
   width: number;
   height: number;
   depth: number;
+  gl: WebGL2RenderingContext;
 }
 
 export function newTex3D(
@@ -443,9 +441,9 @@ export function newTex3D(
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_3D, null);
-  return { texture, width, height, depth };
+  return { texture, width, height, depth, gl };
 }
 
-export function destroyTex3D(gl: WebGL2RenderingContext, tex: Tex3D): void {
-  gl.deleteTexture(tex.texture);
+export function destroyTex3D(tex: Tex3D): void {
+  tex.gl.deleteTexture(tex.texture);
 }

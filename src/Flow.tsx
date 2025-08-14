@@ -36,6 +36,7 @@ import { createPortal } from "react-dom";
 import { FaExpandArrowsAlt, FaTrash } from "react-icons/fa";
 import "./flow-base.css";
 import { getHandleClasses } from "./Handles.js";
+import { useKeyBindings } from "./keyboard.js";
 import { Tex } from "./mygl.js";
 import {
   Monitor,
@@ -50,11 +51,12 @@ import {
   FlowContext,
   getOpId,
   makeOutputHandleId,
+  parseInputHandleId,
   PhonyContext,
   SentenceHandle,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
-import { opsInGroups } from "./ops/all-the-ops.js";
+import { ops, opsInGroups } from "./ops/all-the-ops.js";
 import {
   CopyPaste,
   useNodeData,
@@ -188,8 +190,8 @@ export function OpNodeView(props: NodeProps<OpNode>) {
         minHeight={30}
       /> */}
       <op.RenderTop
-        paramValues={data.paramValues}
-        paramValuesUP={dataUP.paramValues}
+        params={data.params}
+        paramsUP={dataUP.params}
         runtime={runtime}
         Handle={SentenceHandle}
       />
@@ -280,7 +282,7 @@ const FlowInner = ({
         (nodeId, params) => {
           flowUP.nodes.$all
             .$if((n) => n.id === nodeId)
-            .data.paramValues.$set(params);
+            .data.params.$set(params);
         },
       );
       setOpInstances((prevRuntimes) => ({ ...prevRuntimes }));
@@ -313,6 +315,24 @@ const FlowInner = ({
     (event: React.DragEvent) => {
       event.preventDefault();
 
+      if (event.dataTransfer.files.length > 0) {
+        const file = event.dataTransfer.files[0];
+        if (file.type === "application/json") {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const data = JSON.parse(e.target?.result as string);
+              setOpInstances({});
+              setFlow(data);
+            } catch (err) {
+              console.error("Failed to load flow from file", err);
+            }
+          };
+          reader.readAsText(file);
+        }
+        return;
+      }
+
       if (!draggedOpId) return;
 
       const position = screenToFlowPosition({
@@ -320,13 +340,15 @@ const FlowInner = ({
         y: event.clientY,
       });
 
+      const op = opById(draggedOpId);
+
       const newNode: OpNode = {
         id: getId(),
         type: "operation",
         position,
         data: {
           opId: draggedOpId,
-          paramValues: {},
+          params: op.initParams?.() ?? {},
         },
       };
 
@@ -336,17 +358,30 @@ const FlowInner = ({
     [screenToFlowPosition, draggedOpId, flowUP.nodes],
   );
 
-  useEffect(() => {
-    const listener = (e: KeyboardEvent) => {
-      if (e.key === "r" && e.ctrlKey) {
+  useKeyBindings([
+    {
+      combo: "c+r",
+      action: () => {
         setOpInstances({});
-      }
-    };
-    window.addEventListener("keydown", listener);
-    return () => {
-      window.removeEventListener("keydown", listener);
-    };
-  }, []);
+      },
+    },
+    {
+      combo: "c+s",
+      action: (e) => {
+        e.preventDefault();
+        const flowData = JSON.stringify(flow, null, 2);
+        const blob = new Blob([flowData], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "design-toucher.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      },
+    },
+  ]);
 
   const store = useStoreApi();
   const { getNodes, getEdges, deleteElements } = useReactFlow();
@@ -368,7 +403,17 @@ const FlowInner = ({
         <FlowContext.Provider value={{ opInstances: opInstancesRef.current }}>
           <ReactFlow
             nodes={flow.nodes}
-            edges={flow.edges}
+            edges={flow.edges.map((e) => {
+              // TODO: we should prob make a custom edge at some point
+              const { nodeId, key } = parseInputHandleId(e.targetHandle!);
+              const node = flow.nodes.find((n) => n.id === nodeId);
+              const op = node ? opById(node.data.opId) : null;
+              const isLate = op?.inputKeysLate?.includes(key);
+              return {
+                ...e,
+                className: clsx({ "[stroke-dasharray:5,5]": isLate }),
+              };
+            })}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
@@ -503,17 +548,18 @@ const Sidebar = ({
     [setDraggedOpId],
   );
 
-  const noopParamValuesUP = useMemo(
-    () => up<Record<string, any>>(() => {}),
-    [],
-  );
-  const noopParamValues = useMemo(() => ({}), []);
+  const noopParamsUP = useMemo(() => up<Record<string, any>>(() => {}), []);
+  const paramsByOp = useMemo(() => {
+    return Object.fromEntries(
+      ops.map((op) => [op.id, op.initParams?.() ?? {}]),
+    );
+  }, []);
 
   return (
     <PhonyContext.Provider value={{ phony: true }}>
       <div
         className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
-          isSidebarExpanded ? "w-60 opacity-100" : "w-0 opacity-0"
+          isSidebarExpanded ? "w-72 opacity-100" : "w-0 opacity-0"
         } overflow-hidden z-[2]`}
       >
         <div className="pt-4 px-4 h-full flex flex-col">
@@ -530,12 +576,12 @@ const Sidebar = ({
                       key={op.id}
                       draggable
                       onDragStart={(event) => onDragStart(event, getOpId(op))}
-                      className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none"
+                      className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
                     >
                       <op.RenderTop
                         runtime={null}
-                        paramValuesUP={noopParamValuesUP}
-                        paramValues={noopParamValues}
+                        paramsUP={noopParamsUP}
+                        params={paramsByOp[op.id]}
                         Handle={SentenceHandle}
                       />
                     </div>
@@ -559,17 +605,12 @@ const FullscreenModal = ({
 }) => {
   const { underlayDiv } = useContext(OmniCanvasContext);
 
-  useEffect(() => {
-    const listener = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", listener);
-    return () => {
-      window.removeEventListener("keydown", listener);
-    };
-  }, [onClose]);
+  useKeyBindings([
+    {
+      combo: "Escape",
+      action: onClose,
+    },
+  ]);
 
   const aspectRatio = tex.width / tex.height;
 

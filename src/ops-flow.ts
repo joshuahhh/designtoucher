@@ -30,7 +30,7 @@ export function opById(id: string): AnyOp {
   return found;
 }
 
-export type OpNodeData = { opId: AnyOpId; paramValues: Record<string, any> };
+export type OpNodeData = { opId: AnyOpId; params: Record<string, any> };
 
 export type OpNode = Node<OpNodeData, "operation">;
 
@@ -56,7 +56,7 @@ export function runFlow(
     if (!opInstances[node.id]) {
       const op = opById(node.data.opId);
       opInstances[node.id] = instantiateOp(op, ctx);
-      const params = op.initParams ? op.initParams() : {};
+      const params = node.data.params;
       setParams(node.id, params);
     }
   });
@@ -120,7 +120,7 @@ export function runFlow(
       op.run?.({
         runtime,
         inputs,
-        paramValues: node.data.paramValues,
+        params: node.data.params,
         ctx,
       });
       // console.log(
@@ -150,7 +150,7 @@ export function runFlow(
       op.runLate?.({
         runtime: opInstance.runtime,
         inputs: assembleInputs(nodeId, false),
-        paramValues: node.data.paramValues,
+        params: node.data.params,
         ctx,
       });
     } catch (error) {

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import stripIndent from "strip-indent";
 
 export function useAnimationFrame(callback: () => void) {
   const requestRef = useRef<number>();
@@ -125,4 +126,10 @@ export function getFingerprint(obj: object): number {
     objectFingerprints.set(obj, nextFingerprint++);
   }
   return objectFingerprints.get(obj)!;
+}
+
+export function strip(strings: TemplateStringsArray, ...values: any[]): string {
+  return stripIndent(
+    strings.reduce((acc, str, i) => acc + str + (values[i] || ""), ""),
+  ).trim();
 }

@@ -2,7 +2,7 @@ import { ensureFboSize, newFbo } from "../../mygl.js";
 import { defineOp, Sentence } from "../../ops-core.js";
 
 export default defineOp({
-  id: "feedback-buffer" as const,
+  id: "feedback-buffer",
   inputKeys: ["in"],
   inputKeysLate: ["in"],
   initRuntime(ctx) {
@@ -25,8 +25,7 @@ export default defineOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Feedback buffer
-        <props.Handle handleKey="in" />
+        Buffer feedback from <props.Handle handleKey="in" />
       </Sentence>
     );
   },

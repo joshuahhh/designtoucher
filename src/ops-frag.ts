@@ -1,10 +1,13 @@
 import _ from "lodash";
-import { deleteFbo, ensureFboSize, newFbo, ShaderProgram } from "./mygl.js";
+import { destroyFbo, ensureFboSize, newFbo, ShaderProgram } from "./mygl.js";
 import { defineOp, Op } from "./ops-core.js";
 import { instrument, objectKeys, tuple } from "./util.js";
 
-type FragOp<InputKey extends string, ParamKey extends string> = Pick<
-  Op<{}, InputKey, ParamKey>,
+type FragOp<
+  InputKey extends string,
+  Params extends Record<string, unknown>,
+> = Pick<
+  Op<{}, InputKey, Params>,
   "id" | "inputKeys" | "RenderTop" | "initParams"
 > & {
   fragBody: string;
@@ -12,21 +15,21 @@ type FragOp<InputKey extends string, ParamKey extends string> = Pick<
 
 const DEBUG = false;
 
-export function defineFragOp<InputKey extends string, ParamKey extends string>(
-  fragOp: FragOp<InputKey, ParamKey>,
-) {
-  const hasTime = fragOp.fragBody.includes("time");
-
+export function defineFragOp<
+  InputKey extends string,
+  Params extends Record<string, unknown>,
+>(fragOp: FragOp<InputKey, Params>) {
   const params = fragOp.initParams?.();
   const paramKeys = params ? Object.keys(params) : [];
 
   const fragSrc =
     `precision mediump float;\n` +
-    (hasTime ? `uniform float time;\n` : "") +
+    `uniform float time;\n` +
+    `uniform vec2 resolution;\n` +
     paramKeys.map((name) => `uniform float ${name};`).join("\n") +
     `\n` +
     (fragOp.inputKeys || [])
-      .map((key) => `uniform sampler2D ${key};`)
+      .map((key) => `uniform sampler2D ${key}; uniform int has_${key};`)
       .join("\n") +
     `\n` +
     `\nvarying vec2 uv;\n// lygia-includes\nvoid main(){\n${fragOp.fragBody}\n}
@@ -53,11 +56,9 @@ export function defineFragOp<InputKey extends string, ParamKey extends string>(
       };
     },
 
-    run({ runtime, inputs, paramValues, ctx }) {
-      inputs = _.mapValues(inputs, (tex) => tex ?? ctx.emptyTex);
+    run({ runtime, inputs, params, ctx }) {
       const firstInputKey = objectKeys(inputs)[0] as InputKey | undefined;
       const firstInput = firstInputKey && inputs[firstInputKey];
-
       const { width, height } = firstInput
         ? firstInput
         : { width: 1280, height: 720 };
@@ -68,11 +69,26 @@ export function defineFragOp<InputKey extends string, ParamKey extends string>(
       runtime.program.run({
         viewport: [0, 0, width, height],
         uniforms: {
-          ..._.mapValues(paramValues, (value) => tuple(["1f", Number(value)])),
-          ..._.mapValues(inputs, (value) =>
-            tuple(["sampler2D", value!.texture] as const),
+          ..._.mapValues(params, (value) =>
+            tuple(["1f", Number(value)] as const),
           ),
-          ...(hasTime ? { time: tuple(["1f", performance.now() / 1000]) } : {}),
+          ...Object.fromEntries(
+            (fragOp.inputKeys || []).map((key) => [
+              key,
+              tuple([
+                "sampler2D",
+                inputs[key] ? inputs[key].texture : ctx.emptyTex.texture,
+              ] as const),
+            ]),
+          ),
+          ...Object.fromEntries(
+            (fragOp.inputKeys || []).map((key) => [
+              `has_${key}`,
+              tuple(["1i", inputs[key] ? 1 : 0] as const),
+            ]),
+          ),
+          time: tuple(["1f", performance.now() / 1000] as const),
+          resolution: tuple(["2f", [width, height]] as const),
         },
         fullscreen: true,
         targetFramebuffer: runtime.outFbo.framebuffer,
@@ -81,7 +97,7 @@ export function defineFragOp<InputKey extends string, ParamKey extends string>(
     },
 
     destroy({ runtime }) {
-      deleteFbo(runtime.outFbo);
+      destroyFbo(runtime.outFbo);
     },
   });
 }

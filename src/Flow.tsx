@@ -355,12 +355,12 @@ const FlowInner = ({
       flowUP.nodes.$((nodes) => [...nodes, newNode]);
       setDraggedOpId(null);
     },
-    [screenToFlowPosition, draggedOpId, flowUP.nodes],
+    [draggedOpId, screenToFlowPosition, flowUP.nodes, setFlow],
   );
 
   useKeyBindings([
     {
-      combo: "c+r",
+      combo: "c+s+r",
       action: () => {
         setOpInstances({});
       },

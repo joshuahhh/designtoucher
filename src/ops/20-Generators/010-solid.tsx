@@ -1,7 +1,9 @@
-import { Popover } from "@radix-ui/themes";
+import { Inset, Popover } from "@radix-ui/themes";
 import clsx from "clsx";
-import { RgbaColorPicker } from "react-colorful";
-import { Sentence } from "../../ops-core.js";
+import { useContext } from "react";
+import { ChromePicker } from "react-color";
+import { OmniCanvasContext } from "../../OmniCanvas.js";
+import { MyPopoverContent, Sentence } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
 export default defineFragOp({
@@ -17,10 +19,9 @@ export default defineFragOp({
       "border border-gray-300 rounded-md p-1 shadow-sm hover:bg-gray-50 transition-colors",
     );
 
-    const r = props.params.r as number;
-    const g = props.params.g as number;
-    const b = props.params.b as number;
-    const a = props.params.a as number;
+    const { r, g, b, a } = props.params;
+
+    const { overlayDiv } = useContext(OmniCanvasContext);
 
     return (
       <Sentence>
@@ -36,19 +37,21 @@ export default defineFragOp({
               Select
             </button>
           </Popover.Trigger>
-          <Popover.Content side="top" size="1">
-            <RgbaColorPicker
-              color={{ r: r * 255, g: g * 255, b: b * 255, a: a }}
-              onChange={(color) => {
-                props.paramsUP.$set({
-                  r: color.r / 255,
-                  g: color.g / 255,
-                  b: color.b / 255,
-                  a: color.a,
-                });
-              }}
-            />
-          </Popover.Content>
+          <MyPopoverContent>
+            <Inset>
+              <ChromePicker
+                color={{ r: r * 255, g: g * 255, b: b * 255, a }}
+                onChange={({ rgb }) => {
+                  props.paramsUP.$set({
+                    r: rgb.r / 255,
+                    g: rgb.g / 255,
+                    b: rgb.b / 255,
+                    a: rgb.a ?? 1,
+                  });
+                }}
+              />
+            </Inset>
+          </MyPopoverContent>
         </Popover.Root>
       </Sentence>
     );

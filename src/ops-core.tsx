@@ -1,4 +1,5 @@
 import { UpdateProxy } from "@engraft/update-proxy";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Popover, Slider } from "@radix-ui/themes";
 import { Handle, Position, useEdges, useNodeId } from "@xyflow/react";
 import clsx from "clsx";
@@ -15,7 +16,11 @@ import {
 import { mergeRefs } from "react-merge-refs";
 import { getHandleClasses } from "./Handles.js";
 import { Tex } from "./mygl.js";
-import { Monitor, OmniCanvasContextType } from "./OmniCanvas.js";
+import {
+  Monitor,
+  OmniCanvasContext,
+  OmniCanvasContextType,
+} from "./OmniCanvas.js";
 
 export type Op<
   Runtime,
@@ -214,26 +219,6 @@ export const SentenceParamNumber = ({
 }) => {
   const [dragging, setDragging] = useState(false);
 
-  const tooltip = (
-    <div className="flex flex-row items-center gap-2">
-      <div className="text-xs">{min}</div>
-      <Slider
-        className="w-32"
-        value={[value]}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={(value) => {
-          valueUP.$set(parseFloat(value.toString()));
-          setDragging(true);
-        }}
-        onValueCommit={() => {
-          setDragging(false);
-        }}
-      />
-      <div className="text-xs">{max}</div>
-    </div>
-  );
   return (
     <Popover.Root>
       <Popover.Trigger>
@@ -244,12 +229,56 @@ export const SentenceParamNumber = ({
           {value}
         </StableWidthSpan>
       </Popover.Trigger>
-      <Popover.Content side="top" size="1">
-        {tooltip}
-      </Popover.Content>
+      <MyPopoverContent>
+        <div className="flex flex-row items-center gap-2">
+          <div className="text-xs">{min}</div>
+          <Slider
+            className="w-32"
+            value={[value]}
+            min={min}
+            max={max}
+            step={step}
+            onValueChange={(value) => {
+              valueUP.$set(parseFloat(value.toString()));
+              setDragging(true);
+            }}
+            onValueCommit={() => {
+              setDragging(false);
+            }}
+          />
+          <div className="text-xs">{max}</div>
+        </div>
+      </MyPopoverContent>
     </Popover.Root>
   );
 };
+
+export const MyPopoverContent = (
+  props: React.ComponentProps<typeof Popover.Content>,
+) => {
+  const { overlayDiv } = useContext(OmniCanvasContext);
+  return (
+    <Popover.Content
+      {...props}
+      side="top"
+      size="1"
+      container={overlayDiv}
+      className="pointer-events-auto overflow-visible"
+      arrowPadding={10}
+    >
+      {props.children}
+      <MyArrow />
+    </Popover.Content>
+  );
+};
+
+export const MyArrow = () => (
+  <PopoverPrimitive.Arrow
+    width={20}
+    height={10}
+    className="fill-[--color-panel-solid]"
+  />
+);
 
 export const SentenceParamSelect = ({
   value,

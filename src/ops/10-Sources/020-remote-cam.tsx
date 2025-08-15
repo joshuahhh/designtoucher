@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { LuCopy, LuQrCode } from "react-icons/lu";
 import { CopyButton } from "../../CopyButton.js";
 import { newTex, Tex } from "../../mygl.js";
-import { defineOp, Sentence } from "../../ops-core.js";
+import { defineOp, MyPopoverContent, Sentence } from "../../ops-core.js";
 import { stopStream, WebcamStream } from "../../webcam.js";
 
 export default defineOp({
@@ -114,9 +114,9 @@ export default defineOp({
                 Show URL QR
               </button>
             </Popover.Trigger>
-            <Popover.Content side="top" size="1">
+            <MyPopoverContent>
               <QRCodeSVG value={senderUrl} />
-            </Popover.Content>
+            </MyPopoverContent>
           </Popover.Root>
         </div>
       </Sentence>

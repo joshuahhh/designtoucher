@@ -8,9 +8,9 @@
 [ ] other text-editor niceties – autocomplete for ops, hints for args, etc.
 [ ] start thinking about actual UI
 [ ] figure out how to cursor to input
-[ ] horizontally flip webcam input
-[ ] refactor command stuff to make it easier to add new commands
-[ ] feedback
+[x] horizontally flip webcam input
+[x] refactor command stuff to make it easier to add new commands
+[x] feedback
 
 bugs:
 [ ] fix: bad sticky code editor, images go under
@@ -48,6 +48,7 @@ flow stuff:
 [x] ipad: fix stuff cut off at bottom
 [ ] ipad: lasso selection
 
+[ ] multiple outputs
 [ ] direct-manipulation for translation
 [ ] direct-manipulation stacking layers with blend modes
 [ ] color picker (could even have smaller output view?)

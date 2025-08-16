@@ -1,4 +1,3 @@
-import { up } from "@engraft/update-proxy";
 import { Theme } from "@radix-ui/themes";
 import {
   addEdge,
@@ -34,6 +33,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { FaExpandArrowsAlt, FaTrash } from "react-icons/fa";
+import { up } from "update-proxy";
 import "./flow-base.css";
 import { getHandleClasses } from "./Handles.js";
 import { useKeyBindings } from "./keyboard.js";

@@ -1,4 +1,3 @@
-import { UpdateProxy } from "@engraft/update-proxy";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Popover, Slider } from "@radix-ui/themes";
 import { Handle, Position, useEdges, useNodeId } from "@xyflow/react";
@@ -14,6 +13,7 @@ import {
   useState,
 } from "react";
 import { mergeRefs } from "react-merge-refs";
+import { UpdateProxy } from "update-proxy";
 import { getHandleClasses } from "./Handles.js";
 import { Tex } from "./mygl.js";
 import {

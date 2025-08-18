@@ -255,13 +255,20 @@ export const SentenceParamNumber = ({
       e.stopPropagation();
       setDragging(true);
       let moved = false;
+      const startValue = value;
+      const startX = e.clientX;
       const onPointerMove = (e: PointerEvent) => {
         moved = true;
-        const delta = e.movementX;
-        valueUP.$apply(
-          (value) =>
-            +Math.min(max, Math.max(min, value + delta * step)).toFixed(4),
+        const pixels = e.clientX - startX;
+        const changePerPixel = (max - min) / 400;
+        const newValue = Math.min(
+          max,
+          Math.max(
+            min,
+            startValue + Math.round((pixels * changePerPixel) / step) * step,
+          ),
         );
+        valueUP.$set(+newValue.toFixed(4)); // kill floating-point nonsense
       };
       document.addEventListener("pointermove", onPointerMove);
       const onPointerUp = (e: PointerEvent) => {
@@ -277,7 +284,7 @@ export const SentenceParamNumber = ({
       };
       document.addEventListener("pointerup", onPointerUp, { once: true });
     },
-    [max, min, step, valueUP],
+    [max, min, step, value, valueUP],
   );
 
   return (

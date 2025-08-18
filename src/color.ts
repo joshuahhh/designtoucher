@@ -1,7 +1,10 @@
+10 + 10;
+
 import jsfeat, { matrix_t } from "jsfeat";
 
 (window as any).jsfeat = jsfeat;
 
+/** Pyramids for three channels of image data (YUV) */
 class ColorPyr {
   Y: jsfeat.pyramid_t;
   U: jsfeat.pyramid_t;
@@ -14,7 +17,7 @@ class ColorPyr {
   ) {
     function init_pyr(): jsfeat.pyramid_t {
       var pyr = new jsfeat.pyramid_t(levels);
-      pyr.allocate(W, H, jsfeat.F32_t | jsfeat.C1_t);
+      pyr.allocate(W, H, jsfeat.F32_t | jsfeat.C1_t); // single channel 32-bit floats
       return pyr;
     }
 
@@ -23,15 +26,18 @@ class ColorPyr {
     this.V = init_pyr();
   }
 
+  /**
+   * Actually build the pyramid, starting from this.Y/U/V.data[0].
+   * Seemingly redundant with pyramid_t.build?
+   */
   pyrDown() {
     function downchan(chan: jsfeat.pyramid_t) {
-      var i = 2,
-        a = chan.data[0],
-        b = chan.data[1];
+      let a = chan.data[0];
+      let b = chan.data[1];
       jsfeat.imgproc.pyrdown(a, b);
-      for (; i < chan.levels; i++) {
+      for (let l = 2; l < chan.levels; l++) {
         a = b;
-        b = chan.data[i];
+        b = chan.data[l];
         jsfeat.imgproc.pyrdown(a, b);
         // jsfeat.imgproc.pyrup(b, img_ryp.data[i - 1])
       }
@@ -41,10 +47,15 @@ class ColorPyr {
     downchan(this.V);
   }
 
+  /**
+   * Kind of confusing... Given a source pyramid, set each level of
+   * this pyramid to be an upsampled version of the source pyramid
+   * one level lower.
+   */
   pyrUp(source: ColorPyr) {
     function upchan(chan: jsfeat.pyramid_t, schan: jsfeat.pyramid_t) {
-      for (var i = 1; i < chan.levels; i++) {
-        pyrup(schan.data[i], chan.data[i - 1]);
+      for (var l = 1; l < chan.levels; l++) {
+        pyrup(schan.data[l], chan.data[l - 1]);
       }
     }
     upchan(this.Y, source.Y);
@@ -52,14 +63,28 @@ class ColorPyr {
     upchan(this.V, source.V);
   }
 
+  /**
+   * OK! Let's remember what a Laplacian pyramid is. Level k of a
+   * L-pyramid is level k of the Gaussian pyramid minus the upsampled
+   * version of level k + 1 of the Gaussian pyramid.
+   */
+
+  /**
+   * I think this reconstructs a Gaussian pyramid from a Laplacian
+   * pyramid... Precondition is that chan.data[-1] is initialized to
+   * the lowest G-level, and source.data[0...-2] are L-levels. Each
+   * step of the iteration upsamples the lowest known G-level and
+   * adds the corresponding L-level to it.
+   */
   lpyrUp(source: ColorPyr) {
     function lchan(chan: jsfeat.pyramid_t, schan: jsfeat.pyramid_t) {
-      var inner = chan.data[chan.levels - 2];
-      for (var i = 0; i < inner.cols * inner.rows; i++) {
-        inner.data[i] = 0;
-      }
+      // var inner = chan.data[chan.levels - 2];
+      // for (let i = 0; i < inner.cols * inner.rows; i++) {
+      //   inner.data[i] = 0;
+      // }
 
-      for (var i = chan.levels - 1; i > 0; i--) {
+      for (let i = chan.levels - 1; i > 0; i--) {
+        // up-sample
         pyrup(chan.data[i], chan.data[i - 1]);
         imadd(chan.data[i - 1], schan.data[i - 1]);
       }
@@ -69,6 +94,12 @@ class ColorPyr {
     lchan(this.V, source.V);
   }
 
+  /**
+   * This constructs an L-pyramid. Precondition is that this is a
+   * G-pyramid, and source is an upsampled version of this. (I guess
+   * the lowest level of source has to be 0, to preserve the lowest
+   * G-level as an L-level?)
+   */
   lpyrDown(source: ColorPyr) {
     function lchan(chan: jsfeat.pyramid_t, schan: jsfeat.pyramid_t) {
       for (var i = 0; i < chan.levels - 1; i++) {
@@ -80,20 +111,20 @@ class ColorPyr {
     lchan(this.V, source.V);
   }
 
-  iirFilter(source: ColorPyr, r: number) {
-    function iir(chan: jsfeat.pyramid_t, schan: jsfeat.pyramid_t) {
-      for (var i = 0; i < chan.levels - 1; i++) {
-        var lpl = chan.data[i],
-          pyl = schan.data[i];
+  iirFilter(src: ColorPyr, r: number) {
+    function iir(chan_this: jsfeat.pyramid_t, chan_src: jsfeat.pyramid_t) {
+      for (var i = 0; i < chan_this.levels - 1; i++) {
+        const lyr_this = chan_this.data[i];
+        const lyr_src = chan_src.data[i];
 
-        for (var j = 0; j < pyl.cols * pyl.rows; j++) {
-          lpl.data[j] = (1 - r) * lpl.data[j] + r * pyl.data[j];
+        for (var j = 0; j < lyr_src.cols * lyr_src.rows; j++) {
+          lyr_this.data[j] = (1 - r) * lyr_this.data[j] + r * lyr_src.data[j];
         }
       }
     }
-    iir(this.Y, source.Y);
-    iir(this.U, source.U);
-    iir(this.V, source.V);
+    iir(this.Y, src.Y);
+    iir(this.U, src.U);
+    iir(this.V, src.V);
   }
 
   setSubtract(a: ColorPyr, b: ColorPyr) {
@@ -116,6 +147,9 @@ class ColorPyr {
     subp(this.V, a.V, b.V);
   }
 
+  /**
+   * Initializes the top level of the pyramid from RGB source data.
+   */
   fromRGBA(src: ImageData) {
     var w = src.width,
       h = src.height;
@@ -206,63 +240,49 @@ class ColorPyr {
   }
 }
 
+/** Upsamples an image by a factor of two. */
 function pyrup(src: matrix_t, dst: matrix_t) {
-  var w = src.cols,
-    h = src.rows;
-  var w2 = w << 1,
-    h2 = h << 1;
-  var x = 0,
-    y = 0;
-  dst.resize(w2, h2, src.channel);
-  var src_d = src.data,
-    dst_d = dst.data;
+  const w_src = src.cols;
+  const h_src = src.rows;
+  const w_dst = w_src << 1;
+  const h_dst = h_src << 1;
+  dst.resize(w_dst, h_dst, src.channel);
+  var d_src = src.data,
+    d_dst = dst.data;
 
-  for (y = 0; y < h; ++y) {
-    for (x = 0; x < w; ++x) {
-      dst_d[(2 * y + 0) * w2 + (x * 2 + 0)] =
-        dst_d[(2 * y + 1) * w2 + (x * 2 + 0)] =
-        dst_d[(2 * y + 0) * w2 + (x * 2 + 1)] =
-        dst_d[(2 * y + 1) * w2 + (x * 2 + 1)] =
-          src_d[y * w + x];
+  for (let y = 0; y < h_src; ++y) {
+    for (let x = 0; x < w_src; ++x) {
+      d_dst[(2 * y + 0) * w_dst + (x * 2 + 0)] =
+        d_dst[(2 * y + 1) * w_dst + (x * 2 + 0)] =
+        d_dst[(2 * y + 0) * w_dst + (x * 2 + 1)] =
+        d_dst[(2 * y + 1) * w_dst + (x * 2 + 1)] =
+          d_src[y * w_src + x];
     }
   }
 
   jsfeat.imgproc.gaussian_blur(dst, dst, 2);
 }
 
-function immul(
-  n: number,
-  chan: jsfeat.pyramid_t,
-  schan: jsfeat.pyramid_t,
-  c: number,
-) {
-  var d = chan.data[n],
-    e = schan.data[n];
-
+/** In-place operation: d <- c * d + e */
+function immul(d: jsfeat.matrix_t, e: jsfeat.matrix_t, c: number) {
   for (var i = 0; i < d.cols * d.rows; i++) {
     d.data[i] = c * d.data[i] + e.data[i];
   }
 }
 
+/** In-place operation: a <- a + b */
 function imadd(a: matrix_t, b: matrix_t) {
-  var a_d = a.data,
-    b_d = b.data;
-  var w = a.cols,
-    h = a.rows,
-    n = w * h;
+  const n = a.cols * a.rows;
   for (var i = 0; i < n; ++i) {
-    a_d[i] = a_d[i] + b_d[i];
+    a.data[i] = a.data[i] + b.data[i];
   }
 }
 
+/** In-place operation: b <- b - a */
 function imsub(a: matrix_t, b: matrix_t) {
-  var a_d = a.data,
-    b_d = b.data;
-  var w = a.cols,
-    h = a.rows,
-    n = w * h;
+  const n = a.cols * a.rows;
   for (var i = 0; i < n; ++i) {
-    b_d[i] = b_d[i] - a_d[i];
+    b.data[i] = b.data[i] - a.data[i];
   }
 }
 
@@ -310,14 +330,23 @@ export class Demo {
 
   run() {
     var imageData = this.ctx.getImageData(0, 0, this.vidWidth, this.vidHeight);
-    this.img_pyr.fromRGBA(imageData);
 
+    // Set the top of img_pyr to the image data.
+    this.img_pyr.fromRGBA(imageData);
+    // Build a Gaussian pyramid down from the top level.
     this.img_pyr.pyrDown();
+    // Up-sample each level of img_pyr to make img_ryp (with zero
+    // deepest level).
     this.img_ryp.pyrUp(this.img_pyr);
+    // Subtract the upsampled image from the original to get a
+    // Laplacian pyramid.
     this.img_pyr.lpyrDown(this.img_ryp);
 
+    // lowpass1/lowpass2 is updated each tick by blending in r1/r2
+    // worth of the current image
     this.lowpass1.iirFilter(this.img_pyr, this.r1);
     this.lowpass2.iirFilter(this.img_pyr, this.r2);
+    // by subtracting these, we get a crude band-pass filter
     this.filtered.setSubtract(this.lowpass1, this.lowpass2);
 
     var delta = this.lambda_c / 8 / (1 + this.alpha);
@@ -340,6 +369,7 @@ export class Demo {
       lambda = lambda / 2;
     }
 
+    // I'm confused here... isn't img_ryp going to be missing the right lowest G-level?
     this.img_ryp.lpyrUp(this.filtered);
 
     var blah = this.ctx.createImageData(this.vidWidth, this.vidHeight);
@@ -350,9 +380,17 @@ export class Demo {
     // img_ryp.toRGBA(merp)
     this.img_pyr.fromRGBA(imageData);
     // img_pyr.addLevel(0, img_ryp)
-    immul(0, this.img_ryp.Y, this.img_pyr.Y, 1);
-    immul(0, this.img_ryp.U, this.img_pyr.U, this.chromAttenuation);
-    immul(0, this.img_ryp.V, this.img_pyr.V, this.chromAttenuation);
+    immul(this.img_ryp.Y.data[0], this.img_pyr.Y.data[0], 1);
+    immul(
+      this.img_ryp.U.data[0],
+      this.img_pyr.U.data[0],
+      this.chromAttenuation,
+    );
+    immul(
+      this.img_ryp.V.data[0],
+      this.img_pyr.V.data[0],
+      this.chromAttenuation,
+    );
 
     this.img_ryp.exportLayer(0, merp);
     this.ctx.putImageData(merp, 0, 0);

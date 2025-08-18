@@ -27,7 +27,8 @@ export function Amplify() {
       // video.play();
       // return video;
       const video = document.createElement("img");
-      video.src = "http://localhost:8081/cam.mjpeg";
+      // video.src = "http://localhost:8081/cam.mjpeg";
+      video.src = "Nature/Movie.1.mp4";
       return video;
     } else {
       return webcam.stream?.video;
@@ -98,7 +99,7 @@ export function Amplify() {
   );
 
   return (
-    <div className="flex flex-col text-white">
+    <div className="flex flex-col">
       <div className="flex">
         {viewMode === "dry" && dry}
         {viewMode === "wet" && wet}

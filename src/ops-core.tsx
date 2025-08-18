@@ -14,6 +14,7 @@ import {
   createRef,
   forwardRef,
   ReactNode,
+  useCallback,
   useContext,
   useLayoutEffect,
   useState,
@@ -126,21 +127,30 @@ export const FlowContext = createContext<{
   opInstances: Record<string, AnyOpInstance>;
 }>(undefined!);
 
+// export const RenderTopContext = createContext<{
+//   op: AnyOp;
+// }>(undefined!);
+
+export const RenderTop = ({
+  op,
+  ...props
+}: { op: AnyOp } & Omit<Parameters<AnyOp["RenderTop"]>[0], "Handle">) => {
+  return (
+    // <RenderTopContext.Provider value={{ op }}>
+    <op.RenderTop Handle={SentenceHandle} {...props} />
+    // </RenderTopContext.Provider>
+  );
+};
+
 export const Sentence = ({ children }: { children: ReactNode }) => {
   return <div className="text-xs font-['Varela_Round'] ">{children}</div>;
 };
-
-export const PhonyContext = createContext<{ phony: boolean }>({
-  phony: false,
-});
 
 export const SentenceHandle = <InputKey extends string>({
   handleKey,
 }: {
   handleKey: InputKey;
 }) => {
-  const { phony } = useContext(PhonyContext);
-
   const nodeId = useNodeId()!;
   const handleId = makeInputHandleId(nodeId, handleKey);
 
@@ -162,7 +172,7 @@ export const SentenceHandle = <InputKey extends string>({
     "h-4 align-text-bottom": sourceOutput,
   });
 
-  return phony ? (
+  return !nodeId ? (
     <div className={className} />
   ) : (
     <Handle
@@ -236,12 +246,57 @@ export const SentenceParamNumber = ({
     }
   }, [dragging, nodeId, updateNodeInternals]);
 
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [popoverDisabled, setPopoverDisabled] = useState(false);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLSpanElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragging(true);
+      let moved = false;
+      const onPointerMove = (e: PointerEvent) => {
+        moved = true;
+        const delta = e.movementX;
+        valueUP.$apply(
+          (value) =>
+            +Math.min(max, Math.max(min, value + delta * step)).toFixed(4),
+        );
+      };
+      document.addEventListener("pointermove", onPointerMove);
+      const onPointerUp = (e: PointerEvent) => {
+        setDragging(false);
+        document.removeEventListener("pointerup", onPointerUp);
+        document.removeEventListener("pointermove", onPointerMove);
+        if (moved) {
+          setPopoverDisabled(true);
+          setTimeout(() => {
+            setPopoverDisabled(false);
+          }, 10);
+        }
+      };
+      document.addEventListener("pointerup", onPointerUp, { once: true });
+    },
+    [max, min, step, valueUP],
+  );
+
   return (
-    <Popover.Root>
+    <Popover.Root
+      open={popoverOpen}
+      onOpenChange={(open) => {
+        if (!popoverDisabled) {
+          setPopoverOpen(open);
+        }
+      }}
+    >
       <Popover.Trigger>
         <StableWidthSpan
           dragging={dragging}
           className="underline decoration-dotted tabular-nums"
+          onPointerDown={onPointerDown}
+          onDoubleClick={() => {
+            valueUP.$set(0);
+          }}
         >
           {value}
         </StableWidthSpan>

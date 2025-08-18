@@ -1,4 +1,4 @@
-import { Theme } from "@radix-ui/themes";
+import { TextField, Theme } from "@radix-ui/themes";
 import {
   addEdge,
   applyEdgeChanges,
@@ -33,9 +33,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { FaExpandArrowsAlt, FaTrash } from "react-icons/fa";
+import { FaMagnifyingGlass, FaX } from "react-icons/fa6";
 import { up } from "update-proxy";
 import "./flow-base.css";
 import { getHandleClasses } from "./Handles.js";
+import { HighlightMatches } from "./HighlightMatches.js";
 import { useKeyBindings } from "./keyboard.js";
 import { Tex } from "./mygl.js";
 import {
@@ -65,7 +67,6 @@ import {
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
-// import "./xy-theme.css";
 
 const VideoOutputHandle = ({
   nodeId,
@@ -555,6 +556,14 @@ const Sidebar = ({
     );
   }, []);
 
+  const [searchInput, setSearchInput] = useState("");
+  const searchQuery = useMemo(
+    () => searchInput.toLowerCase().trim(),
+    [searchInput],
+  );
+
+  const [opHasMatch, setOpHasMatch] = useState<Record<string, boolean>>({});
+
   return (
     <PhonyContext.Provider value={{ phony: true }}>
       <div
@@ -564,27 +573,64 @@ const Sidebar = ({
       >
         <div className="pt-4 px-4 h-full flex flex-col">
           <h3 className="text-lg font-semibold text-gray-800">Components</h3>
-          <div className="overflow-auto">
+          <TextField.Root
+            className="mt-2 mb-4 shrink-0"
+            placeholder="Search for a component…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          >
+            <TextField.Slot>
+              <FaMagnifyingGlass className="w-3 h-3 text-gray-500" />
+            </TextField.Slot>
+            {searchInput && (
+              <TextField.Slot>
+                <button onClick={() => setSearchInput("")}>
+                  <FaX className="w-3 h-3 text-gray-500" />
+                </button>
+              </TextField.Slot>
+            )}
+          </TextField.Root>
+          <div className="overflow-auto flex flex-col">
             {opsInGroups.map(([groupName, groupOps]) => (
-              <div key={groupName} className="my-8">
+              <div
+                key={groupName}
+                className={clsx("my-4", {
+                  hidden:
+                    searchQuery && !groupOps.some((op) => opHasMatch[op.id]),
+                })}
+              >
                 <h4 className="text-sm text-gray-600 mb-2 font-bold">
                   {groupName}
                 </h4>
-                <div className="grid grid-cols-1 gap-2">
+                <div className="flex flex-col gap-2">
                   {groupOps.map((op) => (
-                    <div
-                      key={op.id}
-                      draggable
-                      onDragStart={(event) => onDragStart(event, getOpId(op))}
-                      className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
+                    <HighlightMatches
+                      query={searchQuery}
+                      setHasMatches={(hasMatches) => {
+                        if (opHasMatch[op.id] === hasMatches) return;
+                        setOpHasMatch((prev) => ({
+                          ...prev,
+                          [op.id]: hasMatches,
+                        }));
+                      }}
+                      className={clsx("shrink-0", {
+                        hidden: searchQuery && !opHasMatch[op.id],
+                      })}
                     >
-                      <op.RenderTop
-                        runtime={null}
-                        paramsUP={noopParamsUP}
-                        params={paramsByOp[op.id]}
-                        Handle={SentenceHandle}
-                      />
-                    </div>
+                      <div
+                        key={op.id}
+                        draggable
+                        onDragStart={(event) => onDragStart(event, getOpId(op))}
+                        className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
+                      >
+                        <op.RenderTop
+                          runtime={null}
+                          paramsUP={noopParamsUP}
+                          params={paramsByOp[op.id]}
+                          Handle={SentenceHandle}
+                        />
+                      </div>
+                    </HighlightMatches>
                   ))}
                 </div>
               </div>

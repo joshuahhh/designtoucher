@@ -17,4 +17,5 @@ export default defineFragOp({
       </Sentence>
     );
   },
+  searchHints: ["AKA: minus, subtract, difference."],
 });

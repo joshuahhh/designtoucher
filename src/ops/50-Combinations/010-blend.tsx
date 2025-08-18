@@ -25,4 +25,5 @@ export default defineFragOp({
       </Sentence>
     );
   },
+  searchHints: ["AKA: mix, interpolate."],
 });

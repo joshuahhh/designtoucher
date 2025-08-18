@@ -122,4 +122,5 @@ export default defineOp({
       </Sentence>
     );
   },
+  searchHints: ["Great for connecting to a phone camera."],
 });

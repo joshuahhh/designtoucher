@@ -1,8 +1,6 @@
 import { Inset, Popover } from "@radix-ui/themes";
 import clsx from "clsx";
-import { useContext } from "react";
 import { ChromePicker } from "react-color";
-import { OmniCanvasContext } from "../../OmniCanvas.js";
 import { MyPopoverContent, Sentence } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
@@ -20,8 +18,6 @@ export default defineFragOp({
     );
 
     const { r, g, b, a } = props.params;
-
-    const { overlayDiv } = useContext(OmniCanvasContext);
 
     return (
       <Sentence>

@@ -2,7 +2,7 @@
 
 /* this will be exported as base.css and can be used for a basic styling */
 /* these are the necessary styles for React/Svelte Flow, they get used by base.css and style.css */
-.react-flow {
+:root {
   direction: ltr;
 
   --xy-edge-stroke-default: #b1b1b7;

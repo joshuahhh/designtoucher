@@ -1,4 +1,5 @@
 import { autoUpdate } from "@floating-ui/dom";
+import { Theme } from "@radix-ui/themes";
 import { clsx } from "clsx";
 import React, {
   createContext,
@@ -288,12 +289,12 @@ export const OmniCanvasOverlay = forwardRef<
       <div ref={anchorRef} {...rest} />
       {overlayDiv &&
         createPortal(
-          <div
+          <Theme
             ref={wrapperRef}
             className="pointer-events-none [&>*]:pointer-events-auto"
           >
             {children}
-          </div>,
+          </Theme>,
           overlayDiv,
         )}
     </>

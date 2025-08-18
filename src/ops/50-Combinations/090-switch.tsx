@@ -28,4 +28,5 @@ export default defineOp({
       </Sentence>
     );
   },
+  searchHints: ["AKA: pick, choose."],
 });

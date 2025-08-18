@@ -27,4 +27,5 @@ export default defineFragOp({
       </Sentence>
     );
   },
+  searchHints: ["AKA: mirror, reflect."],
 });

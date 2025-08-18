@@ -26,4 +26,5 @@ export default defineFragOp({
       </Sentence>
     );
   },
+  searchHints: ["AKA: plus, add."],
 });

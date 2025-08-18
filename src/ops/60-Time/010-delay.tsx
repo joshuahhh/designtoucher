@@ -80,4 +80,5 @@ export default defineOp({
       </Sentence>
     );
   },
+  searchHints: ["AKA: wait, past."],
 });

@@ -53,4 +53,9 @@ export default defineFragOp({
       </Sentence>
     );
   },
+  searchHints: [
+    "'Hue' changes colors around.",
+    "'Saturation' makes colors more or less intense.",
+    "You can make a grayscale (AKA greyscale, 'black and white') image by setting saturation to -1.",
+  ],
 });

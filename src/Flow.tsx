@@ -32,7 +32,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { FaExpandArrowsAlt, FaTrash } from "react-icons/fa";
+import { FaExpandArrowsAlt, FaLightbulb, FaTrash } from "react-icons/fa";
 import { FaMagnifyingGlass, FaX } from "react-icons/fa6";
 import { up } from "update-proxy";
 import "./flow-base.css";
@@ -430,10 +430,12 @@ const FlowInner = ({
             onPaneClick={onPaneClick}
             proOptions={{ hideAttribution: true }}
           >
-            <MiniMap zoomable pannable />
-            <Controls />
             <Background />
-            <CopyPaste />
+            <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
+              <MiniMap zoomable pannable />
+              <Controls className="bg-gray-50" />
+              <CopyPaste />
+            </OmniCanvasOverlay>
           </ReactFlow>
         </FlowContext.Provider>
 
@@ -566,12 +568,12 @@ const Sidebar = ({
 
   return (
     <PhonyContext.Provider value={{ phony: true }}>
-      <div
-        className={`transition-all duration-300 ease-in-out bg-gray-50 border-l border-gray-200 ${
+      <OmniCanvasOverlay
+        className={`transition-all duration-300 ease-in-out ${
           isSidebarExpanded ? "w-72 opacity-100" : "w-0 opacity-0"
         } overflow-hidden z-[2]`}
       >
-        <div className="pt-4 px-4 h-full flex flex-col">
+        <div className="bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col">
           <h3 className="text-lg font-semibold text-gray-800">Components</h3>
           <TextField.Root
             className="mt-2 mb-4 shrink-0"
@@ -605,6 +607,7 @@ const Sidebar = ({
                 <div className="flex flex-col gap-2">
                   {groupOps.map((op) => (
                     <HighlightMatches
+                      key={op.id}
                       query={searchQuery}
                       setHasMatches={(hasMatches) => {
                         if (opHasMatch[op.id] === hasMatches) return;
@@ -618,7 +621,6 @@ const Sidebar = ({
                       })}
                     >
                       <div
-                        key={op.id}
                         draggable
                         onDragStart={(event) => onDragStart(event, getOpId(op))}
                         className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
@@ -630,6 +632,22 @@ const Sidebar = ({
                           Handle={SentenceHandle}
                         />
                       </div>
+                      {(op.searchHints ?? []).map((hint, i) => (
+                        <div
+                          key={i}
+                          className={clsx(
+                            {
+                              hidden:
+                                !searchQuery ||
+                                !hint.toLowerCase().includes(searchQuery),
+                            },
+                            "text-xs text-gray-500 mt-2 ml-4 flex gap-2",
+                          )}
+                        >
+                          <FaLightbulb className="inline-block shrink-0" />{" "}
+                          {hint}
+                        </div>
+                      ))}
                     </HighlightMatches>
                   ))}
                 </div>
@@ -637,7 +655,7 @@ const Sidebar = ({
             ))}
           </div>
         </div>
-      </div>
+      </OmniCanvasOverlay>
     </PhonyContext.Provider>
   );
 };

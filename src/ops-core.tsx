@@ -1,6 +1,12 @@
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Popover, Slider } from "@radix-ui/themes";
-import { Handle, Position, useEdges, useNodeId } from "@xyflow/react";
+import {
+  Handle,
+  Position,
+  useEdges,
+  useNodeId,
+  useUpdateNodeInternals,
+} from "@xyflow/react";
 import clsx from "clsx";
 import _ from "lodash";
 import {
@@ -55,6 +61,7 @@ export type Op<
     paramsUP: UpdateProxy<Params>;
     Handle: typeof SentenceHandle<InputKey>;
   }) => React.ReactNode;
+  searchHints?: string[];
 };
 export type AnyOp = Op<unknown, string, Record<string, unknown>>;
 
@@ -219,6 +226,16 @@ export const SentenceParamNumber = ({
 }) => {
   const [dragging, setDragging] = useState(false);
 
+  const updateNodeInternals = useUpdateNodeInternals();
+  const nodeId = useNodeId();
+
+  useLayoutEffect(() => {
+    if (nodeId) {
+      void dragging; // force a re-render when dragging changes
+      updateNodeInternals(nodeId);
+    }
+  }, [dragging, nodeId, updateNodeInternals]);
+
   return (
     <Popover.Root>
       <Popover.Trigger>
@@ -285,13 +302,13 @@ export const SentenceParamSelect = ({
   valueUP,
   options,
 }: {
-  value: string;
+  value: string | null;
   valueUP: UpdateProxy<string>;
   options: { value: string; label: string }[];
 }) => {
   return (
     <select
-      value={value}
+      value={value ?? ""}
       className="text-xs font-['Varela_Round'] bg-transparent border-b border"
       onChange={(e) => {
         valueUP.$set(e.target.value);

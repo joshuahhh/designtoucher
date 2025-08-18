@@ -30,4 +30,7 @@ export default defineFragOp({
       </Sentence>
     );
   },
+  searchHints: [
+    "'Vibrance' makes colors more or less intense, kind of like 'saturation'.",
+  ],
 });

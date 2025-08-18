@@ -6,9 +6,16 @@ import { instrument, objectKeys, tuple } from "./util.js";
 type FragOp<
   InputKey extends string,
   Params extends Record<string, unknown>,
-> = Pick<
+> = Omit<
   Op<{}, InputKey, Params>,
-  "id" | "inputKeys" | "RenderTop" | "initParams"
+  // stuff we define
+  | "initRuntime"
+  | "run"
+  | "destroy"
+  // stuff we don't define but why are you defining it?
+  | "inputKeysLate"
+  | "initWithRuntime"
+  | "runLate"
 > & {
   fragBody: string;
 };

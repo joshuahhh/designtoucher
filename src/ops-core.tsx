@@ -12,6 +12,7 @@ import _ from "lodash";
 import {
   createContext,
   createRef,
+  ForwardedRef,
   forwardRef,
   ReactNode,
   useCallback,
@@ -187,6 +188,24 @@ export const SentenceHandle = <InputKey extends string>({
     </Handle>
   );
 };
+
+export const SentenceButton = forwardRef(
+  (
+    props: React.ButtonHTMLAttributes<HTMLButtonElement>,
+    ref: ForwardedRef<HTMLButtonElement>,
+  ) => {
+    return (
+      <button
+        ref={ref}
+        {...props}
+        className={clsx(
+          "border border-gray-300 rounded-md p-1 shadow-sm hover:bg-gray-50 transition-colors inline-flex items-center",
+          props.className,
+        )}
+      />
+    );
+  },
+);
 
 const StableWidthSpan = forwardRef<
   HTMLSpanElement,

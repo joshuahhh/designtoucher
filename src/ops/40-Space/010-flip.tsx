@@ -1,5 +1,5 @@
 import { FaArrowsLeftRight, FaArrowsUpDown } from "react-icons/fa6";
-import { Sentence } from "../../ops-core.js";
+import { Sentence, SentenceButton } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
 export default defineFragOp({
@@ -17,13 +17,13 @@ export default defineFragOp({
     return (
       <Sentence>
         Flip <props.Handle key="tex1" handleKey="tex1" />{" "}
-        <button onClick={() => props.paramsUP.horizontal.$((v) => !v)}>
+        <SentenceButton onClick={() => props.paramsUP.horizontal.$((v) => !v)}>
           {props.params.horizontal ? (
-            <FaArrowsLeftRight className="inline-block" />
+            <FaArrowsLeftRight className="inline-block w-2 h-2" />
           ) : (
-            <FaArrowsUpDown className="inline-block" />
+            <FaArrowsUpDown className="inline-block w-2 h-2" />
           )}
-        </button>
+        </SentenceButton>
       </Sentence>
     );
   },

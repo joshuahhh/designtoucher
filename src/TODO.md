@@ -37,6 +37,7 @@ flow stuff:
 [ ] make video into median work
 [x] full-screen mode
   [ ] make full-screen mode prettier (no leakage of textures)
+  [ ] fix full-screen mode layering
 
 [x] fix deploy
 

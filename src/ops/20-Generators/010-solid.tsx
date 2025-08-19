@@ -1,7 +1,7 @@
 import { Inset, Popover } from "@radix-ui/themes";
 import clsx from "clsx";
 import { ChromePicker } from "react-color";
-import { MyPopoverContent, Sentence } from "../../ops-core.js";
+import { MyPopoverContent, Sentence, SentenceButton } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
 export default defineFragOp({
@@ -24,14 +24,7 @@ export default defineFragOp({
         Solid color:{" "}
         <Popover.Root>
           <Popover.Trigger>
-            <button
-              className={clsx(
-                "inline-flex items-center gap-1",
-                buttonClassName,
-              )}
-            >
-              Select
-            </button>
+            <SentenceButton>Select</SentenceButton>
           </Popover.Trigger>
           <MyPopoverContent>
             <Inset>

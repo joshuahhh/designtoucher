@@ -36,7 +36,6 @@ import { FaExpandArrowsAlt, FaLightbulb, FaTrash } from "react-icons/fa";
 import { FaMagnifyingGlass, FaX } from "react-icons/fa6";
 import { up } from "update-proxy";
 import "./flow-base.css";
-import { getHandleClasses } from "./Handles.js";
 import { HighlightMatches } from "./HighlightMatches.js";
 import { useKeyBindings } from "./keyboard.js";
 import { Tex } from "./mygl.js";
@@ -55,6 +54,7 @@ import {
   makeOutputHandleId,
   parseInputHandleId,
   RenderTop,
+  sharedHandleClasses,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, opsInGroups } from "./ops/all-the-ops.js";
@@ -96,14 +96,19 @@ const VideoOutputHandle = ({
         position={Position.Bottom}
         // TODO: customize
         id={makeOutputHandleId(nodeId, "out")}
-        className={clsx(getHandleClasses(true), { "border-dashed": !tex })}
+        className={clsx(
+          sharedHandleClasses,
+          "w-[200px] border-4 border-black hover:border-blue-300",
+          { "border-dashed": !tex },
+        )}
       >
         {tex ? (
-          <Monitor tex={tex} />
+          <div className="-m-[1px]">
+            <Monitor tex={tex} cornerRadiusPixels={20} />
+          </div>
         ) : (
           <div
             style={{
-              width: 200,
               aspectRatio: "1.77778 / 1",
             }}
           />

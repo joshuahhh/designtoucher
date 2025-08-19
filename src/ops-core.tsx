@@ -22,7 +22,6 @@ import {
 } from "react";
 import { mergeRefs } from "react-merge-refs";
 import { UpdateProxy } from "update-proxy";
-import { getHandleClasses } from "./Handles.js";
 import { Tex } from "./mygl.js";
 import {
   Monitor,
@@ -147,6 +146,21 @@ export const Sentence = ({ children }: { children: ReactNode }) => {
   return <div className="text-xs font-['Varela_Round'] ">{children}</div>;
 };
 
+export const sharedHandleClasses = clsx(
+  "nodrag rounded-sm transition-all duration-100",
+  // React Flow's built-in handle selection styling
+  "[&.clickconnecting]:border-blue-400",
+  "[&.clickconnecting]:shadow-lg",
+  "[&.clickconnecting]:shadow-blue-200/20",
+  "[&.clickconnecting]:ring-1",
+  "[&.clickconnecting]:ring-blue-300/15",
+  "pointer-events-auto",
+  "[&.connectionindicator]:cursor-crosshair",
+  // react-flow wants events on handles to be directly on the
+  // handle, not on children, so I guess this makes that work?
+  "[&>*]:pointer-events-none",
+);
+
 export const SentenceHandle = <InputKey extends string>({
   handleKey,
 }: {
@@ -168,10 +182,14 @@ export const SentenceHandle = <InputKey extends string>({
         ]
       : null;
 
-  const className = clsx(getHandleClasses(false), {
-    "w-4 h-4 align-text-bottom": !sourceOutput,
-    "h-4 align-text-bottom": sourceOutput,
-  });
+  const className = clsx(
+    sharedHandleClasses,
+    "inline-flex border-2 border-solid border-black hover:border-blue-300",
+    {
+      "w-4 h-4 align-text-bottom": !sourceOutput,
+      "h-4 align-text-bottom": sourceOutput,
+    },
+  );
 
   return !nodeId ? (
     <div className={className} />
@@ -183,7 +201,13 @@ export const SentenceHandle = <InputKey extends string>({
       className={className}
     >
       {sourceOutput ? (
-        <Monitor tex={sourceOutput} className="pointer-events-none" />
+        <div className="-m-[1px]">
+          <Monitor
+            tex={sourceOutput}
+            className="pointer-events-none"
+            cornerRadiusPixels={200}
+          />
+        </div>
       ) : null}
     </Handle>
   );

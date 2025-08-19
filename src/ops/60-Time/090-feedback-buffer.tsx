@@ -17,7 +17,7 @@ export default defineOp({
 
     ensureFboSize(runtime.fbo, tex.width, tex.height);
     ctx.draw({
-      texture: tex.texture,
+      tex,
       targetFramebuffer: runtime.fbo.framebuffer,
       viewport: [0, 0, tex.width, tex.height],
     });

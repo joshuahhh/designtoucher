@@ -41,7 +41,7 @@ export default defineOp({
     const oldestFbo = popFront(runtime.fbos)!;
     ensureFboSize(oldestFbo, tex.width, tex.height);
     draw({
-      texture: tex.texture,
+      tex,
       targetFramebuffer: oldestFbo.framebuffer,
       viewport: [0, 0, tex.width, tex.height],
     });
@@ -56,7 +56,7 @@ export default defineOp({
     // new FBO and avoid that trouble.
     ensureFboSize(runtime.outFbo, tex.width, tex.height);
     draw({
-      texture: runtime.fbos[0].tex.texture,
+      tex: runtime.fbos[0].tex,
       targetFramebuffer: runtime.outFbo.framebuffer,
       viewport: [0, 0, tex.width, tex.height],
     });

@@ -55,6 +55,8 @@ flow stuff:
 [ ] color picker (could even have smaller output view?)
 [ ] fragment shader with 0, 2, 3, ... inputs?
 
+[x] round corners of monitors in handles
+
 [ ] Lab color space?
 
 [ ] video moshing

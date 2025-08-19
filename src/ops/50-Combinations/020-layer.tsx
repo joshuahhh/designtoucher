@@ -5,8 +5,8 @@ export default defineFragOp({
   id: "layer",
   inputKeys: ["tex1", "tex2"],
   fragBody: `
-    vec4 A = texture2D(tex2, uv);
-    vec4 B = texture2D(tex1, uv);
+    vec4 A = texture2D(tex2, uv); // below
+    vec4 B = texture2D(tex1, uv); // above
     float outA = B.a + A.a * (1.0 - B.a);
     vec3 outRGB = (B.rgb * B.a + A.rgb * A.a * (1.0 - B.a)) / max(outA, 1e-6);
     gl_FragColor = vec4(outRGB, outA);

@@ -214,7 +214,7 @@ export default defineOp({
     );
 
     draw({
-      texture: tex.texture,
+      tex,
       targetFramebuffer: runtime.framebuffer,
       viewport: [0, 0, width, height],
     });

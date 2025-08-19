@@ -17,9 +17,10 @@ import { createPortal } from "react-dom";
 import { newTex, ShaderProgram, Tex } from "./mygl.js";
 
 export interface DrawArgs {
-  texture: WebGLTexture;
+  tex: Tex;
   viewport?: [number, number, number, number];
   targetFramebuffer?: WebGLFramebuffer;
+  cornerRadiusPixels?: number;
 }
 
 export type OmniCanvasContextType = {
@@ -29,6 +30,12 @@ export type OmniCanvasContextType = {
     command: null | ((viewport: [number, number, number, number]) => void),
   ): void;
   draw(args: DrawArgs): void;
+  drawForMonitor(
+    args: DrawArgs & {
+      cornerRadiusPixels?: number;
+      checkerboardPixels?: number;
+    },
+  ): void;
   emptyTex: Tex;
   underlayDiv: HTMLDivElement;
   overlayDiv: HTMLDivElement;
@@ -74,7 +81,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
   const contextValue: OmniCanvasContextType | null = useMemo(() => {
     if (!gl || !underlayDiv || !overlayDiv) return null;
 
-    const program = new ShaderProgram(
+    const drawProgram = new ShaderProgram(
       gl,
       `
         attribute vec2 position;
@@ -89,17 +96,85 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
         uniform sampler2D tex1;
         varying vec2 uv;
         void main() {
-          // gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0) + (0.0 * texture2D(tex1, uv));
           gl_FragColor = texture2D(tex1, uv);
         }
       `,
     );
 
-    const draw = ({ texture, viewport, targetFramebuffer }: DrawArgs) => {
-      program.run({
+    const draw = ({ tex, viewport, targetFramebuffer }: DrawArgs) => {
+      drawProgram.run({
         targetFramebuffer: targetFramebuffer || null,
         viewport,
-        uniforms: { tex1: ["sampler2D", texture] },
+        uniforms: { tex1: ["sampler2D", tex.texture] },
+        fullscreen: true,
+      });
+    };
+
+    const drawForMonitorProgram = new ShaderProgram(
+      gl,
+      `
+        attribute vec2 position;
+        varying vec2 uv;
+        void main() {
+          uv = 0.5 * (position + 1.0);
+          gl_Position = vec4(position, 0.0, 1.0);
+        }
+      `,
+      `
+        precision mediump float;
+        uniform sampler2D tex1;
+        uniform vec2 resolution;
+        uniform float cornerRadiusPixels;
+        uniform float checkerboardPixels;
+        varying vec2 uv;
+        void main() {
+          float cornerAlpha = 1.0;
+          if (cornerRadiusPixels > 0.0) {
+            vec2 uvFromCorner = 0.5 - abs(uv - 0.5);
+            vec2 pixelsFromCorner = uvFromCorner * resolution;
+            vec2 pixelsFromCenter = vec2(cornerRadiusPixels) - pixelsFromCorner;
+            if (pixelsFromCenter.x > 0.0 && pixelsFromCenter.y > 0.0) {
+              float dist = length(pixelsFromCenter);
+              if (dist > cornerRadiusPixels) {
+                cornerAlpha = 0.0;
+              }
+            }
+          }
+          vec4 img = texture2D(tex1, uv);
+          if (checkerboardPixels > 0.0) {
+            vec3 checkerboard = vec3(
+              mod(floor(uv.x * resolution.x / checkerboardPixels) +
+                  floor(uv.y * resolution.y / checkerboardPixels),
+                2.0) * 0.5 + 0.5
+            );
+            gl_FragColor = vec4(img.rgb * img.a + checkerboard * (1.0 - img.a), 1.0);
+          } else {
+            gl_FragColor = img;
+          }
+          gl_FragColor.a = cornerAlpha;
+        }
+      `,
+    );
+
+    const drawForMonitor = ({
+      tex,
+      viewport,
+      targetFramebuffer,
+      cornerRadiusPixels,
+      checkerboardPixels,
+    }: DrawArgs & {
+      cornerRadiusPixels?: number;
+      checkerboardPixels?: number;
+    }) => {
+      drawForMonitorProgram.run({
+        targetFramebuffer: targetFramebuffer || null,
+        viewport,
+        uniforms: {
+          tex1: ["sampler2D", tex.texture],
+          resolution: ["2f", [tex.width, tex.height]],
+          cornerRadiusPixels: ["1f", cornerRadiusPixels],
+          checkerboardPixels: ["1f", checkerboardPixels],
+        },
         fullscreen: true,
       });
     };
@@ -117,7 +192,15 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
 
     const emptyTex = newTex(gl, 1280, 720);
 
-    return { gl, setGuestCommand, draw, emptyTex, overlayDiv, underlayDiv };
+    return {
+      gl,
+      setGuestCommand,
+      draw,
+      drawForMonitor,
+      emptyTex,
+      overlayDiv,
+      underlayDiv,
+    };
   }, [gl, overlayDiv, underlayDiv]);
 
   useEffect(() => {
@@ -218,30 +301,36 @@ export function Monitor({
   tex,
   className,
   style,
+  cornerRadiusPixels,
 }: {
   tex: Tex;
   className?: string;
   style?: React.CSSProperties;
+  cornerRadiusPixels?: number;
 }) {
-  const { draw } = useContext(OmniCanvasContext);
+  const { draw, drawForMonitor } = useContext(OmniCanvasContext);
 
   const command = useCallback(
     (viewport: [number, number, number, number]) => {
-      draw({ texture: tex.texture, viewport });
+      if (cornerRadiusPixels) {
+        drawForMonitor({
+          tex,
+          viewport,
+          cornerRadiusPixels,
+          checkerboardPixels: 100,
+        });
+      } else {
+        draw({ tex, viewport });
+      }
     },
-    [draw, tex.texture],
+    [cornerRadiusPixels, draw, drawForMonitor, tex],
   );
 
   return (
     <OmniCanvasGuest
       command={command}
       className={clsx(className, "w-full h-full")}
-      style={{
-        ...style,
-        aspectRatio: tex.width / tex.height,
-        background:
-          "repeating-conic-gradient(#808080 0 25%, #FFF 0 50%) 50% / 20px 20px",
-      }}
+      style={{ ...style, aspectRatio: tex.width / tex.height }}
     />
   );
 }

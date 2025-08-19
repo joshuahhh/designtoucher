@@ -234,13 +234,14 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
           rectCSS.top > hCSS ||
           rectCSS.right < 0 ||
           rectCSS.left > wCSS
-        )
+        ) {
           return;
+        }
 
-        const left = Math.floor((rectCSS.left - canvasLeft) * dpr);
-        const bottom = Math.floor(bottomCSS * dpr);
-        const width = Math.ceil(rectCSS.width * dpr) + 1;
-        const height = Math.ceil(rectCSS.height * dpr) + 1;
+        const left = (rectCSS.left - canvasLeft) * dpr;
+        const bottom = bottomCSS * dpr;
+        const width = rectCSS.width * dpr;
+        const height = rectCSS.height * dpr;
 
         command([left, bottom, width, height]);
       });

@@ -168,7 +168,7 @@ export const SentenceHandle = <InputKey extends string>({
       : null;
 
   const className = clsx(getHandleClasses(false), {
-    "w-3 h-3": !sourceOutput,
+    "w-4 h-4 align-text-bottom": !sourceOutput,
     "h-4 align-text-bottom": sourceOutput,
   });
 

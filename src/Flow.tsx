@@ -565,6 +565,22 @@ const Sidebar = ({
 
   const [opHasMatch, setOpHasMatch] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    if (!isSidebarExpanded) {
+      setSearchInput("");
+      setOpHasMatch({});
+    }
+  }, [isSidebarExpanded]);
+
+  const [searchInputDiv, setSearchInputDiv] = useState<HTMLInputElement | null>(
+    null,
+  );
+  useEffect(() => {
+    if (isSidebarExpanded && searchInputDiv) {
+      searchInputDiv.focus();
+    }
+  }, [isSidebarExpanded, searchInputDiv]);
+
   return (
     <OmniCanvasOverlay
       className={`transition-all duration-300 ease-in-out ${
@@ -574,6 +590,7 @@ const Sidebar = ({
       <div className="bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col">
         <h3 className="text-lg font-semibold text-gray-800">Components</h3>
         <TextField.Root
+          ref={setSearchInputDiv}
           className="mt-2 mb-4 shrink-0"
           placeholder="Search for a component…"
           value={searchInput}

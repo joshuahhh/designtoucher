@@ -40,14 +40,12 @@ export default defineOp({
 
     const fragBody = params.fragBody;
 
-    const hasTime = fragBody.includes("time");
-
     if (!runtime.compiled || runtime.compiled.fragBody !== fragBody) {
       // compile the shader
       const fragSrc =
         `precision mediump float;\n` +
         `uniform sampler2D tex1;\n` +
-        (hasTime ? `uniform float time;\n` : "") +
+        `uniform float time;\n` +
         `varying vec2 uv;\n` +
         `// lygia-includes\n` +
         `void main(){\n${fragBody}\n}`;
@@ -67,7 +65,7 @@ export default defineOp({
       viewport: [0, 0, tex.width, tex.height],
       uniforms: {
         tex1: ["sampler2D", tex.texture],
-        ...(hasTime ? { time: ["1f", performance.now() / 1000] } : {}),
+        time: ["1f", performance.now() / 1000],
       },
       fullscreen: true,
       targetFramebuffer: runtime.outFbo.framebuffer,

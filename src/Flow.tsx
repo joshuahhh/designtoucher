@@ -200,7 +200,7 @@ export function OpNodeView(props: NodeProps<OpNode>) {
         paramsUP={dataUP.params}
         runtime={runtime}
       />
-      <div className="operation-node-body relative mt-1">
+      <div className="mt-1">
         <VideoOutputHandle nodeId={props.id} tex={output} />
       </div>
     </div>

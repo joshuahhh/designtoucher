@@ -25,7 +25,7 @@ export default defineOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Buffer feedback from <props.Handle handleKey="in" />
+        Buffer feedback from <props.InputHandle inputKey="in" />
       </Sentence>
     );
   },

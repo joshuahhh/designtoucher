@@ -10,7 +10,7 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        No-op on <props.Handle key="tex1" handleKey="tex1" /> (via shader)
+        No-op on <props.InputHandle key="tex1" inputKey="tex1" /> (via shader)
       </Sentence>
     );
   },

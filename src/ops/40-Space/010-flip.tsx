@@ -16,7 +16,7 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Flip <props.Handle key="tex1" handleKey="tex1" />{" "}
+        Flip <props.InputHandle key="tex1" inputKey="tex1" />{" "}
         <SentenceButton onClick={() => props.paramsUP.horizontal.$((v) => !v)}>
           {props.params.horizontal ? (
             <FaArrowsLeftRight className="inline-block w-2 h-2" />

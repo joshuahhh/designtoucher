@@ -249,7 +249,7 @@ export default defineOp({
           max={91}
           step={2}
         />{" "}
-        frames of <props.Handle handleKey="tex1" />
+        frames of <props.InputHandle inputKey="tex1" />
       </Sentence>
     );
   },

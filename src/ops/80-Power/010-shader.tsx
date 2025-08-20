@@ -68,7 +68,7 @@ export default defineOp({
     return (
       <>
         <Sentence>
-          Run fragment shader on <props.Handle handleKey="tex1" />
+          Run fragment shader on <props.InputHandle inputKey="tex1" />
         </Sentence>
         <CodeMirrorControlled
           className="nodrag text-xs"

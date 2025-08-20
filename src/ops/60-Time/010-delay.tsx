@@ -68,7 +68,7 @@ export default defineOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Delay <props.Handle handleKey="tex1" /> by{" "}
+        Delay <props.InputHandle inputKey="tex1" /> by{" "}
         <SentenceParamNumber
           value={props.params.framesOfDelay}
           valueUP={props.paramsUP.framesOfDelay}

@@ -16,7 +16,7 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Displace <props.Handle key="tex1" handleKey="tex1" /> by X:{" "}
+        Displace <props.InputHandle key="tex1" inputKey="tex1" /> by X:{" "}
         <SentenceParamNumber
           value={props.params.x}
           valueUP={props.paramsUP.x}

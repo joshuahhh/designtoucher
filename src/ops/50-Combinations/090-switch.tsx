@@ -16,8 +16,9 @@ export default defineOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Switch to <props.Handle handleKey="tex1" />{" "}
-        <props.Handle handleKey="tex2" /> <props.Handle handleKey="tex3" />{" "}
+        Switch to <props.InputHandle inputKey="tex1" />{" "}
+        <props.InputHandle inputKey="tex2" />{" "}
+        <props.InputHandle inputKey="tex3" />{" "}
         <SentenceParamNumber
           value={props.params.inputIndex}
           valueUP={props.paramsUP.inputIndex}

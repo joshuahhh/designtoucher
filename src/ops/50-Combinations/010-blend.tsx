@@ -13,8 +13,8 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Blend <props.Handle handleKey="tex1" /> and{" "}
-        <props.Handle handleKey="tex2" /> at{" "}
+        Blend <props.InputHandle inputKey="tex1" /> and{" "}
+        <props.InputHandle inputKey="tex2" /> at{" "}
         <SentenceParamNumber
           value={props.params.ratio}
           valueUP={props.paramsUP.ratio}

@@ -125,7 +125,7 @@ export default defineOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Delay <props.Handle handleKey="tex1" /> up to{" "}
+        Delay <props.InputHandle inputKey="tex1" /> up to{" "}
         <SentenceParamNumber
           value={props.params.numFrames}
           valueUP={props.paramsUP.numFrames}
@@ -133,7 +133,7 @@ export default defineOp({
           max={200}
           step={1}
         />{" "}
-        frames based on <props.Handle handleKey="tex2" />
+        frames based on <props.InputHandle inputKey="tex2" />
       </Sentence>
     );
   },

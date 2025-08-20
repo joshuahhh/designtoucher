@@ -19,7 +19,7 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        <props.Handle handleKey="texture" /> Vibrance{" "}
+        <props.InputHandle inputKey="texture" /> Vibrance{" "}
         <SentenceParamNumber
           value={props.params.amount}
           valueUP={props.paramsUP.amount}

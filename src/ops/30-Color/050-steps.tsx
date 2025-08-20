@@ -16,7 +16,7 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Break color channels of <props.Handle handleKey="tex1" /> into{" "}
+        Break color channels of <props.InputHandle inputKey="tex1" /> into{" "}
         <SentenceParamNumber
           value={props.params.steps}
           valueUP={props.paramsUP.steps}

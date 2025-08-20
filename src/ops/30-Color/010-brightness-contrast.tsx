@@ -20,7 +20,7 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        <props.Handle handleKey="texture" /> Brightness{" "}
+        <props.InputHandle inputKey="texture" /> Brightness{" "}
         <SentenceParamNumber
           value={props.params.brightness}
           valueUP={props.paramsUP.brightness}

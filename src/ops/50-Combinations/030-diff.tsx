@@ -12,8 +12,8 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Math: |<props.Handle handleKey="tex1" /> -
-        <props.Handle handleKey="tex2" />|
+        Math: |<props.InputHandle inputKey="tex1" /> -
+        <props.InputHandle inputKey="tex2" />|
       </Sentence>
     );
   },

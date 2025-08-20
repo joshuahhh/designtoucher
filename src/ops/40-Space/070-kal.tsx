@@ -16,7 +16,7 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Wiggle <props.Handle handleKey="tex1" /> with strength{" "}
+        Wiggle <props.InputHandle inputKey="tex1" /> with strength{" "}
         <SentenceParamNumber
           value={props.params.strength}
           valueUP={props.paramsUP.strength}

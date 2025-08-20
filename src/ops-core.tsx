@@ -60,7 +60,7 @@ export type Op<
     runtime: Runtime | null;
     params: Params;
     paramsUP: UpdateProxy<Params>;
-    Handle: typeof SentenceHandle<InputKey>;
+    InputHandle: typeof InputHandle<InputKey>;
   }) => React.ReactNode;
   searchHints?: string[];
 };
@@ -130,10 +130,10 @@ export const FlowContext = createContext<{
 export const RenderTop = ({
   op,
   ...props
-}: { op: AnyOp } & Omit<Parameters<AnyOp["RenderTop"]>[0], "Handle">) => {
+}: { op: AnyOp } & Omit<Parameters<AnyOp["RenderTop"]>[0], "InputHandle">) => {
   return (
     // <RenderTopContext.Provider value={{ op }}>
-    <op.RenderTop Handle={SentenceHandle} {...props} />
+    <op.RenderTop InputHandle={InputHandle} {...props} />
     // </RenderTopContext.Provider>
   );
 };
@@ -157,13 +157,13 @@ export const sharedHandleClasses = clsx(
   "[&>*]:pointer-events-none",
 );
 
-export const SentenceHandle = <InputKey extends string>({
-  handleKey,
+export const InputHandle = <InputKey extends string>({
+  inputKey,
 }: {
-  handleKey: InputKey;
+  inputKey: InputKey;
 }) => {
   const nodeId = useNodeId()!;
-  const handleId = makeInputHandleId(nodeId, handleKey);
+  const handleId = makeInputHandleId(nodeId, inputKey);
 
   // figure out if we're downstream of a node
   const edges = useEdges();

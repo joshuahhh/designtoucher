@@ -17,9 +17,9 @@ export default defineFragOp({
   RenderTop: (props) => {
     return (
       <Sentence>
-        Displace <props.Handle key="tex1" handleKey="tex1" /> by X:{" "}
-        <props.Handle key="tex2" handleKey="tex2" /> Y:{" "}
-        <props.Handle key="tex3" handleKey="tex3" />
+        Displace <props.InputHandle key="tex1" inputKey="tex1" /> by X:{" "}
+        <props.InputHandle key="tex2" inputKey="tex2" /> Y:{" "}
+        <props.InputHandle key="tex3" inputKey="tex3" />
       </Sentence>
     );
   },

@@ -30,7 +30,7 @@ export function opById(id: string): AnyOp {
   return found;
 }
 
-export type OpNodeData = { opId: AnyOpId; params: Record<string, any> };
+export type OpNodeData = { opId: AnyOpId; params: Record<string, unknown> };
 
 export type OpNode = Node<OpNodeData, "operation">;
 

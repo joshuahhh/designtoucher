@@ -69,7 +69,11 @@ export type Op<
   }) => React.ReactNode;
   searchHints?: string[];
 };
-export type AnyOp = Op<any, string, Record<string, unknown>>;
+export type AnyOp = Op<
+  Record<string, unknown>,
+  string,
+  Record<string, unknown>
+>;
 
 export type OutputKey<Runtime extends Record<string, unknown>> = {
   [K in keyof Runtime]: Runtime[K] extends Tex | null ? K : never;
@@ -113,7 +117,11 @@ export type OpInstance<
   opId: OpId<Runtime, InputKey, Params>;
   runtime: Runtime;
 };
-export type AnyOpInstance = OpInstance<any, string, Record<string, unknown>>;
+export type AnyOpInstance = OpInstance<
+  Record<string, unknown>,
+  string,
+  Record<string, unknown>
+>;
 
 export type OpInstanceOf<O> =
   O extends Op<infer Runtime, infer InputKey, infer Params>
@@ -457,7 +465,7 @@ export const OutputHandle = <OutputKey extends string>({
   }, []);
 
   const { opInstances } = useContext(FlowContext);
-  const runtime = nodeId && opInstances[nodeId]?.runtime;
+  const runtime = nodeId !== null ? opInstances[nodeId]?.runtime : undefined;
   const output = runtime?.[outputKey] as Tex | null;
 
   if (!nodeId) {

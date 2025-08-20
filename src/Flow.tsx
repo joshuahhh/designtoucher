@@ -469,7 +469,7 @@ const Sidebar = ({
     [setDraggedOpId],
   );
 
-  const noopParamsUP = useMemo(() => up<Record<string, any>>(() => {}), []);
+  const noopParamsUP = useMemo(() => up<Record<string, unknown>>(() => {}), []);
   const paramsByOp = useMemo(() => {
     return Object.fromEntries(
       ops.map((op) => [op.id, op.initParams?.() ?? {}]),

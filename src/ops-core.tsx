@@ -69,11 +69,7 @@ export type Op<
   }) => React.ReactNode;
   searchHints?: string[];
 };
-export type AnyOp = Op<
-  Record<string, unknown>,
-  string,
-  Record<string, unknown>
->;
+export type AnyOp = Op<any, any, Record<string, unknown>>;
 
 export type OutputKey<Runtime extends Record<string, unknown>> = {
   [K in keyof Runtime]: Runtime[K] extends Tex | null ? K : never;
@@ -95,11 +91,7 @@ export type OpId<
 > = string & {
   __op: Op<Runtime, InputKey, Params>;
 };
-export type AnyOpId = OpId<
-  Record<string, unknown>,
-  string,
-  Record<string, unknown>
->;
+export type AnyOpId = OpId<any, any, Record<string, unknown>>;
 
 export function getOpId<
   Runtime extends Record<string, unknown>,
@@ -117,11 +109,7 @@ export type OpInstance<
   opId: OpId<Runtime, InputKey, Params>;
   runtime: Runtime;
 };
-export type AnyOpInstance = OpInstance<
-  Record<string, unknown>,
-  string,
-  Record<string, unknown>
->;
+export type AnyOpInstance = OpInstance<any, any, Record<string, unknown>>;
 
 export type OpInstanceOf<O> =
   O extends Op<infer Runtime, infer InputKey, infer Params>

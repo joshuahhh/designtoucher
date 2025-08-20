@@ -444,7 +444,7 @@ export const OutputHandle = <OutputKey extends string>({
 }: {
   outputKey: OutputKey;
 }) => {
-  const nodeId = useNodeId()!;
+  const nodeId = useNodeId();
 
   const [isHovered, setIsHovered] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -457,8 +457,12 @@ export const OutputHandle = <OutputKey extends string>({
   }, []);
 
   const { opInstances } = useContext(FlowContext);
-  const runtime = opInstances[nodeId]?.runtime;
+  const runtime = nodeId && opInstances[nodeId]?.runtime;
   const output = runtime?.[outputKey] as Tex | null;
+
+  if (!nodeId) {
+    return null;
+  }
 
   return (
     <div

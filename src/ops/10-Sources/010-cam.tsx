@@ -1,11 +1,11 @@
 import { newTex, Tex } from "../../mygl.js";
 import {
   defineOp,
-  instantiateOp,
   OpInstanceOf,
   Sentence,
   SentenceParamSelect,
 } from "../../ops-core.js";
+import { instantiateOp } from "../../ops-flow.js";
 import {
   assuredlyVideo,
   enumerateCameras,
@@ -116,7 +116,7 @@ export default defineOp({
     if (!runtime.webcamStream.facingMode.includes("environment")) {
       if (!runtime.hflipOp) {
         // TODO: fill in the op
-        runtime.hflipOp = instantiateOp(flip, ctx);
+        runtime.hflipOp = instantiateOp(flip, ctx, "constant-op");
       }
 
       flip.run!({

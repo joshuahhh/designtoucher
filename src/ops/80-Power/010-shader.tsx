@@ -1,7 +1,13 @@
 import { CodeMirrorControlled } from "../../CodeMirrorControlled.js";
 import { codeMirrorSetup } from "../../codeMirrorSetup.js";
 import { Tex } from "../../mygl.js";
-import { AnyOp, defineOp, instantiateOp, Sentence } from "../../ops-core.js";
+import {
+  anyOpInstance,
+  AnyOpInstance,
+  defineOp,
+  Sentence,
+} from "../../ops-core.js";
+import { instantiateOp } from "../../ops-flow.js";
 import { defineFragOp } from "../../ops-frag.js";
 import { strip } from "../../util.js";
 
@@ -17,8 +23,7 @@ export default defineOp({
   initRuntime() {
     return {
       compiled: null as {
-        op: AnyOp;
-        opRuntime: any;
+        opInstance: AnyOpInstance;
         fragBody: string;
       } | null,
 
@@ -40,27 +45,27 @@ export default defineOp({
         fragBody,
         Render: undefined as any,
       });
-      const opInstance = instantiateOp(op, ctx);
-      runtime.compiled = {
-        op,
-        opRuntime: opInstance.runtime,
-        fragBody,
-      };
+      const opInstance = instantiateOp(op, ctx, "constant-op");
+      runtime.compiled = { opInstance: anyOpInstance(opInstance), fragBody };
       runtime.out = opInstance.runtime.out;
     }
 
-    runtime.compiled.op.run?.({
+    const { runtime: fragRuntime, getOp: getFragOp } =
+      runtime.compiled.opInstance;
+    getFragOp().run?.({
       ctx,
       inputs: { tex1: tex },
       params: {},
-      runtime: runtime.compiled.opRuntime,
+      runtime: fragRuntime,
     });
   },
   destroy({ runtime, ctx }) {
     if (runtime.compiled) {
-      runtime.compiled.op.destroy?.({
+      const { runtime: fragRuntime, getOp: getFragOp } =
+        runtime.compiled.opInstance;
+      getFragOp().destroy?.({
         ctx,
-        runtime: runtime.compiled.opRuntime,
+        runtime: fragRuntime,
       });
     }
   },

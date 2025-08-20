@@ -14,8 +14,9 @@ import {
   AnyOp,
   AnyOpId,
   AnyOpInstance,
-  instantiateOp,
   makeInputHandleId,
+  Op,
+  OpInstance,
   parseInputHandleId,
   parseOutputHandleId,
 } from "./ops-core.js";
@@ -28,6 +29,26 @@ export function opById(id: string): AnyOp {
     throw new Error(`Operation with id ${id} not found`);
   }
   return found;
+}
+
+export function instantiateOp<
+  Runtime extends Record<string, unknown>,
+  InputKey extends string,
+  Params extends Record<string, unknown>,
+>(
+  op: Op<Runtime, InputKey, Params>,
+  ctx: OmniCanvasContextType,
+  getOpStrategy: "get-op-by-id" | "constant-op",
+): OpInstance<Runtime, InputKey, Params> {
+  const runtime = op.initRuntime ? op.initRuntime(ctx) : ({} as Runtime);
+  op.initWithRuntime?.({ ctx, runtime });
+  return {
+    runtime,
+    getOp:
+      getOpStrategy === "get-op-by-id"
+        ? () => opById(op.id) as any as Op<Runtime, InputKey, Params>
+        : () => op,
+  };
 }
 
 export type OpNodeData = { opId: AnyOpId; params: Record<string, unknown> };
@@ -45,7 +66,7 @@ export function runFlow(
   for (const [nodeId, instance] of Object.entries(opInstances)) {
     if (!nodes.some((n) => n.id === nodeId)) {
       // this is where existentials would be cute
-      const op = opById(instance.opId);
+      const op = instance.getOp();
       op.destroy?.({ runtime: instance.runtime, ctx });
       delete opInstances[nodeId];
     }
@@ -55,7 +76,7 @@ export function runFlow(
   nodes.forEach((node) => {
     if (!opInstances[node.id]) {
       const op = opById(node.data.opId);
-      opInstances[node.id] = instantiateOp(op, ctx);
+      opInstances[node.id] = instantiateOp(op, ctx, "get-op-by-id");
       const params = node.data.params;
       setParams(node.id, params);
     }
@@ -64,7 +85,7 @@ export function runFlow(
   let lateHandles = new Set<string>();
   for (const nodeId of Object.keys(opInstances)) {
     const instance = opInstances[nodeId];
-    const op = opById(instance.opId);
+    const op = instance.getOp();
     for (const inputKeyLate of op.inputKeysLate ?? []) {
       lateHandles.add(makeInputHandleId(nodeId, inputKeyLate));
     }

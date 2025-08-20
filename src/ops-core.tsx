@@ -69,7 +69,18 @@ export type Op<
   }) => React.ReactNode;
   searchHints?: string[];
 };
-export type AnyOp = Op<any, any, Record<string, unknown>>;
+export type AnyOp = Op<
+  Record<string, unknown>,
+  string,
+  Record<string, unknown>
+>;
+export function anyOp<
+  Runtime extends Record<string, unknown>,
+  InputKey extends string,
+  Params extends Record<string, unknown>,
+>(op: Op<Runtime, InputKey, Params>): AnyOp {
+  return op as any;
+}
 
 export type OutputKey<Runtime extends Record<string, unknown>> = {
   [K in keyof Runtime]: Runtime[K] extends Tex | null ? K : never;
@@ -91,7 +102,18 @@ export type OpId<
 > = string & {
   __op: Op<Runtime, InputKey, Params>;
 };
-export type AnyOpId = OpId<any, any, Record<string, unknown>>;
+export type AnyOpId = OpId<
+  Record<string, unknown>,
+  string,
+  Record<string, unknown>
+>;
+export function anyOpId<
+  Runtime extends Record<string, unknown>,
+  InputKey extends string,
+  Params extends Record<string, unknown>,
+>(opId: OpId<Runtime, InputKey, Params>): AnyOpId {
+  return opId as any;
+}
 
 export function getOpId<
   Runtime extends Record<string, unknown>,
@@ -106,28 +128,26 @@ export type OpInstance<
   InputKey extends string,
   Params extends Record<string, unknown>,
 > = {
-  opId: OpId<Runtime, InputKey, Params>;
   runtime: Runtime;
+  getOp: () => Op<Runtime, InputKey, Params>;
 };
-export type AnyOpInstance = OpInstance<any, any, Record<string, unknown>>;
+export type AnyOpInstance = OpInstance<
+  Record<string, unknown>,
+  string,
+  Record<string, unknown>
+>;
+export function anyOpInstance<
+  Runtime extends Record<string, unknown>,
+  InputKey extends string,
+  Params extends Record<string, unknown>,
+>(opInstance: OpInstance<Runtime, InputKey, Params>): AnyOpInstance {
+  return opInstance as any;
+}
 
 export type OpInstanceOf<O> =
   O extends Op<infer Runtime, infer InputKey, infer Params>
     ? OpInstance<Runtime, InputKey, Params>
     : never;
-
-export function instantiateOp<
-  Runtime extends Record<string, unknown>,
-  InputKey extends string,
-  Params extends Record<string, unknown>,
->(
-  op: Op<Runtime, InputKey, Params>,
-  ctx: OmniCanvasContextType,
-): OpInstance<Runtime, InputKey, Params> {
-  const runtime = op.initRuntime ? op.initRuntime(ctx) : ({} as Runtime);
-  op.initWithRuntime?.({ ctx, runtime });
-  return { opId: getOpId(op), runtime };
-}
 
 export const FlowContext = createContext<{
   opInstances: Record<string, AnyOpInstance>;
@@ -150,7 +170,7 @@ export const Render = ({
 };
 
 export const Sentence = ({ children }: { children: ReactNode }) => {
-  return <div className="text-xs font-['Varela_Round'] ">{children}</div>;
+  return <div className="text-xs font-['Varela_Round']">{children}</div>;
 };
 
 export const sharedHandleClasses = clsx(
@@ -437,8 +457,10 @@ export const SentenceParamSelect = ({
 
 export const OutputHandle = <OutputKey extends string>({
   outputKey,
+  size,
 }: {
   outputKey: OutputKey;
+  size?: number;
 }) => {
   const nodeId = useNodeId();
 
@@ -461,12 +483,7 @@ export const OutputHandle = <OutputKey extends string>({
   }
 
   return (
-    <div
-      style={{ width: 200 }}
-      className="relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <>
       <Handle
         type="source"
         position={Position.Bottom}
@@ -474,9 +491,14 @@ export const OutputHandle = <OutputKey extends string>({
         id={makeOutputHandleId(nodeId, outputKey)}
         className={clsx(
           sharedHandleClasses,
-          "w-[200px] border-4 border-black hover:border-blue-300",
+          "border-4 border-black hover:border-blue-300",
           { "border-dashed": !output },
         )}
+        style={{
+          width: 200 * (size ?? 1),
+        }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         {output ? (
           <div className="-m-[1px]">
@@ -509,7 +531,7 @@ export const OutputHandle = <OutputKey extends string>({
           }}
         />
       )}
-    </div>
+    </>
   );
 };
 

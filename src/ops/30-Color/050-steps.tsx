@@ -25,7 +25,7 @@ export default defineFragOp({
             max={20}
             step={1}
           />{" "}
-          steps.
+          steps
         </Sentence>
         <props.OutputHandle outputKey="out" />
       </>

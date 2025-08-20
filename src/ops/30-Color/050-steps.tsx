@@ -28,4 +28,5 @@ export default defineFragOp({
       </Sentence>
     );
   },
+  searchHints: ["AKA: posterize, quantize.", "Makes a cartoon effect."],
 });

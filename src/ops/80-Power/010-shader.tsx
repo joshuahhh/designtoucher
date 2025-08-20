@@ -1,12 +1,8 @@
 import { CodeMirrorControlled } from "../../CodeMirrorControlled.js";
 import { codeMirrorSetup } from "../../codeMirrorSetup.js";
-import {
-  destroyFbo,
-  ensureFboSize,
-  newFbo,
-  ShaderProgram,
-} from "../../mygl.js";
-import { defineOp, Sentence } from "../../ops-core.js";
+import { Tex } from "../../mygl.js";
+import { AnyOp, defineOp, instantiateOp, Sentence } from "../../ops-core.js";
+import { defineFragOp } from "../../ops-frag.js";
 import { strip } from "../../util.js";
 
 export default defineOp({
@@ -18,21 +14,18 @@ export default defineOp({
       gl_FragColor = vec4(tex1Color * 2.0, 1.0);
     `,
   }),
-  initRuntime(ctx) {
-    const outFbo = newFbo(ctx.gl);
-
+  initRuntime() {
     return {
       compiled: null as {
-        program: ShaderProgram;
+        op: AnyOp;
+        opRuntime: any;
         fragBody: string;
       } | null,
 
-      outFbo: outFbo,
-      out: outFbo.tex,
+      out: null as Tex | null,
     };
   },
   run({ inputs, params, runtime, ctx }) {
-    const { gl } = ctx;
     const tex = inputs.tex1;
     if (!tex) {
       return;
@@ -41,38 +34,35 @@ export default defineOp({
     const fragBody = params.fragBody;
 
     if (!runtime.compiled || runtime.compiled.fragBody !== fragBody) {
-      // compile the shader
-      const fragSrc =
-        `precision mediump float;\n` +
-        `uniform sampler2D tex1;\n` +
-        `uniform float time;\n` +
-        `varying vec2 uv;\n` +
-        `// lygia-includes\n` +
-        `void main(){\n${fragBody}\n}`;
-      const vertSrc = `
-          attribute vec2 position; varying vec2 uv;
-          void main(){ uv = 0.5*(position+1.0); gl_Position = vec4(position,0.0,1.0); }
-        `;
+      const op = defineFragOp({
+        id: "[defined by user]",
+        inputKeys: ["tex1"],
+        fragBody,
+        RenderTop: undefined as any,
+      });
+      const opInstance = instantiateOp(op, ctx);
       runtime.compiled = {
-        program: new ShaderProgram(gl, vertSrc, fragSrc),
+        op,
+        opRuntime: opInstance.runtime,
         fragBody,
       };
+      runtime.out = opInstance.runtime.out;
     }
 
-    ensureFboSize(runtime.outFbo, tex.width, tex.height);
-
-    runtime.compiled.program.run({
-      viewport: [0, 0, tex.width, tex.height],
-      uniforms: {
-        tex1: ["sampler2D", tex.texture],
-        time: ["1f", performance.now() / 1000],
-      },
-      fullscreen: true,
-      targetFramebuffer: runtime.outFbo.framebuffer,
+    runtime.compiled.op.run?.({
+      ctx,
+      inputs: { tex1: tex },
+      params: {},
+      runtime: runtime.compiled.opRuntime,
     });
   },
-  destroy({ runtime }) {
-    destroyFbo(runtime.outFbo);
+  destroy({ runtime, ctx }) {
+    if (runtime.compiled) {
+      runtime.compiled.op.destroy?.({
+        ctx,
+        runtime: runtime.compiled.opRuntime,
+      });
+    }
   },
   RenderTop: (props) => {
     return (

@@ -64,7 +64,7 @@ export type Op<
   }) => React.ReactNode;
   searchHints?: string[];
 };
-export type AnyOp = Op<unknown, string, Record<string, unknown>>;
+export type AnyOp = Op<any, string, Record<string, unknown>>;
 
 export function defineOp<
   Runtime,
@@ -99,11 +99,7 @@ export type OpInstance<
   opId: OpId<Runtime, InputKey, Params>;
   runtime: Runtime;
 };
-export type AnyOpInstance = OpInstance<
-  unknown,
-  string,
-  Record<string, unknown>
->;
+export type AnyOpInstance = OpInstance<any, string, Record<string, unknown>>;
 
 export type OpInstanceOf<O> =
   O extends Op<infer Runtime, infer InputKey, infer Params>

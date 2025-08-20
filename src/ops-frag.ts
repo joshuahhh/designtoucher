@@ -29,22 +29,30 @@ export function defineFragOp<
   const params = fragOp.initParams?.();
   const paramKeys = params ? Object.keys(params) : [];
 
-  const fragSrc =
-    `precision mediump float;\n` +
-    `uniform float time;\n` +
-    `uniform vec2 resolution;\n` +
-    paramKeys.map((name) => `uniform float ${name};`).join("\n") +
-    `\n` +
-    (fragOp.inputKeys || [])
+  const fragSrc = `
+    precision mediump float;
+
+    uniform float time;
+    uniform vec2 resolution;
+    ${(fragOp.inputKeys ?? [])
       .map((key) => `uniform sampler2D ${key}; uniform int has_${key};`)
-      .join("\n") +
-    `\n` +
-    `\nvarying vec2 uv;\n// lygia-includes\nvoid main(){\n${fragOp.fragBody}\n}
+      .join("\n")}
+    ${(paramKeys ?? []).map((name) => `uniform float ${name};`).join("\n")}
+    varying vec2 uv;
+
+    // lygia-includes
+    void main() {
+      ${fragOp.fragBody}
+    }
   `;
 
   const vertSrc = `
-    attribute vec2 position; varying vec2 uv;
-    void main(){ uv = 0.5*(position+1.0); gl_Position = vec4(position,0.0,1.0); }
+    attribute vec2 position;
+    varying vec2 uv;
+    void main() {
+      uv = 0.5 * (position + 1.0);
+      gl_Position = vec4(position, 0.0, 1.0);
+    }
   `;
 
   return defineOp({
@@ -80,18 +88,15 @@ export function defineFragOp<
             tuple(["1f", Number(value)] as const),
           ),
           ...Object.fromEntries(
-            (fragOp.inputKeys || []).map((key) => [
-              key,
-              tuple([
-                "sampler2D",
-                inputs[key] ? inputs[key].texture : ctx.emptyTex.texture,
-              ] as const),
-            ]),
-          ),
-          ...Object.fromEntries(
-            (fragOp.inputKeys || []).map((key) => [
-              `has_${key}`,
-              tuple(["1i", inputs[key] ? 1 : 0] as const),
+            (fragOp.inputKeys || []).flatMap((key) => [
+              [
+                key,
+                tuple([
+                  "sampler2D",
+                  inputs[key] ? inputs[key].texture : ctx.emptyTex.texture,
+                ] as const),
+              ],
+              [`has_${key}`, tuple(["1i", inputs[key] ? 1 : 0] as const)],
             ]),
           ),
           time: tuple(["1f", performance.now() / 1000] as const),

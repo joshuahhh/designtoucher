@@ -12,7 +12,7 @@ export default defineFragOp({
   fragBody: `
     gl_FragColor = vec4(r, g, b, a);
   `,
-  RenderTop: (props) => {
+  Render(props) {
     const buttonClassName = clsx(
       "border border-gray-300 rounded-md p-1 shadow-sm hover:bg-gray-50 transition-colors",
     );
@@ -20,29 +20,32 @@ export default defineFragOp({
     const { r, g, b, a } = props.params;
 
     return (
-      <Sentence>
-        Solid color:{" "}
-        <Popover.Root>
-          <Popover.Trigger>
-            <SentenceButton>Select</SentenceButton>
-          </Popover.Trigger>
-          <MyPopoverContent>
-            <Inset>
-              <ChromePicker
-                color={{ r: r * 255, g: g * 255, b: b * 255, a }}
-                onChange={({ rgb }) => {
-                  props.paramsUP.$set({
-                    r: rgb.r / 255,
-                    g: rgb.g / 255,
-                    b: rgb.b / 255,
-                    a: rgb.a ?? 1,
-                  });
-                }}
-              />
-            </Inset>
-          </MyPopoverContent>
-        </Popover.Root>
-      </Sentence>
+      <>
+        <Sentence>
+          Solid color:{" "}
+          <Popover.Root>
+            <Popover.Trigger>
+              <SentenceButton>Select</SentenceButton>
+            </Popover.Trigger>
+            <MyPopoverContent>
+              <Inset>
+                <ChromePicker
+                  color={{ r: r * 255, g: g * 255, b: b * 255, a }}
+                  onChange={({ rgb }) => {
+                    props.paramsUP.$set({
+                      r: rgb.r / 255,
+                      g: rgb.g / 255,
+                      b: rgb.b / 255,
+                      a: rgb.a ?? 1,
+                    });
+                  }}
+                />
+              </Inset>
+            </MyPopoverContent>
+          </Popover.Root>
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

@@ -31,26 +31,29 @@ export default defineFragOp({
 
     gl_FragColor = color;
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        <props.InputHandle inputKey="texture" /> Hue{" "}
-        <SentenceParamNumber
-          value={props.params.hue}
-          valueUP={props.paramsUP.hue}
-          min={-1}
-          max={1}
-          step={0.01}
-        />
-        , Saturation{" "}
-        <SentenceParamNumber
-          value={props.params.saturation}
-          valueUP={props.paramsUP.saturation}
-          min={-1}
-          max={1}
-          step={0.01}
-        />
-      </Sentence>
+      <>
+        <Sentence>
+          <props.InputHandle inputKey="texture" /> Hue{" "}
+          <SentenceParamNumber
+            value={props.params.hue}
+            valueUP={props.paramsUP.hue}
+            min={-1}
+            max={1}
+            step={0.01}
+          />
+          , Saturation{" "}
+          <SentenceParamNumber
+            value={props.params.saturation}
+            valueUP={props.paramsUP.saturation}
+            min={-1}
+            max={1}
+            step={0.01}
+          />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: [

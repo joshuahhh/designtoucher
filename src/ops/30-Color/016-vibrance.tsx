@@ -16,18 +16,21 @@ export default defineFragOp({
     color.rgb = mix(color.rgb, vec3(mx), amt);
     gl_FragColor = color;
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        <props.InputHandle inputKey="texture" /> Vibrance{" "}
-        <SentenceParamNumber
-          value={props.params.amount}
-          valueUP={props.paramsUP.amount}
-          min={-1}
-          max={1}
-          step={0.01}
-        />
-      </Sentence>
+      <>
+        <Sentence>
+          <props.InputHandle inputKey="texture" /> Vibrance{" "}
+          <SentenceParamNumber
+            value={props.params.amount}
+            valueUP={props.paramsUP.amount}
+            min={-1}
+            max={1}
+            step={0.01}
+          />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: [

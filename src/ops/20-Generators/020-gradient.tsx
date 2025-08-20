@@ -12,18 +12,21 @@ export default defineFragOp({
     float x = cos(angleRad) * uvNorm.x - sin(angleRad) * uvNorm.y;
     gl_FragColor = vec4(vec3(x + 0.5), 1.0);
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Make <b>gradient</b> with angle{" "}
-        <SentenceParamNumber
-          value={props.params.angle}
-          valueUP={props.paramsUP.angle}
-          min={0}
-          max={360}
-          step={0.1}
-        />
-      </Sentence>
+      <>
+        <Sentence>
+          Make <b>gradient</b> with angle{" "}
+          <SentenceParamNumber
+            value={props.params.angle}
+            valueUP={props.paramsUP.angle}
+            min={0}
+            max={360}
+            step={0.1}
+          />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

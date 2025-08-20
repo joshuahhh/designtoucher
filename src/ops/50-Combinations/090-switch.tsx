@@ -13,20 +13,23 @@ export default defineOp({
   run({ inputs, params, runtime }) {
     runtime.out = inputs[`tex${(params.inputIndex + 1) as 1 | 2 | 3}`];
   },
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Switch to <props.InputHandle inputKey="tex1" />{" "}
-        <props.InputHandle inputKey="tex2" />{" "}
-        <props.InputHandle inputKey="tex3" />{" "}
-        <SentenceParamNumber
-          value={props.params.inputIndex}
-          valueUP={props.paramsUP.inputIndex}
-          min={0}
-          max={2}
-          step={1}
-        />
-      </Sentence>
+      <>
+        <Sentence>
+          Switch to <props.InputHandle inputKey="tex1" />{" "}
+          <props.InputHandle inputKey="tex2" />{" "}
+          <props.InputHandle inputKey="tex3" />{" "}
+          <SentenceParamNumber
+            value={props.params.inputIndex}
+            valueUP={props.paramsUP.inputIndex}
+            min={0}
+            max={2}
+            step={1}
+          />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: ["AKA: pick, choose."],

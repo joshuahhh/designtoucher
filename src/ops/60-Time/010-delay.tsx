@@ -65,19 +65,22 @@ export default defineOp({
     runtime.fbos.forEach((fbo) => destroyFbo(fbo));
     destroyFbo(runtime.outFbo);
   },
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Delay <props.InputHandle inputKey="tex1" /> by{" "}
-        <SentenceParamNumber
-          value={props.params.framesOfDelay}
-          valueUP={props.paramsUP.framesOfDelay}
-          min={1}
-          max={300}
-          step={1}
-        />{" "}
-        frames
-      </Sentence>
+      <>
+        <Sentence>
+          Delay <props.InputHandle inputKey="tex1" /> by{" "}
+          <SentenceParamNumber
+            value={props.params.framesOfDelay}
+            valueUP={props.paramsUP.framesOfDelay}
+            min={1}
+            max={300}
+            step={1}
+          />{" "}
+          frames
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: ["AKA: wait, past."],

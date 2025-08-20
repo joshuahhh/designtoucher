@@ -13,19 +13,22 @@ export default defineFragOp({
     tex1Color = floor(tex1Color / stepSize) * stepSize;
     gl_FragColor = vec4(tex1Color, 1.0);
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Break color channels of <props.InputHandle inputKey="tex1" /> into{" "}
-        <SentenceParamNumber
-          value={props.params.steps}
-          valueUP={props.paramsUP.steps}
-          min={1}
-          max={20}
-          step={1}
-        />{" "}
-        steps.
-      </Sentence>
+      <>
+        <Sentence>
+          Break color channels of <props.InputHandle inputKey="tex1" /> into{" "}
+          <SentenceParamNumber
+            value={props.params.steps}
+            valueUP={props.paramsUP.steps}
+            min={1}
+            max={20}
+            step={1}
+          />{" "}
+          steps.
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: ["AKA: posterize, quantize.", "Makes a cartoon effect."],

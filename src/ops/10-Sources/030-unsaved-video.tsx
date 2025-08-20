@@ -43,33 +43,36 @@ export default defineOp({
       destroyTex(runtime.out);
     }
   },
-  RenderTop(props) {
+  Render(props) {
     return (
-      <Sentence>
-        UNSAVED video file{" "}
-        <span className="underline decoration-dotted">
-          <input
-            type="file"
-            accept="video/*"
-            onChange={(e) => {
-              if (!props.runtime) {
-                return;
-              }
-              if (e.target.files && e.target.files.length > 0) {
-                const file = e.target.files[0];
-                const video = document.createElement("video");
-                video.src = URL.createObjectURL(file);
-                video.crossOrigin = "anonymous";
-                video.loop = true;
-                video.muted = true;
-                video.play();
-                props.runtime.video = video;
-              }
-            }}
-            className="text-[80%] w-36"
-          />
-        </span>
-      </Sentence>
+      <>
+        <Sentence>
+          UNSAVED video file{" "}
+          <span className="underline decoration-dotted">
+            <input
+              type="file"
+              accept="video/*"
+              onChange={(e) => {
+                if (!props.runtime) {
+                  return;
+                }
+                if (e.target.files && e.target.files.length > 0) {
+                  const file = e.target.files[0];
+                  const video = document.createElement("video");
+                  video.src = URL.createObjectURL(file);
+                  video.crossOrigin = "anonymous";
+                  video.loop = true;
+                  video.muted = true;
+                  video.play();
+                  props.runtime.video = video;
+                }
+              }}
+              className="text-[80%] w-36"
+            />
+          </span>
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

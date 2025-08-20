@@ -11,12 +11,15 @@ export default defineFragOp({
     vec3 outRGB = (B.rgb * B.a + A.rgb * A.a * (1.0 - B.a)) / max(outA, 1e-6);
     gl_FragColor = vec4(outRGB, outA);
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Layer <props.InputHandle inputKey="tex1" /> over{" "}
-        <props.InputHandle inputKey="tex2" />
-      </Sentence>
+      <>
+        <Sentence>
+          Layer <props.InputHandle inputKey="tex1" /> over{" "}
+          <props.InputHandle inputKey="tex2" />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

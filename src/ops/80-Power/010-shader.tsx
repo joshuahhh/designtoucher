@@ -38,7 +38,7 @@ export default defineOp({
         id: "[defined by user]",
         inputKeys: ["tex1"],
         fragBody,
-        RenderTop: undefined as any,
+        Render: undefined as any,
       });
       const opInstance = instantiateOp(op, ctx);
       runtime.compiled = {
@@ -64,7 +64,7 @@ export default defineOp({
       });
     }
   },
-  RenderTop: (props) => {
+  Render(props) {
     return (
       <>
         <Sentence>
@@ -76,6 +76,7 @@ export default defineOp({
           extensions={codeMirrorSetup}
           setValue={props.paramsUP.fragBody.$set}
         />
+        <props.OutputHandle outputKey="out" />
       </>
     );
   },

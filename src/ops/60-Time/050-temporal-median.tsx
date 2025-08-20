@@ -238,19 +238,22 @@ export default defineOp({
     destroyFbo(runtime.outFbo);
     ctx.gl.deleteFramebuffer(runtime.framebuffer);
   },
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Median of last{" "}
-        <SentenceParamNumber
-          value={props.params.numFrames}
-          valueUP={props.paramsUP.numFrames}
-          min={1}
-          max={91}
-          step={2}
-        />{" "}
-        frames of <props.InputHandle inputKey="tex1" />
-      </Sentence>
+      <>
+        <Sentence>
+          Median of last{" "}
+          <SentenceParamNumber
+            value={props.params.numFrames}
+            valueUP={props.paramsUP.numFrames}
+            min={1}
+            max={91}
+            step={2}
+          />{" "}
+          frames of <props.InputHandle inputKey="tex1" />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

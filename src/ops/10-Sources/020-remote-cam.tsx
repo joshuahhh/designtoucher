@@ -79,13 +79,16 @@ export default defineOp({
       runtime.webcamStream = null;
     }
   },
-  RenderTop: (props) => {
+  Render(props) {
     const id = props.runtime?.id;
     if (!id) {
       return (
-        <Sentence>
-          Use remote camera <span className="italic">[loading...]</span>
-        </Sentence>
+        <>
+          <Sentence>
+            Use remote camera <span className="italic">[loading...]</span>
+          </Sentence>
+          <props.OutputHandle outputKey="out" />
+        </>
       );
     }
 
@@ -95,31 +98,34 @@ export default defineOp({
     );
 
     return (
-      <Sentence>
-        <div>Use remote camera @ {id.slice(0, 8)}</div>
-        <div className="flex gap-2">
-          <CopyButton text={senderUrl} className={buttonClassName}>
-            <LuCopy className="inline-block" />
-            Copy URL
-          </CopyButton>
-          <Popover.Root>
-            <Popover.Trigger>
-              <button
-                className={clsx(
-                  "inline-flex items-center gap-1",
-                  buttonClassName,
-                )}
-              >
-                <LuQrCode className="inline-block" />
-                Show URL QR
-              </button>
-            </Popover.Trigger>
-            <MyPopoverContent>
-              <QRCodeSVG value={senderUrl} />
-            </MyPopoverContent>
-          </Popover.Root>
-        </div>
-      </Sentence>
+      <>
+        <Sentence>
+          <div>Use remote camera @ {id.slice(0, 8)}</div>
+          <div className="flex gap-2">
+            <CopyButton text={senderUrl} className={buttonClassName}>
+              <LuCopy className="inline-block" />
+              Copy URL
+            </CopyButton>
+            <Popover.Root>
+              <Popover.Trigger>
+                <button
+                  className={clsx(
+                    "inline-flex items-center gap-1",
+                    buttonClassName,
+                  )}
+                >
+                  <LuQrCode className="inline-block" />
+                  Show URL QR
+                </button>
+              </Popover.Trigger>
+              <MyPopoverContent>
+                <QRCodeSVG value={senderUrl} />
+              </MyPopoverContent>
+            </Popover.Root>
+          </div>
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: ["Great for connecting to a phone camera."],

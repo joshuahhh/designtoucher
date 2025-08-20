@@ -1,5 +1,11 @@
 import _ from "lodash";
-import { destroyFbo, ensureFboSize, newFbo, ShaderProgram } from "./mygl.js";
+import {
+  destroyFbo,
+  ensureFboSize,
+  newFbo,
+  ShaderProgram,
+  Tex,
+} from "./mygl.js";
 import { defineOp, Op } from "./ops-core.js";
 import { instrument, objectKeys, tuple } from "./util.js";
 
@@ -7,7 +13,7 @@ type FragOp<
   InputKey extends string,
   Params extends Record<string, unknown>,
 > = Omit<
-  Op<{}, InputKey, Params>,
+  Op<{ out: Tex }, InputKey, Params>,
   // stuff we define
   | "initRuntime"
   | "run"
@@ -23,6 +29,7 @@ type FragOp<
 const DEBUG = false;
 
 export function defineFragOp<
+  Runtime extends Record<string, unknown>,
   InputKey extends string,
   Params extends Record<string, unknown>,
 >(fragOp: FragOp<InputKey, Params>) {

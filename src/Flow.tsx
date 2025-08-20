@@ -8,13 +8,11 @@ import {
   Controls,
   Edge,
   EdgeChange,
-  Handle,
   MiniMap,
   Node,
   NodeChange,
   NodeProps,
   NodeTypes,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -31,16 +29,13 @@ import {
   useMemo,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
-import { FaExpandArrowsAlt, FaLightbulb, FaTrash } from "react-icons/fa";
+import { FaLightbulb, FaTrash } from "react-icons/fa";
 import { FaMagnifyingGlass, FaX } from "react-icons/fa6";
 import { up } from "update-proxy";
 import "./flow-base.css";
 import { HighlightMatches } from "./HighlightMatches.js";
 import { useKeyBindings } from "./keyboard.js";
-import { Tex } from "./mygl.js";
 import {
-  Monitor,
   OmniCanvasContext,
   OmniCanvasContextType,
   OmniCanvasHost,
@@ -51,10 +46,8 @@ import {
   AnyOpInstance,
   FlowContext,
   getOpId,
-  makeOutputHandleId,
   parseInputHandleId,
-  RenderTop,
-  sharedHandleClasses,
+  Render,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, opsInGroups } from "./ops/all-the-ops.js";
@@ -66,76 +59,6 @@ import {
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
-
-const VideoOutputHandle = ({
-  nodeId,
-  tex,
-}: {
-  nodeId: string;
-  tex: Tex | null | undefined;
-}) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const handleFullscreenClick = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsFullscreen(true);
-    setIsHovered(false);
-  }, []);
-
-  return (
-    <div
-      style={{ width: 200 }}
-      className="relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        // TODO: customize
-        id={makeOutputHandleId(nodeId, "out")}
-        className={clsx(
-          sharedHandleClasses,
-          "w-[200px] border-4 border-black hover:border-blue-300",
-          { "border-dashed": !tex },
-        )}
-      >
-        {tex ? (
-          <div className="-m-[1px]">
-            <Monitor tex={tex} cornerRadiusPixels={20} />
-          </div>
-        ) : (
-          <div
-            style={{
-              aspectRatio: "1.77778 / 1",
-            }}
-          />
-        )}
-        {tex && isHovered && !isFullscreen && (
-          <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full pointer-events-none">
-            <button
-              onClick={handleFullscreenClick}
-              className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
-              title="View fullscreen"
-            >
-              <FaExpandArrowsAlt />
-            </button>
-          </OmniCanvasOverlay>
-        )}
-      </Handle>
-      {isFullscreen && tex && (
-        <FullscreenModal
-          tex={tex}
-          onClose={() => {
-            setIsFullscreen(false);
-          }}
-        />
-      )}
-    </div>
-  );
-};
 
 export function OpNodeView(props: NodeProps<OpNode>) {
   const [data, setData] = useNodeData(props);
@@ -178,7 +101,7 @@ export function OpNodeView(props: NodeProps<OpNode>) {
   return (
     <div
       className={clsx(
-        "flex flex-col items-center border rounded-md bg-gray-100 p-2 !-z-10 transition-all duration-100",
+        "flex flex-col gap-1 items-center border rounded-md bg-gray-100 p-2 !-z-10 transition-all duration-100",
         selected
           ? [
               "border-blue-400 border-2",
@@ -188,21 +111,12 @@ export function OpNodeView(props: NodeProps<OpNode>) {
           : ["border-gray-300", "hover:border-blue-300 hover:shadow-sm"],
       )}
     >
-      {/* <NodeResizer
-        color="#ff0071"
-        isVisible={selected}
-        minWidth={100}
-        minHeight={30}
-      /> */}
-      <RenderTop
+      <Render
         op={op}
         params={data.params}
         paramsUP={dataUP.params}
         runtime={runtime}
       />
-      <div className="mt-1">
-        <VideoOutputHandle nodeId={props.id} tex={output} />
-      </div>
     </div>
   );
 }
@@ -645,7 +559,7 @@ const Sidebar = ({
                       onDragStart={(event) => onDragStart(event, getOpId(op))}
                       className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
                     >
-                      <RenderTop
+                      <Render
                         op={op}
                         runtime={null}
                         paramsUP={noopParamsUP}
@@ -675,58 +589,5 @@ const Sidebar = ({
         </div>
       </div>
     </OmniCanvasOverlay>
-  );
-};
-
-const FullscreenModal = ({
-  tex,
-  onClose,
-}: {
-  tex: Tex;
-  onClose: () => void;
-}) => {
-  const { underlayDiv } = useContext(OmniCanvasContext);
-
-  useKeyBindings([
-    {
-      combo: "Escape",
-      action: onClose,
-    },
-  ]);
-
-  const aspectRatio = tex.width / tex.height;
-
-  return createPortal(
-    <div className="fixed inset-0 bg-black grid place-items-center [container-type:size]">
-      <OmniCanvasOverlay className="absolute inset-0">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
-          title="Press ESC to close"
-        >
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </OmniCanvasOverlay>
-
-      <div
-        style={{
-          width: `min(100cqw,calc(100cqh*${aspectRatio}))`,
-          aspectRatio: aspectRatio,
-        }}
-      >
-        <Monitor tex={tex} />
-      </div>
-    </div>,
-    underlayDiv,
   );
 };

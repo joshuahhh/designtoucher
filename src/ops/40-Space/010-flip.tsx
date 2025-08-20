@@ -13,18 +13,23 @@ export default defineFragOp({
     vec2 uvFlip = horizontal == 1.0 ? vec2(1.0 - uv.x, uv.y) : vec2(uv.x, 1.0 - uv.y);
     gl_FragColor = texture2D(tex1, uvFlip);
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Flip <props.InputHandle key="tex1" inputKey="tex1" />{" "}
-        <SentenceButton onClick={() => props.paramsUP.horizontal.$((v) => !v)}>
-          {props.params.horizontal ? (
-            <FaArrowsLeftRight className="inline-block w-2 h-2" />
-          ) : (
-            <FaArrowsUpDown className="inline-block w-2 h-2" />
-          )}
-        </SentenceButton>
-      </Sentence>
+      <>
+        <Sentence>
+          Flip <props.InputHandle key="tex1" inputKey="tex1" />{" "}
+          <SentenceButton
+            onClick={() => props.paramsUP.horizontal.$((v) => !v)}
+          >
+            {props.params.horizontal ? (
+              <FaArrowsLeftRight className="inline-block w-2 h-2" />
+            ) : (
+              <FaArrowsUpDown className="inline-block w-2 h-2" />
+            )}
+          </SentenceButton>
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: ["AKA: mirror, reflect."],

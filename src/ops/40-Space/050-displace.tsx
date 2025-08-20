@@ -13,26 +13,29 @@ export default defineFragOp({
       gl_FragColor = texture2D(tex1, newUV);
     }
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Displace <props.InputHandle key="tex1" inputKey="tex1" /> by X:{" "}
-        <SentenceParamNumber
-          value={props.params.x}
-          valueUP={props.paramsUP.x}
-          min={-1}
-          max={1}
-          step={0.001}
-        />{" "}
-        Y:{" "}
-        <SentenceParamNumber
-          value={props.params.y}
-          valueUP={props.paramsUP.y}
-          min={-1}
-          max={1}
-          step={0.001}
-        />
-      </Sentence>
+      <>
+        <Sentence>
+          Displace <props.InputHandle key="tex1" inputKey="tex1" /> by X:{" "}
+          <SentenceParamNumber
+            value={props.params.x}
+            valueUP={props.paramsUP.x}
+            min={-1}
+            max={1}
+            step={0.001}
+          />{" "}
+          Y:{" "}
+          <SentenceParamNumber
+            value={props.params.y}
+            valueUP={props.paramsUP.y}
+            min={-1}
+            max={1}
+            step={0.001}
+          />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

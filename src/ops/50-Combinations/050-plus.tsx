@@ -10,20 +10,23 @@ export default defineFragOp({
     vec3 tex2Color = vec3(texture2D(tex2, uv));
     gl_FragColor = vec4(tex1Color + tex2Color + alpha, 1.0);
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Math: <props.InputHandle inputKey="tex1" /> +{" "}
-        <props.InputHandle inputKey="tex2" /> ( +{" "}
-        <SentenceParamNumber
-          value={props.params.alpha}
-          valueUP={props.paramsUP.alpha}
-          min={-1}
-          max={1}
-          step={0.001}
-        />
-        )
-      </Sentence>
+      <>
+        <Sentence>
+          Math: <props.InputHandle inputKey="tex1" /> +{" "}
+          <props.InputHandle inputKey="tex2" /> ( +{" "}
+          <SentenceParamNumber
+            value={props.params.alpha}
+            valueUP={props.paramsUP.alpha}
+            min={-1}
+            max={1}
+            step={0.001}
+          />
+          )
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: ["AKA: plus, add."],

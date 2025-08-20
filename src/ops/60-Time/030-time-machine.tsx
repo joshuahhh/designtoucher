@@ -122,19 +122,22 @@ export default defineOp({
     destroyFbo(runtime.outFbo);
     ctx.gl.deleteFramebuffer(runtime.framebuffer);
   },
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Delay <props.InputHandle inputKey="tex1" /> up to{" "}
-        <SentenceParamNumber
-          value={props.params.numFrames}
-          valueUP={props.paramsUP.numFrames}
-          min={1}
-          max={200}
-          step={1}
-        />{" "}
-        frames based on <props.InputHandle inputKey="tex2" />
-      </Sentence>
+      <>
+        <Sentence>
+          Delay <props.InputHandle inputKey="tex1" /> up to{" "}
+          <SentenceParamNumber
+            value={props.params.numFrames}
+            valueUP={props.paramsUP.numFrames}
+            min={1}
+            max={200}
+            step={1}
+          />{" "}
+          frames based on <props.InputHandle inputKey="tex2" />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

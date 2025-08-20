@@ -9,12 +9,15 @@ export default defineFragOp({
     vec3 tex2Color = vec3(texture2D(tex2, uv));
     gl_FragColor = vec4(abs(tex1Color - tex2Color), 1.0);
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Math: |<props.InputHandle inputKey="tex1" /> -
-        <props.InputHandle inputKey="tex2" />|
-      </Sentence>
+      <>
+        <Sentence>
+          Math: |<props.InputHandle inputKey="tex1" /> -
+          <props.InputHandle inputKey="tex2" />|
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: ["AKA: minus, subtract, difference."],

@@ -7,11 +7,14 @@ export default defineFragOp({
   fragBody: `
     gl_FragColor = texture2D(tex1, uv);
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        No-op on <props.InputHandle key="tex1" inputKey="tex1" /> (via shader)
-      </Sentence>
+      <>
+        <Sentence>
+          No-op on <props.InputHandle key="tex1" inputKey="tex1" /> (via shader)
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

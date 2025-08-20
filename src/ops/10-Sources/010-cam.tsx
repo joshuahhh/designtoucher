@@ -139,26 +139,29 @@ export default defineOp({
       runtime.out = runtime.tex;
     }
   },
-  RenderTop: (props) => {
+  Render(props) {
     const cams = props.runtime?.cams;
     return (
-      <Sentence>
-        Camera{" "}
-        {/* <span className="underline decoration-dotted">FaceTime camera</span> */}
-        {/* TODO: figure out these coercions, initting of params, etc. */}
-        {cams ? (
-          <SentenceParamSelect
-            value={props.params.deviceId!}
-            valueUP={props.paramsUP.deviceId.$as<string>()}
-            options={cams.map((cam) => ({
-              label: cam.label,
-              value: cam.deviceId,
-            }))}
-          />
-        ) : (
-          "..."
-        )}
-      </Sentence>
+      <>
+        <Sentence>
+          Camera{" "}
+          {/* <span className="underline decoration-dotted">FaceTime camera</span> */}
+          {/* TODO: figure out these coercions, initting of params, etc. */}
+          {cams ? (
+            <SentenceParamSelect
+              value={props.params.deviceId!}
+              valueUP={props.paramsUP.deviceId.$as<string>()}
+              options={cams.map((cam) => ({
+                label: cam.label,
+                value: cam.deviceId,
+              }))}
+            />
+          ) : (
+            "..."
+          )}
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
   searchHints: ["AKA: webcam."],

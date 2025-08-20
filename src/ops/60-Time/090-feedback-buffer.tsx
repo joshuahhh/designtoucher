@@ -22,11 +22,14 @@ export default defineOp({
       viewport: [0, 0, tex.width, tex.height],
     });
   },
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        Buffer feedback from <props.InputHandle inputKey="in" />
-      </Sentence>
+      <>
+        <Sentence>
+          Buffer feedback from <props.InputHandle inputKey="in" />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

@@ -20,17 +20,21 @@ import {
   useLayoutEffect,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
+import { FaExpandArrowsAlt } from "react-icons/fa";
 import { mergeRefs } from "react-merge-refs";
 import { UpdateProxy } from "update-proxy";
+import { useKeyBindings } from "./keyboard.js";
 import { Tex } from "./mygl.js";
 import {
   Monitor,
   OmniCanvasContext,
   OmniCanvasContextType,
+  OmniCanvasOverlay,
 } from "./OmniCanvas.js";
 
 export type Op<
-  Runtime,
+  Runtime extends Record<string, unknown>,
   InputKey extends string,
   Params extends Record<string, unknown>,
 > = {
@@ -56,18 +60,24 @@ export type Op<
     ctx: OmniCanvasContextType;
   }) => void;
   destroy?: (props: { runtime: Runtime; ctx: OmniCanvasContextType }) => void;
-  RenderTop: (props: {
+  Render: (props: {
     runtime: Runtime | null;
     params: Params;
     paramsUP: UpdateProxy<Params>;
     InputHandle: typeof InputHandle<InputKey>;
+    OutputHandle: typeof OutputHandle<OutputKey<Runtime>>;
   }) => React.ReactNode;
   searchHints?: string[];
 };
 export type AnyOp = Op<any, string, Record<string, unknown>>;
 
+export type OutputKey<Runtime extends Record<string, unknown>> = {
+  [K in keyof Runtime]: Runtime[K] extends Tex | null ? K : never;
+}[keyof Runtime] &
+  string;
+
 export function defineOp<
-  Runtime,
+  Runtime extends Record<string, unknown>,
   InputKey extends string,
   Params extends Record<string, unknown>,
 >(op: Op<Runtime, InputKey, Params>) {
@@ -75,16 +85,20 @@ export function defineOp<
 }
 
 export type OpId<
-  Runtime,
+  Runtime extends Record<string, unknown>,
   InputKey extends string,
   Params extends Record<string, unknown>,
 > = string & {
   __op: Op<Runtime, InputKey, Params>;
 };
-export type AnyOpId = OpId<unknown, string, Record<string, unknown>>;
+export type AnyOpId = OpId<
+  Record<string, unknown>,
+  string,
+  Record<string, unknown>
+>;
 
 export function getOpId<
-  Runtime,
+  Runtime extends Record<string, unknown>,
   InputKey extends string,
   Params extends Record<string, unknown>,
 >(op: Op<Runtime, InputKey, Params>): OpId<Runtime, InputKey, Params> {
@@ -92,7 +106,7 @@ export function getOpId<
 }
 
 export type OpInstance<
-  Runtime,
+  Runtime extends Record<string, unknown>,
   InputKey extends string,
   Params extends Record<string, unknown>,
 > = {
@@ -107,7 +121,7 @@ export type OpInstanceOf<O> =
     : never;
 
 export function instantiateOp<
-  Runtime,
+  Runtime extends Record<string, unknown>,
   InputKey extends string,
   Params extends Record<string, unknown>,
 >(
@@ -121,20 +135,21 @@ export function instantiateOp<
 
 export const FlowContext = createContext<{
   opInstances: Record<string, AnyOpInstance>;
-}>(undefined!);
+}>({ opInstances: {} });
 
-// export const RenderTopContext = createContext<{
-//   op: AnyOp;
-// }>(undefined!);
-
-export const RenderTop = ({
+export const Render = ({
   op,
   ...props
-}: { op: AnyOp } & Omit<Parameters<AnyOp["RenderTop"]>[0], "InputHandle">) => {
+}: { op: AnyOp } & Omit<
+  Parameters<AnyOp["Render"]>[0],
+  "InputHandle" | "OutputHandle"
+>) => {
   return (
-    // <RenderTopContext.Provider value={{ op }}>
-    <op.RenderTop InputHandle={InputHandle} {...props} />
-    // </RenderTopContext.Provider>
+    <op.Render
+      InputHandle={InputHandle}
+      OutputHandle={OutputHandle}
+      {...props}
+    />
   );
 };
 
@@ -421,6 +436,133 @@ export const SentenceParamSelect = ({
         </option>
       ))}
     </select>
+  );
+};
+
+export const OutputHandle = <OutputKey extends string>({
+  outputKey,
+}: {
+  outputKey: OutputKey;
+}) => {
+  const nodeId = useNodeId()!;
+
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const handleFullscreenClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsFullscreen(true);
+    setIsHovered(false);
+  }, []);
+
+  const { opInstances } = useContext(FlowContext);
+  const runtime = opInstances[nodeId]?.runtime;
+  const output = runtime?.[outputKey] as Tex | null;
+
+  return (
+    <div
+      style={{ width: 200 }}
+      className="relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        // TODO: customize
+        id={makeOutputHandleId(nodeId, outputKey)}
+        className={clsx(
+          sharedHandleClasses,
+          "w-[200px] border-4 border-black hover:border-blue-300",
+          { "border-dashed": !output },
+        )}
+      >
+        {output ? (
+          <div className="-m-[1px]">
+            <Monitor tex={output} cornerRadiusPixels={20} />
+          </div>
+        ) : (
+          <div
+            style={{
+              aspectRatio: "1.77778 / 1",
+            }}
+          />
+        )}
+        {output && isHovered && !isFullscreen && (
+          <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full pointer-events-none">
+            <button
+              onClick={handleFullscreenClick}
+              className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
+              title="View fullscreen"
+            >
+              <FaExpandArrowsAlt />
+            </button>
+          </OmniCanvasOverlay>
+        )}
+      </Handle>
+      {isFullscreen && output && (
+        <FullscreenModal
+          tex={output}
+          onClose={() => {
+            setIsFullscreen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+const FullscreenModal = ({
+  tex,
+  onClose,
+}: {
+  tex: Tex;
+  onClose: () => void;
+}) => {
+  const { underlayDiv } = useContext(OmniCanvasContext);
+
+  useKeyBindings([
+    {
+      combo: "Escape",
+      action: onClose,
+    },
+  ]);
+
+  const aspectRatio = tex.width / tex.height;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black grid place-items-center [container-type:size]">
+      <OmniCanvasOverlay className="absolute inset-0">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+          title="Press ESC to close"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </OmniCanvasOverlay>
+
+      <div
+        style={{
+          width: `min(100cqw,calc(100cqh*${aspectRatio}))`,
+          aspectRatio: aspectRatio,
+        }}
+      >
+        <Monitor tex={tex} />
+      </div>
+    </div>,
+    underlayDiv,
   );
 };
 

@@ -17,26 +17,29 @@ export default defineFragOp({
     }
     gl_FragColor = color;
   `,
-  RenderTop: (props) => {
+  Render(props) {
     return (
-      <Sentence>
-        <props.InputHandle inputKey="texture" /> Brightness{" "}
-        <SentenceParamNumber
-          value={props.params.brightness}
-          valueUP={props.paramsUP.brightness}
-          min={-1}
-          max={1}
-          step={0.01}
-        />
-        , Contrast{" "}
-        <SentenceParamNumber
-          value={props.params.contrast}
-          valueUP={props.paramsUP.contrast}
-          min={-1}
-          max={1}
-          step={0.01}
-        />
-      </Sentence>
+      <>
+        <Sentence>
+          <props.InputHandle inputKey="texture" /> Brightness{" "}
+          <SentenceParamNumber
+            value={props.params.brightness}
+            valueUP={props.paramsUP.brightness}
+            min={-1}
+            max={1}
+            step={0.01}
+          />
+          , Contrast{" "}
+          <SentenceParamNumber
+            value={props.params.contrast}
+            valueUP={props.paramsUP.contrast}
+            min={-1}
+            max={1}
+            step={0.01}
+          />
+        </Sentence>
+        <props.OutputHandle outputKey="out" />
+      </>
     );
   },
 });

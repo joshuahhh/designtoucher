@@ -123,14 +123,63 @@ export function getOpId<
   return op.id as OpId<Runtime, InputKey, Params>;
 }
 
-export type OpInstance<
+export class OpInstance<
   Runtime extends Record<string, unknown>,
   InputKey extends string,
   Params extends Record<string, unknown>,
-> = {
-  runtime: Runtime;
-  getOp: () => Op<Runtime, InputKey, Params>;
-};
+> {
+  public runtime: Runtime;
+
+  constructor(
+    public getOp: () => Op<Runtime, InputKey, Params>,
+    ctx: OmniCanvasContextType,
+  ) {
+    const op = this.getOp();
+    this.runtime = op.initRuntime?.(ctx) ?? ({} as Runtime);
+    op.initWithRuntime?.({ ctx, runtime: this.runtime });
+
+    this.Render = this.Render.bind(this);
+  }
+
+  run(props: OpInstanceMethodProps<Runtime, InputKey, Params, "run">) {
+    const op = this.getOp();
+    return op.run?.({ runtime: this.runtime, ...props });
+  }
+  runLate(props: OpInstanceMethodProps<Runtime, InputKey, Params, "runLate">) {
+    const op = this.getOp();
+    return op.runLate?.({ runtime: this.runtime, ...props });
+  }
+  destroy(props: OpInstanceMethodProps<Runtime, InputKey, Params, "destroy">) {
+    const op = this.getOp();
+    return op.destroy?.({ runtime: this.runtime, ...props });
+  }
+
+  Render(
+    props: Omit<
+      OpInstanceMethodProps<Runtime, InputKey, Params, "Render">,
+      "InputHandle" | "OutputHandle"
+    >,
+  ) {
+    const op = this.getOp();
+    return op.Render({
+      runtime: this.runtime,
+      InputHandle,
+      OutputHandle,
+      ...props,
+    });
+  }
+}
+
+type OpInstanceMethodProps<
+  Runtime extends Record<string, unknown>,
+  InputKey extends string,
+  Params extends Record<string, unknown>,
+  MethodName extends "run" | "runLate" | "destroy" | "Render",
+> = Omit<
+  Parameters<NonNullable<Op<Runtime, InputKey, Params>[MethodName]>>[0],
+  "runtime"
+>;
+
 export type AnyOpInstance = OpInstance<
   Record<string, unknown>,
   string,
@@ -152,22 +201,6 @@ export type OpInstanceOf<O> =
 export const FlowContext = createContext<{
   opInstances: Record<string, AnyOpInstance>;
 }>({ opInstances: {} });
-
-export const Render = ({
-  op,
-  ...props
-}: { op: AnyOp } & Omit<
-  Parameters<AnyOp["Render"]>[0],
-  "InputHandle" | "OutputHandle"
->) => {
-  return (
-    <op.Render
-      InputHandle={InputHandle}
-      OutputHandle={OutputHandle}
-      {...props}
-    />
-  );
-};
 
 export const Sentence = ({ children }: { children: ReactNode }) => {
   return <div className="text-xs font-['Varela_Round']">{children}</div>;
@@ -204,9 +237,9 @@ export const InputHandle = <InputKey extends string>({
   const sourceHandleParsed = edge && parseOutputHandleId(edge.sourceHandle!);
   const sourceOutput =
     flowContext && sourceHandleParsed
-      ? (flowContext.opInstances[sourceHandleParsed.nodeId].runtime as any)[
+      ? (flowContext.opInstances[sourceHandleParsed.nodeId].runtime[
           sourceHandleParsed.key
-        ]
+        ] as Tex | null)
       : null;
 
   const className = clsx(
@@ -475,8 +508,11 @@ export const OutputHandle = <OutputKey extends string>({
   }, []);
 
   const { opInstances } = useContext(FlowContext);
-  const runtime = nodeId !== null ? opInstances[nodeId]?.runtime : undefined;
-  const output = runtime?.[outputKey] as Tex | null;
+
+  const output =
+    nodeId !== null
+      ? (opInstances[nodeId]?.runtime[outputKey] as Tex | null)
+      : undefined;
 
   if (!nodeId) {
     return null;

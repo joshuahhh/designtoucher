@@ -41,20 +41,12 @@ export default defineOp({
     }
 
     runtime.channelOpInstances.forEach((channel) => {
-      channel.getOp().run?.({
-        ctx,
-        inputs: { tex1: tex },
-        params: {},
-        runtime: channel.runtime,
-      });
+      channel.run({ ctx, inputs: { tex1: tex }, params: {} });
     });
   },
   destroy({ runtime, ctx }) {
     runtime.channelOpInstances.forEach((channel) => {
-      channel.getOp().destroy?.({
-        ctx,
-        runtime: channel.runtime,
-      });
+      channel.destroy({ ctx });
     });
   },
   Render(props) {

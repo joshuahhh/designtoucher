@@ -46,8 +46,9 @@ import {
   AnyOpInstance,
   FlowContext,
   getOpId,
+  InputHandle,
+  OutputHandle,
   parseInputHandleId,
-  Render,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, opsInGroups } from "./ops/all-the-ops.js";
@@ -75,28 +76,11 @@ export function OpNodeView(props: NodeProps<OpNode>) {
 
   const { opInstances } = useContext(FlowContext);
 
-  const op = opById(data.opId);
-  const runtime = opInstances[props.id]?.runtime;
+  const instance = opInstances[props.id];
 
-  if (!runtime) {
+  if (!instance) {
     return null;
   }
-
-  // const updateNodeInternals = useUpdateNodeInternals();
-  // useEffect(() => {
-  //   const interval = setInterval(() => {
-  //     // console.log("Updating node internals for", props.id);
-  //     updateNodeInternals(props.id);
-  //   }, 1000);
-  //   return () => clearInterval(interval);
-  // }, [props.id, updateNodeInternals]);
-
-  if (!runtime) {
-    return null;
-  }
-
-  // TODO: customize this
-  const output = (runtime as any).out;
 
   return (
     <div
@@ -111,12 +95,7 @@ export function OpNodeView(props: NodeProps<OpNode>) {
           : ["border-gray-300", "hover:border-blue-300 hover:shadow-sm"],
       )}
     >
-      <Render
-        op={op}
-        params={data.params}
-        paramsUP={dataUP.params}
-        runtime={runtime}
-      />
+      <instance.Render params={data.params} paramsUP={dataUP.params} />
     </div>
   );
 }
@@ -559,11 +538,12 @@ const Sidebar = ({
                       onDragStart={(event) => onDragStart(event, getOpId(op))}
                       className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
                     >
-                      <Render
-                        op={op}
+                      <op.Render
                         runtime={null}
                         paramsUP={noopParamsUP}
                         params={paramsByOp[op.id]}
+                        InputHandle={InputHandle}
+                        OutputHandle={OutputHandle}
                       />
                     </div>
                     {(op.searchHints ?? []).map((hint, i) => (

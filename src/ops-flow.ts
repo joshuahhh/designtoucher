@@ -9,6 +9,7 @@
 // ] as const;
 
 import { Edge, Node } from "@xyflow/react";
+import { Tex } from "./mygl.js";
 import { OmniCanvasContextType } from "./OmniCanvas.js";
 import {
   AnyOp,
@@ -40,15 +41,12 @@ export function instantiateOp<
   ctx: OmniCanvasContextType,
   getOpStrategy: "get-op-by-id" | "constant-op",
 ): OpInstance<Runtime, InputKey, Params> {
-  const runtime = op.initRuntime ? op.initRuntime(ctx) : ({} as Runtime);
-  op.initWithRuntime?.({ ctx, runtime });
-  return {
-    runtime,
-    getOp:
-      getOpStrategy === "get-op-by-id"
-        ? () => opById(op.id) as any as Op<Runtime, InputKey, Params>
-        : () => op,
-  };
+  return new OpInstance(
+    getOpStrategy === "get-op-by-id"
+      ? () => opById(op.id) as any as Op<Runtime, InputKey, Params>
+      : () => op,
+    ctx,
+  );
 }
 
 export type OpNodeData = { opId: AnyOpId; params: Record<string, unknown> };
@@ -65,9 +63,7 @@ export function runFlow(
   // clean up old op instances
   for (const [nodeId, instance] of Object.entries(opInstances)) {
     if (!nodes.some((n) => n.id === nodeId)) {
-      // this is where existentials would be cute
-      const op = instance.getOp();
-      op.destroy?.({ runtime: instance.runtime, ctx });
+      instance.destroy?.({ ctx });
       delete opInstances[nodeId];
     }
   }
@@ -123,7 +119,7 @@ export function runFlow(
           );
           return [inputKey, null];
         }
-        return [inputKey, (sourceOpInstance.runtime as any)[outputKey]];
+        return [inputKey, sourceOpInstance.runtime[outputKey] as Tex | null];
       }),
     );
   }
@@ -134,16 +130,11 @@ export function runFlow(
     if (!node) throw new Error(`Node with id ${nodeId} not found`);
 
     const op = opById(node.data.opId);
-    const runtime = opInstances[nodeId].runtime;
+    const instance = opInstances[nodeId];
 
     try {
       const inputs = assembleInputs(nodeId, true);
-      op.run?.({
-        runtime,
-        inputs,
-        params: node.data.params,
-        ctx,
-      });
+      instance.run?.({ inputs, params: node.data.params, ctx });
       // console.log(
       //   "ran",
       //   nodeId,
@@ -166,10 +157,7 @@ export function runFlow(
       const node = nodes.find((n) => n.id === nodeId);
       if (!node) throw new Error(`Node with id ${nodeId} not found`);
 
-      const op = opById(node.data.opId);
-
-      op.runLate?.({
-        runtime: opInstance.runtime,
+      opInstance.runLate?.({
         inputs: assembleInputs(nodeId, false),
         params: node.data.params,
         ctx,

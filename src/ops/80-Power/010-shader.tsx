@@ -50,23 +50,11 @@ export default defineOp({
       runtime.out = opInstance.runtime.out;
     }
 
-    const { runtime: fragRuntime, getOp: getFragOp } =
-      runtime.compiled.opInstance;
-    getFragOp().run?.({
-      ctx,
-      inputs: { tex1: tex },
-      params: {},
-      runtime: fragRuntime,
-    });
+    runtime.compiled.opInstance.run({ ctx, inputs: { tex1: tex }, params: {} });
   },
   destroy({ runtime, ctx }) {
     if (runtime.compiled) {
-      const { runtime: fragRuntime, getOp: getFragOp } =
-        runtime.compiled.opInstance;
-      getFragOp().destroy?.({
-        ctx,
-        runtime: fragRuntime,
-      });
+      runtime.compiled.opInstance.destroy({ ctx });
     }
   },
   Render(props) {

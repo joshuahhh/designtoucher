@@ -22,6 +22,7 @@ import {
 import { clsx } from "clsx";
 import {
   Dispatch,
+  memo,
   SetStateAction,
   useCallback,
   useContext,
@@ -175,7 +176,7 @@ const FlowInner = ({
       runFlow(
         flowRef.current.nodes,
         flowRef.current.edges,
-        opInstances,
+        opInstancesRef.current,
         ctx,
         (nodeId, params) => {
           flowUP.nodes.$all
@@ -185,7 +186,7 @@ const FlowInner = ({
       );
       setOpInstances((prevRuntimes) => ({ ...prevRuntimes }));
     });
-  }, [flowRef, opInstances, ctx, flowUP]);
+  }, [flowRef, ctx, flowUP, opInstancesRef]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -295,23 +296,29 @@ const FlowInner = ({
     deleteElements({ nodes: selectedNodes, edges: selectedEdges });
   }, [getNodes, getEdges, deleteElements]);
 
+  const styledEdges = useMemo(
+    () =>
+      flow.edges.map((e) => {
+        // TODO: we should prob make a custom edge at some point
+        const { nodeId, key } = parseInputHandleId(e.targetHandle!);
+        const node = flow.nodes.find((n) => n.id === nodeId);
+        const op = node ? opById(node.data.opId) : null;
+        const isLate = op?.inputKeysLate?.includes(key);
+        return {
+          ...e,
+          className: clsx({ "[stroke-dasharray:5,5]": isLate }),
+        };
+      }),
+    [flow.edges, flow.nodes],
+  );
+
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">
         <FlowContext.Provider value={{ opInstances: opInstancesRef.current }}>
           <ReactFlow
             nodes={flow.nodes}
-            edges={flow.edges.map((e) => {
-              // TODO: we should prob make a custom edge at some point
-              const { nodeId, key } = parseInputHandleId(e.targetHandle!);
-              const node = flow.nodes.find((n) => n.id === nodeId);
-              const op = node ? opById(node.data.opId) : null;
-              const isLate = op?.inputKeysLate?.includes(key);
-              return {
-                ...e,
-                className: clsx({ "[stroke-dasharray:5,5]": isLate }),
-              };
-            })}
+            edges={styledEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
@@ -430,144 +437,149 @@ const SidebarToggleButton = ({
   );
 };
 
-const Sidebar = ({
-  isSidebarExpanded,
-  setDraggedOpId,
-  ctx,
-}: {
-  isSidebarExpanded: boolean;
-  setDraggedOpId: Dispatch<SetStateAction<AnyOpId | null>>;
-  ctx: OmniCanvasContextType;
-}) => {
-  const onDragStart = useCallback(
-    (event: React.DragEvent, opId: AnyOpId) => {
-      setDraggedOpId(opId);
-      event.dataTransfer.setData("text/plain", opId);
-      event.dataTransfer.effectAllowed = "move";
-    },
-    [setDraggedOpId],
-  );
-
-  const noopParamsUP = useMemo(() => up<Record<string, unknown>>(() => {}), []);
-  const paramsByOp = useMemo(() => {
-    return Object.fromEntries(
-      ops.map((op) => [op.id, op.initParams?.() ?? {}]),
+const Sidebar = memo(
+  ({
+    isSidebarExpanded,
+    setDraggedOpId,
+    ctx,
+  }: {
+    isSidebarExpanded: boolean;
+    setDraggedOpId: Dispatch<SetStateAction<AnyOpId | null>>;
+    ctx: OmniCanvasContextType;
+  }) => {
+    const onDragStart = useCallback(
+      (event: React.DragEvent, opId: AnyOpId) => {
+        setDraggedOpId(opId);
+        event.dataTransfer.setData("text/plain", opId);
+        event.dataTransfer.effectAllowed = "move";
+      },
+      [setDraggedOpId],
     );
-  }, []);
 
-  const [searchInput, setSearchInput] = useState("");
-  const searchQuery = useMemo(
-    () => searchInput.toLowerCase().trim(),
-    [searchInput],
-  );
+    const noopParamsUP = useMemo(
+      () => up<Record<string, unknown>>(() => {}),
+      [],
+    );
+    const paramsByOp = useMemo(() => {
+      return Object.fromEntries(
+        ops.map((op) => [op.id, op.initParams?.() ?? {}]),
+      );
+    }, []);
 
-  const [opHasMatch, setOpHasMatch] = useState<Record<string, boolean>>({});
+    const [searchInput, setSearchInput] = useState("");
+    const searchQuery = useMemo(
+      () => searchInput.toLowerCase().trim(),
+      [searchInput],
+    );
 
-  useEffect(() => {
-    if (!isSidebarExpanded) {
-      setSearchInput("");
-      setOpHasMatch({});
-    }
-  }, [isSidebarExpanded]);
+    const [opHasMatch, setOpHasMatch] = useState<Record<string, boolean>>({});
 
-  const [searchInputDiv, setSearchInputDiv] = useState<HTMLInputElement | null>(
-    null,
-  );
-  useEffect(() => {
-    if (isSidebarExpanded && searchInputDiv) {
-      searchInputDiv.focus();
-    }
-  }, [isSidebarExpanded, searchInputDiv]);
+    useEffect(() => {
+      if (!isSidebarExpanded) {
+        setSearchInput("");
+        setOpHasMatch({});
+      }
+    }, [isSidebarExpanded]);
 
-  return (
-    <OmniCanvasOverlay
-      className={`transition-all duration-300 ease-in-out ${
-        isSidebarExpanded ? "w-72 opacity-100" : "w-0 opacity-0"
-      } overflow-hidden z-[2]`}
-    >
-      <div className="bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col">
-        <h3 className="text-lg font-semibold text-gray-800">Components</h3>
-        <TextField.Root
-          ref={setSearchInputDiv}
-          className="mt-2 mb-4 shrink-0"
-          placeholder="Search for a component…"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-        >
-          <TextField.Slot>
-            <FaMagnifyingGlass className="w-3 h-3 text-gray-500" />
-          </TextField.Slot>
-          {searchInput && (
+    const [searchInputDiv, setSearchInputDiv] =
+      useState<HTMLInputElement | null>(null);
+    useEffect(() => {
+      if (isSidebarExpanded && searchInputDiv) {
+        searchInputDiv.focus();
+      }
+    }, [isSidebarExpanded, searchInputDiv]);
+
+    return (
+      <OmniCanvasOverlay
+        className={`transition-all duration-300 ease-in-out ${
+          isSidebarExpanded ? "w-72 opacity-100" : "w-0 opacity-0"
+        } overflow-hidden z-[2]`}
+      >
+        <div className="bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col">
+          <h3 className="text-lg font-semibold text-gray-800">Components</h3>
+          <TextField.Root
+            ref={setSearchInputDiv}
+            className="mt-2 mb-4 shrink-0"
+            placeholder="Search for a component…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          >
             <TextField.Slot>
-              <button onClick={() => setSearchInput("")}>
-                <FaX className="w-3 h-3 text-gray-500" />
-              </button>
+              <FaMagnifyingGlass className="w-3 h-3 text-gray-500" />
             </TextField.Slot>
-          )}
-        </TextField.Root>
-        <div className="overflow-auto flex flex-col">
-          {opsInGroups.map(([groupName, groupOps]) => (
-            <div
-              key={groupName}
-              className={clsx("my-4", {
-                hidden:
-                  searchQuery && !groupOps.some((op) => opHasMatch[op.id]),
-              })}
-            >
-              <h4 className="text-sm text-gray-600 mb-2 font-bold">
-                {groupName}
-              </h4>
-              <div className="flex flex-col gap-2">
-                {groupOps.map((op) => (
-                  <HighlightMatches
-                    key={op.id}
-                    query={searchQuery}
-                    setHasMatches={(hasMatches) => {
-                      if (opHasMatch[op.id] === hasMatches) return;
-                      setOpHasMatch((prev) => ({
-                        ...prev,
-                        [op.id]: hasMatches,
-                      }));
-                    }}
-                    className={clsx("shrink-0", {
-                      hidden: searchQuery && !opHasMatch[op.id],
-                    })}
-                  >
-                    <div
-                      draggable
-                      onDragStart={(event) => onDragStart(event, getOpId(op))}
-                      className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
+            {searchInput && (
+              <TextField.Slot>
+                <button onClick={() => setSearchInput("")}>
+                  <FaX className="w-3 h-3 text-gray-500" />
+                </button>
+              </TextField.Slot>
+            )}
+          </TextField.Root>
+          <div className="overflow-auto flex flex-col">
+            {opsInGroups.map(([groupName, groupOps]) => (
+              <div
+                key={groupName}
+                className={clsx("my-4", {
+                  hidden:
+                    searchQuery && !groupOps.some((op) => opHasMatch[op.id]),
+                })}
+              >
+                <h4 className="text-sm text-gray-600 mb-2 font-bold">
+                  {groupName}
+                </h4>
+                <div className="flex flex-col gap-2">
+                  {groupOps.map((op) => (
+                    <HighlightMatches
+                      key={op.id}
+                      query={searchQuery}
+                      setHasMatches={(hasMatches) => {
+                        if (opHasMatch[op.id] === hasMatches) return;
+                        setOpHasMatch((prev) => ({
+                          ...prev,
+                          [op.id]: hasMatches,
+                        }));
+                      }}
+                      className={clsx("shrink-0", {
+                        hidden: searchQuery && !opHasMatch[op.id],
+                      })}
                     >
-                      <op.Render
-                        runtime={null}
-                        paramsUP={noopParamsUP}
-                        params={paramsByOp[op.id]}
-                        InputHandle={InputHandle}
-                        OutputHandle={OutputHandle}
-                      />
-                    </div>
-                    {(op.searchHints ?? []).map((hint, i) => (
                       <div
-                        key={i}
-                        className={clsx(
-                          {
-                            hidden:
-                              !searchQuery ||
-                              !hint.toLowerCase().includes(searchQuery),
-                          },
-                          "text-xs text-gray-500 mt-2 ml-4 flex gap-2",
-                        )}
+                        draggable
+                        onDragStart={(event) => onDragStart(event, getOpId(op))}
+                        className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
                       >
-                        <FaLightbulb className="inline-block shrink-0" /> {hint}
+                        <op.Render
+                          runtime={null}
+                          paramsUP={noopParamsUP}
+                          params={paramsByOp[op.id]}
+                          InputHandle={InputHandle}
+                          OutputHandle={OutputHandle}
+                        />
                       </div>
-                    ))}
-                  </HighlightMatches>
-                ))}
+                      {(op.searchHints ?? []).map((hint, i) => (
+                        <div
+                          key={i}
+                          className={clsx(
+                            {
+                              hidden:
+                                !searchQuery ||
+                                !hint.toLowerCase().includes(searchQuery),
+                            },
+                            "text-xs text-gray-500 mt-2 ml-4 flex gap-2",
+                          )}
+                        >
+                          <FaLightbulb className="inline-block shrink-0" />{" "}
+                          {hint}
+                        </div>
+                      ))}
+                    </HighlightMatches>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    </OmniCanvasOverlay>
-  );
-};
+      </OmniCanvasOverlay>
+    );
+  },
+);

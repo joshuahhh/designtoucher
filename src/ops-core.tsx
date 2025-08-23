@@ -527,7 +527,7 @@ export const OutputHandle = <OutputKey extends string>({
         id={makeOutputHandleId(nodeId, outputKey)}
         className={clsx(
           sharedHandleClasses,
-          "border-4 border-black hover:border-blue-300",
+          "border-4 border-black hover:border-blue-300 relative",
           { "border-dashed": !output },
         )}
         style={{

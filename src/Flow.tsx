@@ -1,4 +1,5 @@
 import { TextField, Theme } from "@radix-ui/themes";
+import "@radix-ui/themes/styles.css";
 import {
   addEdge,
   applyEdgeChanges,
@@ -13,6 +14,7 @@ import {
   NodeChange,
   NodeProps,
   NodeTypes,
+  OnConnectEnd,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -50,6 +52,7 @@ import {
   InputHandle,
   OutputHandle,
   parseInputHandleId,
+  parseOutputHandleId,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, opsInGroups } from "./ops/all-the-ops.js";
@@ -60,9 +63,9 @@ import {
 } from "./react-flow-util.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
-import { animate } from "./util.js";
+import { animate, useDedupeObj } from "./util.js";
 
-export function OpNodeView(props: NodeProps<OpNode>) {
+export const OpNodeView = memo(function OpNodeView(props: NodeProps<OpNode>) {
   const [data, setData] = useNodeData(props);
   const dataUP = up(setData);
 
@@ -99,7 +102,7 @@ export function OpNodeView(props: NodeProps<OpNode>) {
       <instance.Render params={data.params} paramsUP={dataUP.params} />
     </div>
   );
-}
+});
 
 const nodeTypes: NodeTypes = {
   operation: OpNodeView,
@@ -184,6 +187,10 @@ const FlowInner = ({
             .data.params.$set(params);
         },
       );
+      // TODO: some render functions like "camera" need this cuz they
+      // don't know when their runtime updates – we should either
+      // come up with a more deliberate channel, or accept that nodes
+      // are gonna rerender every tick
       setOpInstances((prevRuntimes) => ({ ...prevRuntimes }));
     });
   }, [flowRef, ctx, flowUP, opInstancesRef]);
@@ -257,6 +264,39 @@ const FlowInner = ({
     [draggedOpId, screenToFlowPosition, flowUP.nodes, setFlow],
   );
 
+  const onConnectEnd: OnConnectEnd = useCallback(
+    (event, connectionState) => {
+      if (connectionState.isValid) return;
+
+      const { from, fromHandle } = connectionState;
+      if (!from || !fromHandle?.id) return;
+      let parsedAsOutput;
+      try {
+        parsedAsOutput = parseOutputHandleId(fromHandle.id);
+      } catch {
+        return;
+      }
+
+      const { clientX, clientY } =
+        "changedTouches" in event ? event.changedTouches[0] : event;
+      const newNode: OpCreationNode = {
+        id: getId(),
+        position: screenToFlowPosition({
+          x: clientX,
+          y: clientY,
+        }),
+        data: {},
+        origin: [0.5, 0.0],
+      };
+
+      // flowUP.nodes.$((nodes) => [...nodes, newNode]);
+      // flowUP.edges.$((edges) =>
+      //   addEdge({ source: from.id, target: newNode.id }, edges),
+      // );
+    },
+    [screenToFlowPosition],
+  );
+
   useKeyBindings([
     {
       combo: "c+s+r",
@@ -315,13 +355,14 @@ const FlowInner = ({
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">
-        <FlowContext.Provider value={{ opInstances: opInstancesRef.current }}>
+        <FlowContext.Provider value={useDedupeObj({ opInstances })}>
           <ReactFlow
             nodes={flow.nodes}
             edges={styledEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
             nodeTypes={nodeTypes}
             maxZoom={10}
             minZoom={0.1}
@@ -339,16 +380,14 @@ const FlowInner = ({
               <MiniMap zoomable pannable />
               <Controls className="bg-gray-50" />
               <CopyPaste />
+              <SidebarToggleButton
+                isSidebarExpanded={isSidebarExpanded}
+                setIsSidebarExpanded={setIsSidebarExpanded}
+              />
+              <Toolbar onDelete={deleteSelected} />
             </OmniCanvasOverlay>
           </ReactFlow>
         </FlowContext.Provider>
-
-        <SidebarToggleButton
-          isSidebarExpanded={isSidebarExpanded}
-          setIsSidebarExpanded={setIsSidebarExpanded}
-        />
-
-        <Toolbar onDelete={deleteSelected} />
       </div>
       <Sidebar
         isSidebarExpanded={isSidebarExpanded}
@@ -359,7 +398,7 @@ const FlowInner = ({
   );
 };
 
-const Toolbar = ({ onDelete }: { onDelete: () => void }) => {
+const Toolbar = memo(function Toolbar({ onDelete }: { onDelete: () => void }) {
   const { selectedNodes, selectedEdges } = useReactFlowSelection<Node, Edge>();
   const hasSelection = selectedNodes.length > 0 || selectedEdges.length > 0;
 
@@ -390,15 +429,15 @@ const Toolbar = ({ onDelete }: { onDelete: () => void }) => {
       )}
     </div>
   );
-};
+});
 
-const SidebarToggleButton = ({
+const SidebarToggleButton = memo(function SidebarToggleButton({
   isSidebarExpanded,
   setIsSidebarExpanded,
 }: {
   isSidebarExpanded: boolean;
   setIsSidebarExpanded: Dispatch<SetStateAction<boolean>>;
-}) => {
+}) {
   return (
     <button
       onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
@@ -435,7 +474,7 @@ const SidebarToggleButton = ({
       )}
     </button>
   );
-};
+});
 
 const Sidebar = memo(
   ({

@@ -47,6 +47,8 @@ export function defineFragOp<
     ${(paramKeys ?? []).map((name) => `uniform float ${name};`).join("\n")}
     varying vec2 uv;
 
+    #define PLATFORM_WEBGL
+    #define GAUSSIANBLUR2D_KERNELSIZE 100
     // lygia-includes
     void main() {
       ${fragOp.fragBody}

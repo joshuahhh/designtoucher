@@ -14,6 +14,7 @@ import {
   createRef,
   ForwardedRef,
   forwardRef,
+  memo,
   ReactNode,
   useCallback,
   useContext,
@@ -138,7 +139,7 @@ export class OpInstance<
     this.runtime = op.initRuntime?.(ctx) ?? ({} as Runtime);
     op.initWithRuntime?.({ ctx, runtime: this.runtime });
 
-    this.Render = this.Render.bind(this);
+    this.Render = memo(this.Render.bind(this));
   }
 
   run(props: OpInstanceMethodProps<Runtime, InputKey, Params, "run">) {
@@ -414,20 +415,21 @@ export const SentenceParamNumber = ({
       <MyPopoverContent>
         <div className="flex flex-row items-center gap-2">
           <div className="text-xs">{min}</div>
-          <Slider
-            className="w-32"
-            value={[value]}
-            min={min}
-            max={max}
-            step={step}
-            onValueChange={(value) => {
-              valueUP.$set(parseFloat(value.toString()));
-              setDragging(true);
-            }}
-            onValueCommit={() => {
-              setDragging(false);
-            }}
-          />
+          <div className="w-32">
+            <Slider
+              value={[value]}
+              min={min}
+              max={max}
+              step={step}
+              onValueChange={(value) => {
+                valueUP.$set(parseFloat(value.toString()));
+                setDragging(true);
+              }}
+              onValueCommit={() => {
+                setDragging(false);
+              }}
+            />
+          </div>
           <div className="text-xs">{max}</div>
         </div>
       </MyPopoverContent>
@@ -462,28 +464,35 @@ export const MyArrow = () => (
   />
 );
 
-export const SentenceParamSelect = ({
+// TODO: this generic doesn't seem to work to constrain "options"
+export const SentenceParamSelect = <T extends string>({
   value,
   valueUP,
   options,
 }: {
-  value: string | null;
-  valueUP: UpdateProxy<string>;
-  options: { value: string; label: string }[];
+  value: T | null;
+  valueUP: UpdateProxy<T>;
+  options: (T | { value: T; label: string })[];
 }) => {
   return (
     <select
       value={value ?? ""}
       className="text-xs font-['Varela_Round'] bg-transparent border-b border"
       onChange={(e) => {
-        valueUP.$set(e.target.value);
+        valueUP.$set(e.target.value as T);
       }}
     >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
+      {options.map((option) => {
+        const { value, label } =
+          typeof option === "string"
+            ? { value: option, label: option }
+            : option;
+        return (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        );
+      })}
     </select>
   );
 };

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import stripIndent from "strip-indent";
 
 export function useAnimationFrame(callback: () => void) {
@@ -132,4 +132,17 @@ export function strip(strings: TemplateStringsArray, ...values: any[]): string {
   return stripIndent(
     strings.reduce((acc, str, i) => acc + str + (values[i] || ""), ""),
   ).trim();
+}
+
+export function tryOr<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+export function useDedupeObj<T extends object>(obj: T): T {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => obj, Object.values(obj));
 }

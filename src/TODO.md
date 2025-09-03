@@ -70,3 +70,21 @@ flow stuff:
   [ ] give them nice names
   [ ] some kinda persistence, multiple viewers, etc
 [ ] remote monitors
+
+[ ] specify lengths either as pixels or as fractions (of smaller dimension?)
+[ ] "+" for "optional params" (and be generous!) (it's like Realtalk "with"!)
+  [ ] foreground color for shape so you don't have to multiply by solid
+  [ ] background color for shape so you don't have to layer over solid
+  [ ] position for shape so you don't have to displace
+
+[ ] copy-paste should preserve internal edges
+
+[ ] var args, especially for combiners (like layer)
+  [ ] or fancier layer interface, where you specify blend modes?
+
+[ ] insert op in middle of edge, or remove from middle of edge
+
+[ ] "pin" sliders to side, for full-screen etc (imagine it's an ipad lens)
+
+[ ] sync between laptop (for editing) & ipad / phone (for lensing)
+  [ ] patchwork?

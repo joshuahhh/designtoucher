@@ -54,11 +54,11 @@ export default defineOp({
             value={props.params.path!}
             valueUP={props.paramsUP.path.$as<string>()}
             options={[
-              { label: "Nature/Movie.1.mp4", value: "Nature/Movie.1.mp4" },
-              { label: "Nature/Movie.2.mp4", value: "Nature/Movie.2.mp4" },
-              { label: "Nature/Movie.3.mp4", value: "Nature/Movie.3.mp4" },
-              { label: "Nature/Movie.4.mp4", value: "Nature/Movie.4.mp4" },
-              { label: "Nature/Movie.5.mp4", value: "Nature/Movie.5.mp4" },
+              "Nature/Movie.1.mp4",
+              "Nature/Movie.2.mp4",
+              "Nature/Movie.3.mp4",
+              "Nature/Movie.4.mp4",
+              "Nature/Movie.5.mp4",
             ]}
           />
         </Sentence>

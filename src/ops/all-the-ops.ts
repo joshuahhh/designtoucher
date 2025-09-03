@@ -3,11 +3,11 @@ import { assert } from "../assert.js";
 import { AnyOp } from "../ops-core.js";
 
 export const ops = _.map(
-  import.meta.glob("./*/*.tsx", { eager: true }),
+  import.meta.glob(["./*/*.tsx", "./*/*.js"], { eager: true }),
   (mod, filePath) => {
     const op = (mod as any).default as AnyOp;
     // pattern: ./10-Sources/010-cam.tsx
-    const match = filePath.match(/^\.\/(\d*)-(.*)\/(\d*)-(.*)\.tsx$/);
+    const match = filePath.match(/^\.\/(\d*)-(.*)\/(\d*)-(.*)\.(tsx|js)$/);
     if (!match) {
       throw new Error(`Unexpected file path format: ${filePath}`);
     }

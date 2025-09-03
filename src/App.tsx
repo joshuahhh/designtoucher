@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { use100vh } from "react-div-100vh";
 import { Flow, initialFlow } from "./lib.js";
 import { useLocalStorage } from "./useLocalStorage.js";
@@ -12,7 +13,10 @@ export const App = () => {
 
   return (
     // for testing layout & omnicanvas & such, you can put some padding here
-    <div className="bg-red-500 w-full h-full" style={{ height }}>
+    <div
+      className={clsx("w-full h-full", { "p-20 bg-red-500": false })}
+      style={{ height }}
+    >
       <Flow flow={flow} setFlow={setFlow} />
     </div>
   );

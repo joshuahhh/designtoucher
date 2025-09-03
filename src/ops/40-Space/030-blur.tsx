@@ -42,7 +42,7 @@ const lineBlur = defineFragOp({
 });
 
 export default defineOp({
-  id: "blur2",
+  id: "blur",
   inputKeys: ["tex1"],
   initParams: () => ({ size: 0.01 }),
   initRuntime(ctx) {

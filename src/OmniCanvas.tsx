@@ -362,12 +362,11 @@ export const OmniCanvasOverlay = forwardRef<
     wrapper.style.willChange = "transform,width,height";
 
     const update = () => {
+      const containerRect = overlayDiv.getBoundingClientRect();
       const r = anchor.getBoundingClientRect();
-      wrapper.style.transform = `translate(${Math.round(r.left)}px, ${Math.round(
-        r.top,
-      )}px)`;
-      wrapper.style.width = `${Math.round(r.width)}px`;
-      wrapper.style.height = `${Math.round(r.height)}px`;
+      wrapper.style.transform = `translate(${r.left - containerRect.left}px, ${r.top - containerRect.top}px)`;
+      wrapper.style.width = `${r.width}px`;
+      wrapper.style.height = `${r.height}px`;
     };
 
     update();

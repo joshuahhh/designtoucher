@@ -32,13 +32,16 @@ import {
   useMemo,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { FaLightbulb, FaTrash } from "react-icons/fa";
 import { FaMagnifyingGlass, FaX } from "react-icons/fa6";
 import { up } from "update-proxy";
 import "./flow-base.css";
 import { HighlightMatches } from "./HighlightMatches.js";
 import { useKeyBindings } from "./keyboard.js";
+import { Tex } from "./mygl.js";
 import {
+  Monitor,
   OmniCanvasContext,
   OmniCanvasContextType,
   OmniCanvasHost,
@@ -47,12 +50,13 @@ import {
 import {
   AnyOpId,
   AnyOpInstance,
-  FlowContext,
   getOpId,
   InputHandle,
+  OpInstancesContext,
   OutputHandle,
   parseInputHandleId,
   parseOutputHandleId,
+  SetFullscreenModalTexContext,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, opsInGroups } from "./ops/all-the-ops.js";
@@ -63,7 +67,7 @@ import {
 } from "./react-flow-util.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
-import { animate, useDedupeObj } from "./util.js";
+import { animate } from "./util.js";
 
 export const OpNodeView = memo(function OpNodeView(props: NodeProps<OpNode>) {
   const [data, setData] = useNodeData(props);
@@ -78,7 +82,7 @@ export const OpNodeView = memo(function OpNodeView(props: NodeProps<OpNode>) {
   //   };
   // }, [props.id]);
 
-  const { opInstances } = useContext(FlowContext);
+  const opInstances = useContext(OpInstancesContext);
 
   const instance = opInstances[props.id];
 
@@ -142,32 +146,12 @@ const FlowInner = ({
   setFlow: Dispatch<SetStateAction<Flow>>;
 }) => {
   const ctx = useContext(OmniCanvasContext);
-  const { screenToFlowPosition } = useReactFlow();
-
-  const flowUP = up(setFlow);
-
-  const [viewport, setViewport] = useLocalStorage<Viewport>("viewport", () => ({
-    x: 100,
-    y: 100,
-    zoom: 2,
-  }));
 
   const [opInstances, setOpInstances] = useState<Record<string, AnyOpInstance>>(
     {},
   );
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
-  const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
 
-  const onNodesChange = useCallback(
-    (changes: NodeChange<Node>[]) =>
-      flowUP.nodes.$as<Node[]>().$((nodes) => applyNodeChanges(changes, nodes)),
-    [flowUP.nodes],
-  );
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) =>
-      flowUP.edges.$((edges) => applyEdgeChanges(changes, edges)),
-    [flowUP.edges],
-  );
+  const flowUP = up(setFlow);
 
   const flowRef = useRefForCallback(flow);
   const opInstancesRef = useRefForCallback(opInstances);
@@ -194,6 +178,118 @@ const FlowInner = ({
       setOpInstances((prevRuntimes) => ({ ...prevRuntimes }));
     });
   }, [flowRef, ctx, flowUP, opInstancesRef]);
+
+  const [fullscreenModalTex, setFullscreenModalTex] = useState<Tex | null>(
+    null,
+  );
+
+  const resetOpInstances = useCallback(() => {
+    setOpInstances({});
+  }, []);
+
+  return (
+    <SetFullscreenModalTexContext.Provider value={setFullscreenModalTex}>
+      <OpInstancesContext.Provider value={opInstances}>
+        {fullscreenModalTex ? (
+          <FullscreenModal tex={fullscreenModalTex} />
+        ) : (
+          <FlowInnerNormalMode
+            flow={flow}
+            setFlow={setFlow}
+            resetOpInstances={resetOpInstances}
+          />
+        )}
+      </OpInstancesContext.Provider>
+    </SetFullscreenModalTexContext.Provider>
+  );
+};
+
+export const FullscreenModal = ({ tex }: { tex: Tex }) => {
+  const { underlayDiv } = useContext(OmniCanvasContext);
+  const setFullscreenModalTex = useContext(SetFullscreenModalTexContext);
+
+  const close = useCallback(
+    () => setFullscreenModalTex(null),
+    [setFullscreenModalTex],
+  );
+
+  useKeyBindings([
+    {
+      combo: "Escape",
+      action: close,
+    },
+  ]);
+
+  const aspectRatio = tex.width / tex.height;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black grid place-items-center [container-type:size]">
+      <OmniCanvasOverlay className="absolute inset-0">
+        <button
+          onClick={close}
+          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+          title="Press ESC to close"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </OmniCanvasOverlay>
+
+      <div
+        style={{
+          width: `min(100cqw,calc(100cqh*${aspectRatio}))`,
+          aspectRatio: aspectRatio,
+        }}
+      >
+        <Monitor tex={tex} />
+      </div>
+    </div>,
+    underlayDiv,
+  );
+};
+
+const FlowInnerNormalMode = ({
+  flow,
+  setFlow,
+  resetOpInstances,
+}: {
+  flow: Flow;
+  setFlow: Dispatch<SetStateAction<Flow>>;
+  resetOpInstances: () => void;
+}) => {
+  const ctx = useContext(OmniCanvasContext);
+  const { screenToFlowPosition } = useReactFlow();
+
+  const flowUP = up(setFlow);
+
+  const [viewport, setViewport] = useLocalStorage<Viewport>("viewport", () => ({
+    x: 100,
+    y: 100,
+    zoom: 2,
+  }));
+
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange<Node>[]) =>
+      flowUP.nodes.$as<Node[]>().$((nodes) => applyNodeChanges(changes, nodes)),
+    [flowUP.nodes],
+  );
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) =>
+      flowUP.edges.$((edges) => applyEdgeChanges(changes, edges)),
+    [flowUP.edges],
+  );
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -228,7 +324,7 @@ const FlowInner = ({
           reader.onload = (e) => {
             try {
               const data = JSON.parse(e.target?.result as string);
-              setOpInstances({});
+              resetOpInstances();
               setFlow(data);
             } catch (err) {
               console.error("Failed to load flow from file", err);
@@ -261,7 +357,13 @@ const FlowInner = ({
       flowUP.nodes.$((nodes) => [...nodes, newNode]);
       setDraggedOpId(null);
     },
-    [draggedOpId, screenToFlowPosition, flowUP.nodes, setFlow],
+    [
+      draggedOpId,
+      screenToFlowPosition,
+      flowUP.nodes,
+      resetOpInstances,
+      setFlow,
+    ],
   );
 
   const onConnectEnd: OnConnectEnd = useCallback(
@@ -300,9 +402,7 @@ const FlowInner = ({
   useKeyBindings([
     {
       combo: "c+s+r",
-      action: () => {
-        setOpInstances({});
-      },
+      action: resetOpInstances,
     },
     {
       combo: "c+s",
@@ -355,39 +455,37 @@ const FlowInner = ({
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">
-        <FlowContext.Provider value={useDedupeObj({ opInstances })}>
-          <ReactFlow
-            nodes={flow.nodes}
-            edges={styledEdges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onConnectEnd={onConnectEnd}
-            nodeTypes={nodeTypes}
-            maxZoom={10}
-            minZoom={0.1}
-            viewport={viewport}
-            onViewportChange={setViewport}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            nodeOrigin={[0.5, 0.5]}
-            className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
-            onPaneClick={onPaneClick}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background />
-            <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
-              <MiniMap zoomable pannable />
-              <Controls className="bg-gray-50" />
-              <CopyPaste />
-              <SidebarToggleButton
-                isSidebarExpanded={isSidebarExpanded}
-                setIsSidebarExpanded={setIsSidebarExpanded}
-              />
-              <Toolbar onDelete={deleteSelected} />
-            </OmniCanvasOverlay>
-          </ReactFlow>
-        </FlowContext.Provider>
+        <ReactFlow
+          nodes={flow.nodes}
+          edges={styledEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onConnectEnd={onConnectEnd}
+          nodeTypes={nodeTypes}
+          maxZoom={10}
+          minZoom={0.1}
+          viewport={viewport}
+          onViewportChange={setViewport}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+          nodeOrigin={[0.5, 0.5]}
+          className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
+          onPaneClick={onPaneClick}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background />
+          <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
+            <MiniMap zoomable pannable />
+            <Controls className="bg-gray-50" />
+            <CopyPaste />
+            <SidebarToggleButton
+              isSidebarExpanded={isSidebarExpanded}
+              setIsSidebarExpanded={setIsSidebarExpanded}
+            />
+            <Toolbar onDelete={deleteSelected} />
+          </OmniCanvasOverlay>
+        </ReactFlow>
       </div>
       <Sidebar
         isSidebarExpanded={isSidebarExpanded}

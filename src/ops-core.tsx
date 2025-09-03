@@ -12,20 +12,20 @@ import _ from "lodash";
 import {
   createContext,
   createRef,
+  Dispatch,
   ForwardedRef,
   forwardRef,
   memo,
   ReactNode,
+  SetStateAction,
   useCallback,
   useContext,
   useLayoutEffect,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { FaExpandArrowsAlt } from "react-icons/fa";
 import { mergeRefs } from "react-merge-refs";
 import { UpdateProxy } from "update-proxy";
-import { useKeyBindings } from "./keyboard.js";
 import { Tex } from "./mygl.js";
 import {
   Monitor,
@@ -199,9 +199,9 @@ export type OpInstanceOf<O> =
     ? OpInstance<Runtime, InputKey, Params>
     : never;
 
-export const FlowContext = createContext<{
-  opInstances: Record<string, AnyOpInstance>;
-}>({ opInstances: {} });
+export const OpInstancesContext = createContext<Record<string, AnyOpInstance>>(
+  {},
+);
 
 export const Sentence = ({ children }: { children: ReactNode }) => {
   return <div className="text-xs font-['Varela_Round']">{children}</div>;
@@ -233,12 +233,12 @@ export const InputHandle = <InputKey extends string>({
   // figure out if we're downstream of a node
   const edges = useEdges();
   const edge = _.find(edges, { targetHandle: handleId });
-  const flowContext = useContext(FlowContext);
+  const opInstances = useContext(OpInstancesContext);
 
   const sourceHandleParsed = edge && parseOutputHandleId(edge.sourceHandle!);
   const sourceOutput =
-    flowContext && sourceHandleParsed
-      ? (flowContext.opInstances[sourceHandleParsed.nodeId].runtime[
+    opInstances && sourceHandleParsed
+      ? (opInstances[sourceHandleParsed.nodeId].runtime[
           sourceHandleParsed.key
         ] as Tex | null)
       : null;
@@ -497,6 +497,10 @@ export const SentenceParamSelect = <T extends string>({
   );
 };
 
+export const SetFullscreenModalTexContext = createContext<
+  Dispatch<SetStateAction<Tex | null>>
+>(null as any);
+
 export const OutputHandle = <OutputKey extends string>({
   outputKey,
   size,
@@ -506,17 +510,11 @@ export const OutputHandle = <OutputKey extends string>({
 }) => {
   const nodeId = useNodeId();
 
+  const setFullscreenModalTex = useContext(SetFullscreenModalTexContext);
+
   const [isHovered, setIsHovered] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const handleFullscreenClick = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsFullscreen(true);
-    setIsHovered(false);
-  }, []);
-
-  const { opInstances } = useContext(FlowContext);
+  const opInstances = useContext(OpInstancesContext);
 
   const output =
     nodeId !== null
@@ -556,10 +554,10 @@ export const OutputHandle = <OutputKey extends string>({
             }}
           />
         )}
-        {output && isHovered && !isFullscreen && (
+        {output && isHovered && (
           <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full pointer-events-none">
             <button
-              onClick={handleFullscreenClick}
+              onClick={() => setFullscreenModalTex(output)}
               className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
               title="View fullscreen"
             >
@@ -568,68 +566,7 @@ export const OutputHandle = <OutputKey extends string>({
           </OmniCanvasOverlay>
         )}
       </Handle>
-      {isFullscreen && output && (
-        <FullscreenModal
-          tex={output}
-          onClose={() => {
-            setIsFullscreen(false);
-          }}
-        />
-      )}
     </>
-  );
-};
-
-const FullscreenModal = ({
-  tex,
-  onClose,
-}: {
-  tex: Tex;
-  onClose: () => void;
-}) => {
-  const { underlayDiv } = useContext(OmniCanvasContext);
-
-  useKeyBindings([
-    {
-      combo: "Escape",
-      action: onClose,
-    },
-  ]);
-
-  const aspectRatio = tex.width / tex.height;
-
-  return createPortal(
-    <div className="fixed inset-0 bg-black grid place-items-center [container-type:size]">
-      <OmniCanvasOverlay className="absolute inset-0">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
-          title="Press ESC to close"
-        >
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </OmniCanvasOverlay>
-
-      <div
-        style={{
-          width: `min(100cqw,calc(100cqh*${aspectRatio}))`,
-          aspectRatio: aspectRatio,
-        }}
-      >
-        <Monitor tex={tex} />
-      </div>
-    </div>,
-    underlayDiv,
   );
 };
 

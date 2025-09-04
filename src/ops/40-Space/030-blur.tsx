@@ -83,7 +83,7 @@ export default defineOp({
     return (
       <>
         <Sentence>
-          Blur2 <props.InputHandle key="tex1" inputKey="tex1" /> with size{" "}
+          Blur <props.InputHandle key="tex1" inputKey="tex1" /> with size{" "}
           <SentenceParamNumber
             value={props.params.size}
             valueUP={props.paramsUP.size}

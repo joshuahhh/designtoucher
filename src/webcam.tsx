@@ -237,10 +237,6 @@ export const useWebcam = ({
 
     const stream = streamRef.current;
 
-    if (stream) {
-      stopStream(stream);
-    }
-
     if (deviceId && enabled) {
       startStream(deviceId, width).then((stream) => {
         setStream(stream);
@@ -248,12 +244,6 @@ export const useWebcam = ({
     } else {
       setStream(null);
     }
-
-    return () => {
-      if (stream) {
-        stopStream(stream);
-      }
-    };
   }, [deviceId, enabled, imgOverride, streamRef, vidOverrideExt, width]);
 
   return useMemo(

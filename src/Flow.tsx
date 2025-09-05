@@ -709,7 +709,7 @@ const Sidebar = memo(
                             key={i}
                             className={clsx(
                               {
-                                hidden:
+                                "!hidden":
                                   !searchQuery ||
                                   !hint.toLowerCase().includes(searchQuery),
                               },

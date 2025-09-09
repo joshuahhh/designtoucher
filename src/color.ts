@@ -349,13 +349,13 @@ export class Demo {
     // by subtracting these, we get a crude band-pass filter
     this.filtered.setSubtract(this.lowpass1, this.lowpass2);
 
-    var delta = this.lambda_c / 8 / (1 + this.alpha);
-    var lambda =
+    const delta = this.lambda_c / 8 / (1 + this.alpha);
+    let lambda =
       Math.sqrt(
         this.vidHeight * this.vidHeight + this.vidWidth * this.vidWidth,
       ) / 3;
 
-    // for(var n = filtered.levels - 1; n >= 0; n--){
+    // for (var n = this.filtered.levels - 1; n >= 0; n--) {
     for (var n = 0; n < this.filtered.levels; n++) {
       var currAlpha = lambda / delta / 8 - 1;
       currAlpha *= this.exaggeration_factor;

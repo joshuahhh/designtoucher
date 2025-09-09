@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import "./color.js";
 import { Demo } from "./color.js";
 import dims from "./dims.js";
@@ -17,7 +17,14 @@ export function Amplify() {
   const video = webcam.stream?.video;
   const isMirrored = webcam.isMirrored;
 
+  const [, forceUpdate] = useReducer((x) => x + 1, 0);
+
   const [demo, setDemo] = useState<Demo | undefined>(undefined);
+
+  useEffect(() => {
+    // reset Demo on hot reload
+    setDemo(undefined);
+  }, []);
 
   useEffect(() => {
     if (!video) {
@@ -72,8 +79,8 @@ export function Amplify() {
         <div className="flex-1">{dry}</div>
         <div className="flex-1">{wet}</div>
       </div>
-      <div className="flex flex-col p-4 gap-2">
-        <div className="flex">
+      {demo && (
+        <div className="grid grid-cols-[min-content_min-content_min-content] p-4 gap-2">
           <input
             type="range"
             min={0}
@@ -81,12 +88,13 @@ export function Amplify() {
             step={0.01}
             defaultValue={2}
             onChange={(e) => {
-              if (demo) demo.exaggeration_factor = parseFloat(e.target.value);
+              demo.exaggeration_factor = parseFloat(e.target.value);
+              forceUpdate();
             }}
           />
           <label className="pl-3">exaggeration_factor</label>
-        </div>
-        <div className="flex">
+          <div>{demo.exaggeration_factor}</div>
+
           <input
             type="range"
             min={1}
@@ -94,12 +102,13 @@ export function Amplify() {
             step={0.01}
             defaultValue={10}
             onChange={(e) => {
-              if (demo) demo.alpha = parseFloat(e.target.value);
+              demo.alpha = parseFloat(e.target.value);
+              forceUpdate();
             }}
           />
           <label className="pl-3">&alpha;</label>
-        </div>
-        <div className="flex">
+          <div>{demo.alpha}</div>
+
           <input
             type="range"
             min={1}
@@ -107,12 +116,13 @@ export function Amplify() {
             step={0.01}
             defaultValue={16}
             onChange={(e) => {
-              if (demo) demo.lambda_c = parseFloat(e.target.value);
+              demo.lambda_c = parseFloat(e.target.value);
+              forceUpdate();
             }}
           />
           <label className="pl-3">&lambda;c</label>
-        </div>
-        <div className="flex">
+          <div>{demo.lambda_c}</div>
+
           <input
             type="range"
             min={0}
@@ -120,12 +130,13 @@ export function Amplify() {
             step={0.01}
             defaultValue={1}
             onChange={(e) => {
-              if (demo) demo.chromAttenuation = parseFloat(e.target.value);
+              demo.chromAttenuation = parseFloat(e.target.value);
+              forceUpdate();
             }}
           />
           <label className="pl-3">chromAttenuation</label>
-        </div>
-        <div className="flex">
+          <div>{demo.chromAttenuation}</div>
+
           <input
             type="range"
             min={0}
@@ -133,12 +144,13 @@ export function Amplify() {
             step={0.01}
             defaultValue={0.4}
             onChange={(e) => {
-              if (demo) demo.r1 = parseFloat(e.target.value);
+              demo.r1 = parseFloat(e.target.value);
+              forceUpdate();
             }}
           />
           <label className="pl-3">r1</label>
-        </div>
-        <div className="flex">
+          <div>{demo.r1}</div>
+
           <input
             type="range"
             min={0}
@@ -146,12 +158,14 @@ export function Amplify() {
             step={0.01}
             defaultValue={0.05}
             onChange={(e) => {
-              if (demo) demo.r2 = parseFloat(e.target.value);
+              demo.r2 = parseFloat(e.target.value);
+              forceUpdate();
             }}
           />
           <label className="pl-3">r2</label>
+          <div>{demo.r2}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

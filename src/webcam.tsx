@@ -235,9 +235,7 @@ export const useWebcam = ({
       return;
     }
 
-    const stream = streamRef.current;
-
-    if (deviceId && enabled) {
+    if (deviceId !== null && enabled) {
       startStream(deviceId, width).then((stream) => {
         setStream(stream);
       });

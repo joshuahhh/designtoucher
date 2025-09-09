@@ -184,8 +184,7 @@ export const useWebcam = ({
     // enumerate cameras
 
     (async () => {
-      const allDevices = await navigator.mediaDevices.enumerateDevices();
-      const cams = allDevices.filter((d) => d.kind === "videoinput");
+      const cams = await enumerateCameras();
       setDevices(cams);
       const preference = preferenceRef.current;
       const preferredCamera =

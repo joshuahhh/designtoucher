@@ -633,7 +633,7 @@ const Sidebar = memo(
         {/* this guy takes up the room */}
         <div className={clsx(isSidebarExpanded ? "w-72" : "w-0", transition)} />
         {/* we position the overlay separately, and staticly (for perf) */}
-        <OmniCanvasOverlay className="absolute top-0 right-0 bottom-0 w-72">
+        <OmniCanvasOverlay className="absolute top-0 right-0 bottom-0 w-72 pointer-events-none">
           {/* this part slides in & out */}
           <div
             className={clsx(

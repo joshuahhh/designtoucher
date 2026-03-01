@@ -158,9 +158,7 @@ const FlowInner = ({
 
   useEffect(() => {
     return animate(() => {
-      // run the flow
-      // console.log("Running flow");
-      runFlow(
+      const instancesChanged = runFlow(
         flowRef.current.nodes,
         flowRef.current.edges,
         opInstancesRef.current,
@@ -171,11 +169,9 @@ const FlowInner = ({
             .data.params.$set(params);
         },
       );
-      // TODO: some render functions like "camera" need this cuz they
-      // don't know when their runtime updates – we should either
-      // come up with a more deliberate channel, or accept that nodes
-      // are gonna rerender every tick
-      setOpInstances((prevRuntimes) => ({ ...prevRuntimes }));
+      if (instancesChanged) {
+        setOpInstances((prev) => ({ ...prev }));
+      }
     });
   }, [flowRef, ctx, flowUP, opInstancesRef]);
 

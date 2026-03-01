@@ -10,7 +10,7 @@ import { stopStream, WebcamStream } from "../../webcam.js";
 
 export default defineOp({
   id: "remote-cam",
-  initRuntime(ctx) {
+  initRuntime(ctx, notify) {
     const runtime = {
       webcamStream: null as WebcamStream | null,
       video: document.createElement("video"),
@@ -22,6 +22,7 @@ export default defineOp({
 
     peer.on("open", (id) => {
       runtime.id = id;
+      notify();
     });
 
     // Answer incoming media calls; we don't send any tracks

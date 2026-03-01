@@ -22,6 +22,7 @@ import {
   useContext,
   useLayoutEffect,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { FaExpandArrowsAlt } from "react-icons/fa";
 import { mergeRefs } from "react-merge-refs";
@@ -43,7 +44,7 @@ export type Op<
   inputKeys?: InputKey[];
   inputKeysLate?: InputKey[];
   initParams?: () => Params;
-  initRuntime?: (ctx: OmniCanvasContextType) => Runtime;
+  initRuntime?: (ctx: OmniCanvasContextType, notify: () => void) => Runtime;
   run?: (props: {
     runtime: Runtime;
     inputs: Record<InputKey, Tex | null>;
@@ -127,42 +128,79 @@ export class OpInstance<
 > {
   public runtime: Runtime;
 
+  private _revision = 0;
+  private _listeners = new Set<() => void>();
+
+  subscribe = (listener: () => void) => {
+    this._listeners.add(listener);
+    return () => this._listeners.delete(listener);
+  };
+
+  getRevision = () => this._revision;
+
+  notify = () => {
+    this._revision++;
+    for (const listener of this._listeners) {
+      listener();
+    }
+  };
+
+  Render: (
+    props: Omit<
+      OpInstanceMethodProps<Runtime, InputKey, Params, "Render">,
+      "InputHandle" | "OutputHandle"
+    >,
+  ) => React.ReactNode;
+
   constructor(
     public getOp: () => Op<Runtime, InputKey, Params>,
     ctx: OmniCanvasContextType,
   ) {
     const op = this.getOp();
-    this.runtime = op.initRuntime?.(ctx) ?? ({} as Runtime);
+    this.runtime = op.initRuntime?.(ctx, this.notify) ?? ({} as Runtime);
 
-    this.Render = memo(this.Render.bind(this));
+    const instance = this;
+    this.Render = memo(function OpInstanceRender(
+      props: Omit<
+        OpInstanceMethodProps<Runtime, InputKey, Params, "Render">,
+        "InputHandle" | "OutputHandle"
+      >,
+    ) {
+      useSyncExternalStore(instance.subscribe, instance.getRevision);
+      const op = instance.getOp();
+      return op.Render({
+        runtime: instance.runtime,
+        InputHandle,
+        OutputHandle,
+        ...props,
+      });
+    });
+  }
+
+  private _notifyIfRuntimeChanged(before: Record<string, unknown>) {
+    for (const key of Object.keys(this.runtime)) {
+      if (this.runtime[key] !== before[key]) {
+        this.notify();
+        return;
+      }
+    }
   }
 
   run(props: OpInstanceMethodProps<Runtime, InputKey, Params, "run">) {
+    const before = { ...this.runtime };
     const op = this.getOp();
-    return op.run?.({ runtime: this.runtime, ...props });
+    op.run?.({ runtime: this.runtime, ...props });
+    this._notifyIfRuntimeChanged(before);
   }
   runLate(props: OpInstanceMethodProps<Runtime, InputKey, Params, "runLate">) {
+    const before = { ...this.runtime };
     const op = this.getOp();
-    return op.runLate?.({ runtime: this.runtime, ...props });
+    op.runLate?.({ runtime: this.runtime, ...props });
+    this._notifyIfRuntimeChanged(before);
   }
   destroy(props: OpInstanceMethodProps<Runtime, InputKey, Params, "destroy">) {
     const op = this.getOp();
     return op.destroy?.({ runtime: this.runtime, ...props });
-  }
-
-  Render(
-    props: Omit<
-      OpInstanceMethodProps<Runtime, InputKey, Params, "Render">,
-      "InputHandle" | "OutputHandle"
-    >,
-  ) {
-    const op = this.getOp();
-    return op.Render({
-      runtime: this.runtime,
-      InputHandle,
-      OutputHandle,
-      ...props,
-    });
   }
 }
 
@@ -231,12 +269,18 @@ export const InputHandle = <InputKey extends string>({
   const opInstances = useContext(OpInstancesContext);
 
   const sourceHandleParsed = edge && parseOutputHandleId(edge.sourceHandle!);
-  const sourceOutput =
+  const sourceInstance =
     opInstances && sourceHandleParsed
-      ? (opInstances[sourceHandleParsed.nodeId].runtime[
-          sourceHandleParsed.key
-        ] as Tex | null)
+      ? opInstances[sourceHandleParsed.nodeId]
       : null;
+  const subscribe = useCallback(
+    (cb: () => void) => sourceInstance?.subscribe(cb) ?? (() => {}),
+    [sourceInstance],
+  );
+  useSyncExternalStore(subscribe, () => sourceInstance?.getRevision() ?? 0);
+  const sourceOutput = sourceInstance
+    ? (sourceInstance.runtime[sourceHandleParsed!.key] as Tex | null)
+    : null;
 
   const className = clsx(
     sharedHandleClasses,
@@ -511,10 +555,16 @@ export const OutputHandle = <OutputKey extends string>({
 
   const opInstances = useContext(OpInstancesContext);
 
-  const output =
-    nodeId !== null
-      ? (opInstances[nodeId]?.runtime[outputKey] as Tex | null)
-      : undefined;
+  const instance = nodeId !== null ? opInstances[nodeId] : null;
+  const subscribe = useCallback(
+    (cb: () => void) => instance?.subscribe(cb) ?? (() => {}),
+    [instance],
+  );
+  useSyncExternalStore(subscribe, () => instance?.getRevision() ?? 0);
+
+  const output = instance
+    ? (instance.runtime[outputKey] as Tex | null)
+    : undefined;
 
   if (!nodeId) {
     return null;

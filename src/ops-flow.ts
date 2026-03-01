@@ -59,12 +59,15 @@ export function runFlow(
   opInstances: Record<string, AnyOpInstance>,
   ctx: OmniCanvasContextType,
   setParams: (nodeId: string, params: Record<string, any>) => void,
-) {
+): boolean {
+  let instancesChanged = false;
+
   // clean up old op instances
   for (const [nodeId, instance] of Object.entries(opInstances)) {
     if (!nodes.some((n) => n.id === nodeId)) {
       instance.destroy?.({ ctx });
       delete opInstances[nodeId];
+      instancesChanged = true;
     }
   }
 
@@ -75,6 +78,7 @@ export function runFlow(
       opInstances[node.id] = instantiateOp(op, ctx, "get-op-by-id");
       const params = node.data.params;
       setParams(node.id, params);
+      instancesChanged = true;
     }
   });
 
@@ -129,23 +133,11 @@ export function runFlow(
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) throw new Error(`Node with id ${nodeId} not found`);
 
-    const op = opById(node.data.opId);
     const instance = opInstances[nodeId];
 
     try {
       const inputs = assembleInputs(nodeId, true);
-      instance.run?.({ inputs, params: node.data.params, ctx });
-      // console.log(
-      //   "ran",
-      //   nodeId,
-      //   op.id,
-      //   "from",
-      //   _.mapValues(inputs, (tex) =>
-      //     isProbablyTex(tex) ? getFingerprint(tex.texture) : tex,
-      //   ),
-      //   "to",
-      //   getFingerprint(runtime.out.texture),
-      // );
+      instance.run({ inputs, params: node.data.params, ctx });
     } catch (error) {
       console.error(`Error running node ${nodeId}:`, error);
     }
@@ -157,7 +149,7 @@ export function runFlow(
       const node = nodes.find((n) => n.id === nodeId);
       if (!node) throw new Error(`Node with id ${nodeId} not found`);
 
-      opInstance.runLate?.({
+      opInstance.runLate({
         inputs: assembleInputs(nodeId, false),
         params: node.data.params,
         ctx,
@@ -166,4 +158,6 @@ export function runFlow(
       console.error(`Error running late for node ${nodeId}:`, error);
     }
   }
+
+  return instancesChanged;
 }

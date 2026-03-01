@@ -20,7 +20,6 @@ type FragOp<
   | "destroy"
   // stuff we don't define but why are you defining it?
   | "inputKeysLate"
-  | "initWithRuntime"
   | "runLate"
 > & {
   fragBody: string;

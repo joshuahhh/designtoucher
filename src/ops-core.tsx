@@ -44,10 +44,6 @@ export type Op<
   inputKeysLate?: InputKey[];
   initParams?: () => Params;
   initRuntime?: (ctx: OmniCanvasContextType) => Runtime;
-  initWithRuntime?: (props: {
-    ctx: OmniCanvasContextType;
-    runtime: Runtime;
-  }) => void;
   run?: (props: {
     runtime: Runtime;
     inputs: Record<InputKey, Tex | null>;
@@ -137,7 +133,6 @@ export class OpInstance<
   ) {
     const op = this.getOp();
     this.runtime = op.initRuntime?.(ctx) ?? ({} as Runtime);
-    op.initWithRuntime?.({ ctx, runtime: this.runtime });
 
     this.Render = memo(this.Render.bind(this));
   }

@@ -11,14 +11,13 @@ import { stopStream, WebcamStream } from "../../webcam.js";
 export default defineOp({
   id: "remote-cam",
   initRuntime(ctx) {
-    return {
+    const runtime = {
       webcamStream: null as WebcamStream | null,
       video: document.createElement("video"),
       id: null as string | null,
       out: null as Tex | null,
     };
-  },
-  initWithRuntime({ ctx, runtime }) {
+
     const peer = new Peer();
 
     peer.on("open", (id) => {
@@ -39,6 +38,8 @@ export default defineOp({
     });
 
     peer.on("error", (e) => console.error("Peer error:", e));
+
+    return runtime;
   },
   run({ runtime, ctx }) {
     const { gl } = ctx;

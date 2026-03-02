@@ -35,15 +35,15 @@ export default defineFragOp({
     return (
       <>
         <Sentence>
-          <props.InputHandle inputKey="texture" /> Hue{" "}
+          Change colors in <props.InputHandle inputKey="texture" />: rotate by{" "}
           <SentenceParamNumber
             value={props.params.hue}
             valueUP={props.paramsUP.hue}
             min={-1}
             max={1}
             step={0.01}
-          />
-          , Saturation{" "}
+          />{" "}
+          and saturate by{" "}
           <SentenceParamNumber
             value={props.params.saturation}
             valueUP={props.paramsUP.saturation}

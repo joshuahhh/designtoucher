@@ -8,10 +8,10 @@ export default defineFragOp({
     return { steps: 10 };
   },
   fragBody: `
-    vec3 tex1Color = vec3(texture2D(tex1, uv));
+    vec4 tex1Color = texture2D(tex1, uv);
     float stepSize = 1.0 / float(steps);
-    tex1Color = floor(tex1Color / stepSize) * stepSize;
-    gl_FragColor = vec4(tex1Color, 1.0);
+    tex1Color = vec4(floor(tex1Color.rgb / stepSize) * stepSize, tex1Color.a);
+    gl_FragColor = tex1Color;
   `,
   Render(props) {
     return (

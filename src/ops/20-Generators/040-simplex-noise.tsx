@@ -96,12 +96,7 @@ const SizeCircle = ({
               }
             >
               <circle r={unitR} fill="none" pointerEvents="all" />
-              <circle
-                r={unitR}
-                fill="none"
-                stroke="white"
-                strokeWidth={2}
-              />
+              <circle r={unitR} fill="none" stroke="white" strokeWidth={2} />
             </g>
           );
         }}

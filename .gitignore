@@ -23,6 +23,7 @@ lib
 *.njsproj
 *.sln
 *.sw?
+.claude
 
 # MediaPipe runtime files (provisioned by postinstall)
 public/mediapipe

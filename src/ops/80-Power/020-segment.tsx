@@ -7,10 +7,7 @@ import {
   ShaderProgram,
   Tex,
 } from "../../mygl.js";
-import {
-  defineOp,
-  Sentence,
-} from "../../ops-core.js";
+import { defineOp, Sentence } from "../../ops-core.js";
 
 // Display order; maskIdx is the model's output index
 const CATEGORIES = [
@@ -26,7 +23,17 @@ const FEED_SIZE = 256;
 function createMaskTex(gl: WebGL2RenderingContext, w: number, h: number): Tex {
   const texture = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, null);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.R8,
+    w,
+    h,
+    0,
+    gl.RED,
+    gl.UNSIGNED_BYTE,
+    null,
+  );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -51,6 +58,7 @@ function flipY(data: Uint8Array, width: number, height: number) {
 export default defineOp({
   id: "segment",
   inputKeys: ["img"] as const,
+  outputKeys: ["bg", "hair", "body", "face", "clothes", "other"],
 
   initRuntime(ctx, notify) {
     const { gl } = ctx;
@@ -154,8 +162,13 @@ export default defineOp({
     // 2. Read pixels from feed FBO
     gl.bindFramebuffer(gl.FRAMEBUFFER, runtime.feedFbo.framebuffer);
     gl.readPixels(
-      0, 0, FEED_SIZE, FEED_SIZE,
-      gl.RGBA, gl.UNSIGNED_BYTE, runtime.pixelBuf,
+      0,
+      0,
+      FEED_SIZE,
+      FEED_SIZE,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      runtime.pixelBuf,
     );
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
@@ -169,7 +182,8 @@ export default defineOp({
         FEED_SIZE,
         FEED_SIZE,
       ),
-      0, 0,
+      0,
+      0,
     );
 
     // 5. Run segmentation, composite all 6 outputs
@@ -190,9 +204,14 @@ export default defineOp({
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
           gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
           gl.texSubImage2D(
-            gl.TEXTURE_2D, 0, 0, 0,
-            FEED_SIZE, FEED_SIZE,
-            gl.RED, gl.UNSIGNED_BYTE,
+            gl.TEXTURE_2D,
+            0,
+            0,
+            0,
+            FEED_SIZE,
+            FEED_SIZE,
+            gl.RED,
+            gl.UNSIGNED_BYTE,
             runtime.maskBuf,
           );
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -251,5 +270,7 @@ export default defineOp({
     );
   },
 
-  searchHints: ["AKA: segmentation, person, selfie, hair, face, body, clothes, background, mediapipe."],
+  searchHints: [
+    "AKA: segmentation, person, selfie, hair, face, body, clothes, background, mediapipe.",
+  ],
 });

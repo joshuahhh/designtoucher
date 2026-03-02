@@ -1,5 +1,5 @@
-import { cpSync, existsSync, mkdirSync } from "fs";
 import { execSync } from "child_process";
+import { cpSync, existsSync, mkdirSync } from "fs";
 
 // Copy WASM runtime from node_modules
 const wasmSrc = "node_modules/@mediapipe/tasks-vision/wasm";
@@ -22,7 +22,9 @@ if (!existsSync(modelFile)) {
     execSync(`curl -sL -o "${modelFile}" "${url}"`);
     console.log("Downloaded model to public/models/");
   } catch {
-    console.warn("Failed to download model. You can download it manually from:");
+    console.warn(
+      "Failed to download model. You can download it manually from:",
+    );
     console.warn(url);
   }
 }

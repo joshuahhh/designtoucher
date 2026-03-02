@@ -23,6 +23,7 @@ const channelOps = [
 export default defineOp({
   id: "split-colors",
   inputKeys: ["tex1"],
+  outputKeys: ["outR", "outG", "outB"],
   initRuntime(ctx) {
     const channelOpInstances = channelOps.map((op) =>
       instantiateOp(op, ctx, "constant-op"),

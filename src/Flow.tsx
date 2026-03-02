@@ -9,20 +9,25 @@ import {
   Controls,
   Edge,
   EdgeChange,
+  Handle,
   MiniMap,
   Node,
   NodeChange,
   NodeProps,
   NodeTypes,
   OnConnectEnd,
+  Position,
   ReactFlow,
   ReactFlowProvider,
+  useConnection,
+  useEdges,
   useReactFlow,
   useStoreApi,
   Viewport,
 } from "@xyflow/react";
 import { clsx } from "clsx";
 import {
+  createContext,
   Dispatch,
   memo,
   SetStateAction,
@@ -30,6 +35,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
@@ -52,11 +58,14 @@ import {
   AnyOpInstance,
   getOpId,
   InputHandle,
+  makeInputHandleId,
+  makeOutputHandleId,
   OpInstancesContext,
   OutputHandle,
   parseInputHandleId,
   parseOutputHandleId,
   SetFullscreenModalTexContext,
+  sharedHandleClasses,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, opsInGroups } from "./ops/all-the-ops.js";
@@ -65,6 +74,7 @@ import {
   useNodeData,
   useReactFlowSelection,
 } from "./react-flow-util.js";
+import { getTransitiveDownstream, getTransitiveUpstream } from "./toposort.js";
 import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
@@ -93,7 +103,7 @@ export const OpNodeView = memo(function OpNodeView(props: NodeProps<OpNode>) {
   return (
     <div
       className={clsx(
-        "flex flex-col gap-1 items-center border rounded-md bg-gray-100 p-2 !-z-10 transition-all duration-100",
+        "group/node flex flex-col gap-1 items-center border rounded-md bg-gray-100 p-2 !-z-10 transition-all duration-100 relative",
         selected
           ? [
               "border-blue-400 border-2",
@@ -103,13 +113,194 @@ export const OpNodeView = memo(function OpNodeView(props: NodeProps<OpNode>) {
           : ["border-gray-300", "hover:border-blue-300 hover:shadow-sm"],
       )}
     >
+      <div
+        data-drag-mode="upstream"
+        className="absolute right-1 top-0 -translate-y-1/2 h-2.5 w-5 bg-gray-400 hover:bg-blue-400 rounded-sm cursor-grab active:cursor-grabbing opacity-0 group-hover/node:opacity-40 hover:!opacity-100 transition-opacity"
+        title="Drag with upstream"
+      />
+      <div
+        data-drag-mode="downstream"
+        className="absolute right-1 bottom-0 translate-y-1/2 h-2.5 w-5 bg-gray-400 hover:bg-orange-400 rounded-sm cursor-grab active:cursor-grabbing opacity-0 group-hover/node:opacity-40 hover:!opacity-100 transition-opacity"
+        title="Drag with downstream"
+      />
       <instance.Render params={data.params} paramsUP={dataUP.params} />
+    </div>
+  );
+});
+
+const TransformPickerContext = createContext<
+  (nodeId: string, opId: AnyOpId) => void
+>(() => {});
+
+// Stub handles for picker op previews — prevents real handles from
+// registering inside the picker node's React Flow context.
+const StubInputHandle = () => (
+  <div
+    className={clsx(
+      sharedHandleClasses,
+      "inline-flex border-2 border-solid border-black w-4 h-4 align-text-bottom",
+    )}
+  />
+);
+const StubOutputHandle = () => null;
+
+const PickerNodeView = memo(function PickerNodeView(
+  props: NodeProps<PickerNode>,
+) {
+  const transformPicker = useContext(TransformPickerContext);
+  const { selected } = props;
+  const mode = props.data.mode;
+  const isOutput = mode === "output";
+
+  const edges = useEdges();
+  const connectionCount = edges.filter((e) =>
+    isOutput ? e.source === props.id : e.target === props.id,
+  ).length;
+  const handleCount = connectionCount + 1; // +1 for next drop target
+
+  // Highlight when a connection drag is hovering over any of THIS picker's handles
+  const isConnectionHovering = useConnection(
+    (c) => c.toHandle?.nodeId === props.id,
+  );
+
+  const [searchInput, setSearchInput] = useState("");
+  const searchQuery = searchInput.toLowerCase().trim();
+
+  const searchInputRef = useCallback((el: HTMLInputElement | null) => {
+    el?.focus();
+  }, []);
+
+  const noopParamsUP = useMemo(() => up<Record<string, unknown>>(() => {}), []);
+  const paramsByOp = useMemo(
+    () => Object.fromEntries(ops.map((op) => [op.id, op.initParams?.() ?? {}])),
+    [],
+  );
+
+  // Only show ops that have enough inputs/outputs for the number of connections
+  const applicableOpsInGroups = useMemo(
+    () =>
+      opsInGroups
+        .map(
+          ([groupName, groupOps]) =>
+            [
+              groupName,
+              groupOps.filter((op) =>
+                isOutput
+                  ? (op.outputKeys ?? ["out"]).length >= connectionCount
+                  : (op.inputKeys?.length ?? 0) +
+                      (op.inputKeysLate?.length ?? 0) >=
+                    connectionCount,
+              ),
+            ] as [string, typeof groupOps],
+        )
+        .filter(([, groupOps]) => groupOps.length > 0),
+    [connectionCount, isOutput],
+  );
+
+  const [opHasMatch, setOpHasMatch] = useState<Record<string, boolean>>({});
+
+  return (
+    <div
+      className={clsx(
+        "relative flex flex-col bg-gray-50 border-2 rounded-lg shadow-md w-64 max-h-80 transition-all duration-100",
+        selected
+          ? [
+              "border-blue-400",
+              "shadow-lg shadow-blue-200/20",
+              "ring-1 ring-blue-300/15",
+            ]
+          : isConnectionHovering
+            ? "border-blue-300 shadow-lg shadow-blue-200/30 ring-2 ring-blue-200/40"
+            : ["border-gray-300", "hover:border-blue-300 hover:shadow-sm"],
+      )}
+    >
+      {Array.from({ length: handleCount }, (_, i) => (
+        <Handle
+          key={i}
+          type={isOutput ? "source" : "target"}
+          position={isOutput ? Position.Bottom : Position.Top}
+          id={
+            isOutput
+              ? makeOutputHandleId(props.id, `_picker_${i}`)
+              : makeInputHandleId(props.id, `_picker_${i}`)
+          }
+          isConnectableStart={isOutput ? undefined : false}
+          isConnectableEnd={isOutput ? false : undefined}
+          style={{
+            position: "absolute",
+            left: `${((i + 1) / (handleCount + 1)) * 100}%`,
+            ...(isOutput
+              ? { bottom: 0, transform: "translate(-50%, 50%)" }
+              : { top: 0, transform: "translate(-50%, -50%)" }),
+          }}
+          className={clsx(
+            sharedHandleClasses,
+            "!w-3 !h-3 !border-2 !border-black",
+          )}
+        />
+      ))}
+      <div className="p-2 border-b border-gray-200 shrink-0">
+        <input
+          ref={searchInputRef}
+          type="text"
+          placeholder="Search for a component…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="nodrag w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-400"
+        />
+      </div>
+      <div className="overflow-auto p-2 nowheel [@media(pointer:coarse)]:nodrag">
+        {applicableOpsInGroups.map(([groupName, groupOps]) => (
+          <div
+            key={groupName}
+            className={clsx("mb-3", {
+              hidden: searchQuery && !groupOps.some((op) => opHasMatch[op.id]),
+            })}
+          >
+            <h4 className="text-xs text-gray-500 font-bold mb-1 px-1">
+              {groupName}
+            </h4>
+            <div className="flex flex-col gap-1">
+              {groupOps.map((op) => (
+                <HighlightMatches
+                  key={op.id}
+                  query={searchQuery}
+                  setHasMatches={(hasMatches) => {
+                    if (opHasMatch[op.id] === hasMatches) return;
+                    setOpHasMatch((prev) => ({
+                      ...prev,
+                      [op.id]: hasMatches,
+                    }));
+                  }}
+                  className={clsx({
+                    hidden: searchQuery && !opHasMatch[op.id],
+                  })}
+                >
+                  <div
+                    onClick={() => transformPicker(props.id, getOpId(op))}
+                    className="w-full text-left p-2 bg-white border border-gray-200 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all [&>*]:pointer-events-none"
+                  >
+                    <op.Render
+                      runtime={null}
+                      paramsUP={noopParamsUP}
+                      params={paramsByOp[op.id]}
+                      InputHandle={StubInputHandle}
+                      OutputHandle={StubOutputHandle}
+                    />
+                  </div>
+                </HighlightMatches>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 });
 
 const nodeTypes: NodeTypes = {
   operation: OpNodeView,
+  picker: PickerNodeView,
 };
 
 export const Flow = ({
@@ -131,8 +322,12 @@ export const Flow = ({
   </div>
 );
 
+type PickerNode = Node<{ mode: "input" | "output" }, "picker">;
+
+type FlowNode = OpNode | PickerNode;
+
 export type Flow = {
-  nodes: OpNode[];
+  nodes: FlowNode[];
   edges: Edge[];
 };
 
@@ -158,19 +353,30 @@ const FlowInner = ({
 
   useEffect(() => {
     return animate(() => {
-      const instancesChanged = runFlow(
-        flowRef.current.nodes,
-        flowRef.current.edges,
-        opInstancesRef.current,
-        ctx,
-        (nodeId, params) => {
-          flowUP.nodes.$all
-            .$if((n) => n.id === nodeId)
-            .data.params.$set(params);
-        },
-      );
-      if (instancesChanged) {
-        setOpInstances((prev) => ({ ...prev }));
+      try {
+        const opNodes = flowRef.current.nodes.filter(
+          (n): n is OpNode => n.type === "operation",
+        );
+        const opNodeIds = new Set(opNodes.map((n) => n.id));
+        const opEdges = flowRef.current.edges.filter(
+          (e) => opNodeIds.has(e.source) && opNodeIds.has(e.target),
+        );
+        const instancesChanged = runFlow(
+          opNodes,
+          opEdges,
+          opInstancesRef.current,
+          ctx,
+          (nodeId, params) => {
+            flowUP.nodes.$all
+              .$if((n) => n.id === nodeId)
+              .data.params.$set(params);
+          },
+        );
+        if (instancesChanged) {
+          setOpInstances((prev) => ({ ...prev }));
+        }
+      } catch (e) {
+        console.error("runFlow:", e);
       }
     });
   }, [flowRef, ctx, flowUP, opInstancesRef]);
@@ -263,7 +469,7 @@ const FlowInnerNormalMode = ({
   resetOpInstances: () => void;
 }) => {
   const ctx = useContext(OmniCanvasContext);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodes } = useReactFlow();
 
   const flowUP = up(setFlow);
 
@@ -276,6 +482,90 @@ const FlowInnerNormalMode = ({
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
 
+  const transformPicker = useCallback(
+    (nodeId: string, opId: AnyOpId) => {
+      const op = opById(opId);
+
+      // Determine picker mode from the current node before replacing it
+      const pickerNode = flow.nodes.find((n) => n.id === nodeId) as
+        | PickerNode
+        | undefined;
+      const mode = pickerNode?.data.mode ?? "input";
+
+      if (mode === "input") {
+        const allInputKeys = [
+          ...(op.inputKeys ?? []),
+          ...(op.inputKeysLate ?? []),
+        ];
+        if (allInputKeys.length === 0) return;
+      } else {
+        const allOutputKeys = op.outputKeys ?? ["out"];
+        if (allOutputKeys.length === 0) return;
+      }
+
+      // Replace picker node with op node
+      flowUP.nodes.$((nodes) =>
+        nodes.map((n) =>
+          n.id === nodeId
+            ? ({
+                ...n,
+                type: "operation" as const,
+                origin: undefined,
+                data: { opId, params: op.initParams?.() ?? {} },
+              } satisfies OpNode)
+            : n,
+        ),
+      );
+
+      // Rewire edges from numbered picker handles to real handles
+      flowUP.edges.$((edges) => {
+        if (mode === "output") {
+          const allOutputKeys = op.outputKeys ?? ["out"];
+          let outputIndex = 0;
+          return edges.map((e) => {
+            if (
+              e.source === nodeId &&
+              /_picker_\d+$/.test(e.sourceHandle ?? "") &&
+              outputIndex < allOutputKeys.length
+            ) {
+              return {
+                ...e,
+                sourceHandle: makeOutputHandleId(
+                  nodeId,
+                  allOutputKeys[outputIndex++],
+                ),
+              };
+            }
+            return e;
+          });
+        } else {
+          const allInputKeys = [
+            ...(op.inputKeys ?? []),
+            ...(op.inputKeysLate ?? []),
+          ];
+          let inputIndex = 0;
+          return edges.map((e) => {
+            if (
+              e.target === nodeId &&
+              /_picker_\d+$/.test(e.targetHandle ?? "") &&
+              inputIndex < allInputKeys.length
+            ) {
+              return {
+                ...e,
+                targetHandle: makeInputHandleId(
+                  nodeId,
+                  allInputKeys[inputIndex++],
+                ),
+              };
+            }
+            return e;
+          });
+        }
+      });
+    },
+    [flow.nodes, flowUP.nodes, flowUP.edges],
+  );
+
   const onNodesChange = useCallback(
     (changes: NodeChange<Node>[]) =>
       flowUP.nodes.$as<Node[]>().$((nodes) => applyNodeChanges(changes, nodes)),
@@ -287,19 +577,87 @@ const FlowInnerNormalMode = ({
     [flowUP.edges],
   );
 
+  // Group drag: drag a node along with all upstream or downstream nodes
+  const groupDragRef = useRef<{
+    groupNodeIds: Set<string>;
+    startPositions: Map<string, { x: number; y: number }>;
+    dragNodeStartPos: { x: number; y: number };
+  } | null>(null);
+
+  const onNodeDragStart = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      // Walk up from event target to find a data-drag-mode attribute
+      let target = _event.target as HTMLElement | null;
+      let dragMode: "upstream" | "downstream" | null = null;
+      while (target) {
+        const mode = target.dataset?.dragMode;
+        if (mode === "upstream" || mode === "downstream") {
+          dragMode = mode;
+          break;
+        }
+        if (target.classList.contains("react-flow__node")) break;
+        target = target.parentElement;
+      }
+
+      if (!dragMode) {
+        groupDragRef.current = null;
+        return;
+      }
+
+      const groupNodeIds =
+        dragMode === "upstream"
+          ? getTransitiveUpstream(node.id, flow.edges)
+          : getTransitiveDownstream(node.id, flow.edges);
+
+      if (groupNodeIds.size === 0) {
+        groupDragRef.current = null;
+        return;
+      }
+
+      const startPositions = new Map<string, { x: number; y: number }>();
+      for (const n of flow.nodes) {
+        if (groupNodeIds.has(n.id)) {
+          startPositions.set(n.id, { x: n.position.x, y: n.position.y });
+        }
+      }
+
+      groupDragRef.current = {
+        groupNodeIds,
+        startPositions,
+        dragNodeStartPos: { x: node.position.x, y: node.position.y },
+      };
+    },
+    [flow.edges, flow.nodes],
+  );
+
+  const onNodeDrag = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      const group = groupDragRef.current;
+      if (!group) return;
+
+      const dx = node.position.x - group.dragNodeStartPos.x;
+      const dy = node.position.y - group.dragNodeStartPos.y;
+
+      flowUP.nodes.$((nodes) =>
+        nodes.map((n) => {
+          if (!group.groupNodeIds.has(n.id)) return n;
+          const sp = group.startPositions.get(n.id);
+          if (!sp) return n;
+          return { ...n, position: { x: sp.x + dx, y: sp.y + dy } };
+        }),
+      );
+    },
+    [flowUP.nodes],
+  );
+
+  const onNodeDragStop = useCallback(() => {
+    groupDragRef.current = null;
+  }, []);
+
   const onConnect = useCallback(
     (params: Connection) => {
-      flowUP.edges.$((edges) =>
-        addEdge(
-          params,
-          edges.filter((e) => {
-            return !(
-              e.target === params.target &&
-              e.targetHandle === params.targetHandle
-            );
-          }),
-        ),
-      );
+      // All handles accept multiple connections (multi-edges get implicitly summed).
+      flowUP.edges.$((edges) => addEdge(params, edges));
     },
     [flowUP.edges],
   );
@@ -366,33 +724,110 @@ const FlowInnerNormalMode = ({
     (event, connectionState) => {
       if (connectionState.isValid) return;
 
-      const { from, fromHandle } = connectionState;
-      if (!from || !fromHandle?.id) return;
-      let parsedAsOutput;
+      const { fromHandle } = connectionState;
+      if (!fromHandle?.id) return;
+
+      // Determine if the drag came from an output or input handle
+      let mode: "input" | "output";
       try {
-        parsedAsOutput = parseOutputHandleId(fromHandle.id);
+        parseOutputHandleId(fromHandle.id);
+        mode = "input"; // dragging from output → picker receives inputs
       } catch {
-        return;
+        try {
+          parseInputHandleId(fromHandle.id);
+          mode = "output"; // dragging from input → picker produces outputs
+        } catch {
+          return;
+        }
       }
 
       const { clientX, clientY } =
         "changedTouches" in event ? event.changedTouches[0] : event;
-      const newNode: OpCreationNode = {
-        id: getId(),
-        position: screenToFlowPosition({
-          x: clientX,
-          y: clientY,
-        }),
-        data: {},
-        origin: [0.5, 0.0],
+
+      const dropPosition = screenToFlowPosition({ x: clientX, y: clientY });
+
+      // Check if dropped on an existing picker node with matching mode
+      const rfNodes = getNodes();
+      const hitPicker = rfNodes.find((n) => {
+        if (n.type !== "picker") return false;
+        if ((n as PickerNode).data.mode !== mode) return false;
+        const w = n.measured?.width ?? 256;
+        const h = n.measured?.height ?? 320;
+        const left = n.position.x - w / 2;
+        // origin=[0.5,0] for input mode, [0.5,1] for output mode
+        const top = mode === "output" ? n.position.y - h : n.position.y;
+        return (
+          dropPosition.x >= left &&
+          dropPosition.x <= left + w &&
+          dropPosition.y >= top &&
+          dropPosition.y <= top + h
+        );
+      });
+
+      if (hitPicker) {
+        flowUP.edges.$((edges) => {
+          const nextIndex = edges.filter((e) =>
+            mode === "output"
+              ? e.source === hitPicker.id
+              : e.target === hitPicker.id,
+          ).length;
+          const pickerHandle =
+            mode === "output"
+              ? makeOutputHandleId(hitPicker.id, `_picker_${nextIndex}`)
+              : makeInputHandleId(hitPicker.id, `_picker_${nextIndex}`);
+          return addEdge(
+            mode === "output"
+              ? {
+                  source: hitPicker.id,
+                  sourceHandle: pickerHandle,
+                  target: fromHandle.nodeId,
+                  targetHandle: fromHandle.id ?? null,
+                }
+              : {
+                  source: fromHandle.nodeId,
+                  sourceHandle: fromHandle.id ?? null,
+                  target: hitPicker.id,
+                  targetHandle: pickerHandle,
+                },
+            edges,
+          );
+        });
+        return;
+      }
+
+      const newNodeId = getId();
+      const newNode: PickerNode = {
+        id: newNodeId,
+        type: "picker",
+        position: dropPosition,
+        origin: mode === "output" ? [0.5, 1] : [0.5, 0],
+        data: { mode },
       };
 
-      // flowUP.nodes.$((nodes) => [...nodes, newNode]);
-      // flowUP.edges.$((edges) =>
-      //   addEdge({ source: from.id, target: newNode.id }, edges),
-      // );
+      const pickerHandle =
+        mode === "output"
+          ? makeOutputHandleId(newNodeId, "_picker_0")
+          : makeInputHandleId(newNodeId, "_picker_0");
+
+      const newEdge =
+        mode === "output"
+          ? {
+              source: newNodeId,
+              sourceHandle: pickerHandle,
+              target: fromHandle.nodeId,
+              targetHandle: fromHandle.id ?? null,
+            }
+          : {
+              source: fromHandle.nodeId,
+              sourceHandle: fromHandle.id ?? null,
+              target: newNodeId,
+              targetHandle: pickerHandle,
+            };
+
+      flowUP.nodes.$((nodes) => [...nodes, newNode]);
+      flowUP.edges.$((edges) => addEdge(newEdge, edges));
     },
-    [screenToFlowPosition],
+    [screenToFlowPosition, flowUP.nodes, flowUP.edges, getNodes],
   );
 
   useKeyBindings([
@@ -419,7 +854,7 @@ const FlowInnerNormalMode = ({
   ]);
 
   const store = useStoreApi();
-  const { getNodes, getEdges, deleteElements } = useReactFlow();
+  const { getEdges, deleteElements } = useReactFlow();
 
   const onPaneClick = useCallback(() => {
     store.setState({ connectionClickStartHandle: null });
@@ -438,7 +873,7 @@ const FlowInnerNormalMode = ({
         // TODO: we should prob make a custom edge at some point
         const { nodeId, key } = parseInputHandleId(e.targetHandle!);
         const node = flow.nodes.find((n) => n.id === nodeId);
-        const op = node ? opById(node.data.opId) : null;
+        const op = node?.type === "operation" ? opById(node.data.opId) : null;
         const isLate = op?.inputKeysLate?.includes(key);
         return {
           ...e,
@@ -449,48 +884,53 @@ const FlowInnerNormalMode = ({
   );
 
   return (
-    <div className="w-full h-full flex">
-      <div className="flex-1 relative">
-        <ReactFlow
-          nodes={flow.nodes}
-          edges={styledEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onConnectEnd={onConnectEnd}
-          nodeTypes={nodeTypes}
-          maxZoom={10}
-          minZoom={0.1}
-          viewport={viewport}
-          onViewportChange={setViewport}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          nodeOrigin={[0.5, 0.5]}
-          className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
-          onPaneClick={onPaneClick}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background />
-          <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
-            <div className="contents pointer-events-auto">
-              <MiniMap zoomable pannable />
-              <Controls className="bg-gray-50" />
-              <CopyPaste />
-              <SidebarToggleButton
-                isSidebarExpanded={isSidebarExpanded}
-                setIsSidebarExpanded={setIsSidebarExpanded}
-              />
-              <Toolbar onDelete={deleteSelected} />
-            </div>
-          </OmniCanvasOverlay>
-        </ReactFlow>
+    <TransformPickerContext.Provider value={transformPicker}>
+      <div className="w-full h-full flex">
+        <div className="flex-1 relative">
+          <ReactFlow
+            nodes={flow.nodes}
+            edges={styledEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
+            onNodeDragStart={onNodeDragStart}
+            onNodeDrag={onNodeDrag}
+            onNodeDragStop={onNodeDragStop}
+            nodeTypes={nodeTypes}
+            maxZoom={10}
+            minZoom={0.1}
+            viewport={viewport}
+            onViewportChange={setViewport}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            nodeOrigin={[0.5, 0.5]}
+            className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
+            onPaneClick={onPaneClick}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background />
+            <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
+              <div className="contents pointer-events-auto">
+                <MiniMap zoomable pannable />
+                <Controls className="bg-gray-50" />
+                <CopyPaste />
+                <SidebarToggleButton
+                  isSidebarExpanded={isSidebarExpanded}
+                  setIsSidebarExpanded={setIsSidebarExpanded}
+                />
+                <Toolbar onDelete={deleteSelected} />
+              </div>
+            </OmniCanvasOverlay>
+          </ReactFlow>
+        </div>
+        <Sidebar
+          isSidebarExpanded={isSidebarExpanded}
+          setDraggedOpId={setDraggedOpId}
+          ctx={ctx}
+        />
       </div>
-      <Sidebar
-        isSidebarExpanded={isSidebarExpanded}
-        setDraggedOpId={setDraggedOpId}
-        ctx={ctx}
-      />
-    </div>
+    </TransformPickerContext.Provider>
   );
 };
 

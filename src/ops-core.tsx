@@ -8,7 +8,6 @@ import {
   useUpdateNodeInternals,
 } from "@xyflow/react";
 import clsx from "clsx";
-import _ from "lodash";
 import {
   createContext,
   createRef,
@@ -65,6 +64,7 @@ export type Op<
     InputHandle: typeof InputHandle<InputKey>;
     OutputHandle: typeof OutputHandle<OutputKey<Runtime>>;
   }) => React.ReactNode;
+  outputKeys?: string[];
   searchHints?: string[];
 };
 export type AnyOp = Op<
@@ -263,9 +263,11 @@ export const InputHandle = <InputKey extends string>({
   const nodeId = useNodeId()!;
   const handleId = makeInputHandleId(nodeId, inputKey);
 
-  // figure out if we're downstream of a node
+  // figure out if we're downstream of a node (possibly multiple)
   const edges = useEdges();
-  const edge = _.find(edges, { targetHandle: handleId });
+  const matchingEdges = edges.filter((e) => e.targetHandle === handleId);
+  const edgeCount = matchingEdges.length;
+  const edge = matchingEdges[0] ?? null;
   const opInstances = useContext(OpInstancesContext);
 
   const sourceHandleParsed = edge && parseOutputHandleId(edge.sourceHandle!);
@@ -301,12 +303,17 @@ export const InputHandle = <InputKey extends string>({
       className={className}
     >
       {sourceOutput ? (
-        <div className="-m-[1px]">
+        <div className="-m-[1px] relative">
           <Monitor
             tex={sourceOutput}
             className="pointer-events-none"
             cornerRadiusPixels={200}
           />
+          {edgeCount > 1 && (
+            <div className="absolute -top-1.5 -right-1.5 bg-orange-500 text-white text-[8px] leading-none rounded-full w-3 h-3 flex items-center justify-center">
+              {edgeCount}
+            </div>
+          )}
         </div>
       ) : null}
     </Handle>

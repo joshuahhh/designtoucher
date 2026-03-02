@@ -65,6 +65,7 @@ export function defineFragOp<
 
   return defineOp({
     ...fragOp,
+    outputKeys: ["out"],
 
     initRuntime(ctx) {
       const outFbo = newFbo(ctx.gl);

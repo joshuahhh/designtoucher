@@ -6,9 +6,9 @@ export default defineFragOp({
   inputKeys: ["tex1", "tex2"],
   initParams: () => ({ ratio: 0.5 }),
   fragBody: `
-    vec3 tex1Color = vec3(texture2D(tex1, uv));
-    vec3 tex2Color = vec3(texture2D(tex2, uv));
-    gl_FragColor = vec4(mix(tex1Color, tex2Color, ratio), 1.0);
+    vec4 tex1Color = texture2D(tex1, uv);
+    vec4 tex2Color = texture2D(tex2, uv);
+    gl_FragColor = mix(tex1Color, tex2Color, ratio);
   `,
   Render(props) {
     return (

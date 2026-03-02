@@ -246,7 +246,7 @@ export const FullscreenModal = ({ tex }: { tex: Tex }) => {
           aspectRatio: aspectRatio,
         }}
       >
-        <Monitor tex={tex} />
+        <Monitor tex={tex} checkerboardPixels={100} />
       </div>
     </div>,
     underlayDiv,

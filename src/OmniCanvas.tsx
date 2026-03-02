@@ -303,28 +303,30 @@ export function Monitor({
   className,
   style,
   cornerRadiusPixels,
+  checkerboardPixels,
 }: {
   tex: Tex;
   className?: string;
   style?: React.CSSProperties;
   cornerRadiusPixels?: number;
+  checkerboardPixels?: number;
 }) {
   const { draw, drawForMonitor } = useContext(OmniCanvasContext);
 
   const command = useCallback(
     (viewport: [number, number, number, number]) => {
-      if (cornerRadiusPixels) {
+      if (cornerRadiusPixels || checkerboardPixels) {
         drawForMonitor({
           tex,
           viewport,
-          cornerRadiusPixels,
-          checkerboardPixels: 100,
+          cornerRadiusPixels: cornerRadiusPixels ?? 0,
+          checkerboardPixels: checkerboardPixels ?? 100,
         });
       } else {
         draw({ tex, viewport });
       }
     },
-    [cornerRadiusPixels, draw, drawForMonitor, tex],
+    [cornerRadiusPixels, checkerboardPixels, draw, drawForMonitor, tex],
   );
 
   return (

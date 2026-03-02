@@ -1,3 +1,6 @@
+import { DraggableRenderer, scale, translate } from "dragology";
+import { useEffect, useRef, useState } from "react";
+import { UpdateProxy } from "update-proxy";
 import { Sentence, SentenceParamNumber } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
@@ -43,8 +46,66 @@ export default defineFragOp({
             step={0.01}
           />
         </Sentence>
-        <props.OutputHandle outputKey="out" />
+        <props.OutputHandle outputKey="out">
+          <SizeCircle size={props.params.size} sizeUP={props.paramsUP.size} />
+        </props.OutputHandle>
       </>
     );
   },
 });
+
+const SizeCircle = ({
+  size,
+  sizeUP,
+}: {
+  size: number;
+  sizeUP: UpdateProxy<number>;
+}) => {
+  const [dims, setDims] = useState({ width: 0, height: 0 });
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setDims({ width, height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="h-full">
+      <DraggableRenderer
+        width={dims.width}
+        height={dims.height}
+        state={{ size }}
+        onDragState={({ size }) => sizeUP.$set(size)}
+        draggable={({ state, d }) => {
+          const cx = dims.width / 2;
+          const cy = dims.height / 2;
+          const unitR = Math.min(dims.width, dims.height) / 2;
+          return (
+            <g
+              transform={translate(cx, cy) + scale(state.size)}
+              dragology={() =>
+                d.vary(state, [["size"]]).during((s) => ({
+                  size: Math.round(s.size * 1000) / 1000,
+                }))
+              }
+            >
+              <circle r={unitR} fill="none" pointerEvents="all" />
+              <circle
+                r={unitR}
+                fill="none"
+                stroke="white"
+                strokeWidth={2}
+              />
+            </g>
+          );
+        }}
+      />
+    </div>
+  );
+};

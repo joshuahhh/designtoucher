@@ -1,3 +1,6 @@
+import { DraggableRenderer, rotateDeg, translate } from "dragology";
+import { useEffect, useRef, useState } from "react";
+import { UpdateProxy } from "update-proxy";
 import { Sentence, SentenceParamNumber } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
@@ -25,8 +28,76 @@ export default defineFragOp({
             step={0.1}
           />
         </Sentence>
-        <props.OutputHandle outputKey="out" />
+        <props.OutputHandle outputKey="out">
+          <AngleArrow
+            angle={props.params.angle}
+            angleUP={props.paramsUP.angle}
+          />
+        </props.OutputHandle>
       </>
     );
   },
 });
+
+const AngleArrow = ({
+  angle,
+  angleUP,
+}: {
+  angle: number;
+  angleUP: UpdateProxy<number>;
+}) => {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setSize({ width, height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="h-full">
+      <DraggableRenderer
+        width={size.width}
+        height={size.height}
+        state={{ angle }}
+        onDragState={({ angle }) => angleUP.$set(angle)}
+        draggable={({ state, d }) => {
+          const cx = size.width / 2;
+          const cy = size.height / 2;
+          const c = Math.min(cx, cy);
+          const len = c * 0.7;
+          return (
+            <g
+              transform={translate(cx, cy) + rotateDeg(state.angle)}
+              dragology={() =>
+                d
+                  .vary(state, [["angle"]])
+                  .during((s) => ({ angle: Math.round(s.angle) }))
+              }
+            >
+              <circle r={c} fill="none" pointerEvents="all" />
+              <line
+                x1={-len}
+                y1={0}
+                x2={len}
+                y2={0}
+                stroke="white"
+                strokeWidth={2}
+              />
+              <polygon
+                points={`${len},0 ${len - 8},-5 ${len - 8},5`}
+                fill="white"
+              />
+            </g>
+          );
+        }}
+      />
+    </div>
+  );
+};

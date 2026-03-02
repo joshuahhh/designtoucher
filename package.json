@@ -19,12 +19,12 @@
     "@codemirror/state": "^6.5.2",
     "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6.37.2",
-    "update-proxy": "^0.0.4",
     "@floating-ui/dom": "1.7.3",
     "@radix-ui/themes": "^3.2.1",
     "@xyflow/react": "^12.8.2",
     "clsx": "^2.1.1",
     "codemirror": "6.0.1",
+    "dragology": "^0.1.1",
     "jsfeat": "^0.0.8",
     "lodash": "^4.17.21",
     "lygia": "^1.3.3",
@@ -39,6 +39,7 @@
     "react-merge-refs": "3.0.2",
     "react-router-dom": "6.22.1",
     "strip-indent": "^4.0.0",
+    "update-proxy": "^0.0.4",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

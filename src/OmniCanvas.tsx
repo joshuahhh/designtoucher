@@ -370,7 +370,7 @@ export const OmniCanvasOverlay = forwardRef<
     };
 
     update();
-    return autoUpdate(anchor, wrapper, update);
+    return autoUpdate(anchor, wrapper, update, { animationFrame: true });
   }, [overlayDiv]);
 
   return (

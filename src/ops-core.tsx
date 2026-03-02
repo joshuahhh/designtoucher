@@ -543,9 +543,11 @@ export const SetFullscreenModalTexContext = createContext<
 export const OutputHandle = <OutputKey extends string>({
   outputKey,
   size,
+  children,
 }: {
   outputKey: OutputKey;
   size?: number;
+  children?: ReactNode;
 }) => {
   const nodeId = useNodeId();
 
@@ -599,15 +601,18 @@ export const OutputHandle = <OutputKey extends string>({
             }}
           />
         )}
-        {output && isHovered && (
+        {output && (isHovered || children) && (
           <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full pointer-events-none">
-            <button
-              onClick={() => setFullscreenModalTex(output)}
-              className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
-              title="View fullscreen"
-            >
-              <FaExpandArrowsAlt />
-            </button>
+            {isHovered && (
+              <button
+                onClick={() => setFullscreenModalTex(output)}
+                className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
+                title="View fullscreen"
+              >
+                <FaExpandArrowsAlt />
+              </button>
+            )}
+            {children}
           </OmniCanvasOverlay>
         )}
       </Handle>

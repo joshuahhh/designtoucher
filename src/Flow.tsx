@@ -223,7 +223,7 @@ export const FullscreenModal = ({ tex }: { tex: Tex }) => {
       <OmniCanvasOverlay className="absolute inset-0">
         <button
           onClick={close}
-          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 pointer-events-auto"
           title="Press ESC to close"
         >
           <svg
@@ -472,14 +472,16 @@ const FlowInnerNormalMode = ({
         >
           <Background />
           <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
-            <MiniMap zoomable pannable />
-            <Controls className="bg-gray-50" />
-            <CopyPaste />
-            <SidebarToggleButton
-              isSidebarExpanded={isSidebarExpanded}
-              setIsSidebarExpanded={setIsSidebarExpanded}
-            />
-            <Toolbar onDelete={deleteSelected} />
+            <div className="contents pointer-events-auto">
+              <MiniMap zoomable pannable />
+              <Controls className="bg-gray-50" />
+              <CopyPaste />
+              <SidebarToggleButton
+                isSidebarExpanded={isSidebarExpanded}
+                setIsSidebarExpanded={setIsSidebarExpanded}
+              />
+              <Toolbar onDelete={deleteSelected} />
+            </div>
           </OmniCanvasOverlay>
         </ReactFlow>
       </div>
@@ -635,7 +637,7 @@ const Sidebar = memo(
             className={clsx(
               isSidebarExpanded ? "translate-x-0" : "translate-x-full",
               transition,
-              "bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col",
+              "bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col pointer-events-auto",
             )}
           >
             <h3 className="text-lg font-semibold text-gray-800">Components</h3>

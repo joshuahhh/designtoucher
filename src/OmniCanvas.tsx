@@ -380,7 +380,7 @@ export const OmniCanvasOverlay = forwardRef<
         createPortal(
           <Theme
             ref={wrapperRef}
-            className="pointer-events-none [&>*]:pointer-events-auto"
+            className="pointer-events-none"
           >
             {children}
           </Theme>,

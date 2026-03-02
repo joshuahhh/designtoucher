@@ -23,3 +23,7 @@ lib
 *.njsproj
 *.sln
 *.sw?
+
+# MediaPipe runtime files (provisioned by postinstall)
+public/mediapipe
+public/models

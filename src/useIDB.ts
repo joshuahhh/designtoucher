@@ -6,6 +6,13 @@ const DB_VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+(window as any).clearAllData = () => {
+  indexedDB.deleteDatabase(DB_NAME);
+  dbPromise = null;
+  console.log("All data cleared. Reloading…");
+  location.reload();
+};
+
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {

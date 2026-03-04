@@ -1,5 +1,5 @@
 import { DraggableRenderer, rotateDeg, translate } from "dragology";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { UpdateProxy } from "update-proxy";
 import { Sentence, SentenceParamNumber } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
@@ -60,12 +60,14 @@ const AngleArrow = ({
     return () => observer.disconnect();
   }, []);
 
+  const state = useMemo(() => ({ angle }), [angle]);
+
   return (
     <div ref={ref} className="h-full">
       <DraggableRenderer
         width={size.width}
         height={size.height}
-        state={{ angle }}
+        state={state}
         onDragState={({ angle }) => angleUP.$set(angle)}
         draggable={({ state, d }) => {
           const cx = size.width / 2;

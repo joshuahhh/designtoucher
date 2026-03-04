@@ -366,9 +366,15 @@ export const OmniCanvasOverlay = forwardRef<
     const update = () => {
       const containerRect = overlayDiv.getBoundingClientRect();
       const r = anchor.getBoundingClientRect();
-      wrapper.style.transform = `translate(${r.left - containerRect.left}px, ${r.top - containerRect.top}px)`;
-      wrapper.style.width = `${r.width}px`;
-      wrapper.style.height = `${r.height}px`;
+      // Derive zoom from the ratio of visual size (getBoundingClientRect,
+      // includes CSS transforms like React Flow's viewport) to layout size
+      // (offsetWidth, excludes transforms). This lets overlay content scale
+      // with the canvas zoom without needing to import React Flow APIs.
+      const zoom = anchor.offsetWidth > 0 ? r.width / anchor.offsetWidth : 1;
+      wrapper.style.transformOrigin = "0 0";
+      wrapper.style.transform = `translate(${r.left - containerRect.left}px, ${r.top - containerRect.top}px) scale(${zoom})`;
+      wrapper.style.width = `${anchor.offsetWidth}px`;
+      wrapper.style.height = `${anchor.offsetHeight}px`;
     };
 
     update();

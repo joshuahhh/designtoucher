@@ -49,12 +49,14 @@ export type Op<
     inputs: Record<InputKey, Tex | null>;
     params: Params;
     ctx: OmniCanvasContextType;
+    notify: () => void;
   }) => void;
   runLate?: (props: {
     runtime: Runtime;
     inputs: Record<InputKey, Tex | null>;
     params: Params;
     ctx: OmniCanvasContextType;
+    notify: () => void;
   }) => void;
   destroy?: (props: { runtime: Runtime; ctx: OmniCanvasContextType }) => void;
   Render: (props: {
@@ -189,13 +191,13 @@ export class OpInstance<
   run(props: OpInstanceMethodProps<Runtime, InputKey, Params, "run">) {
     const before = { ...this.runtime };
     const op = this.getOp();
-    op.run?.({ runtime: this.runtime, ...props });
+    op.run?.({ ...props, runtime: this.runtime, notify: this.notify });
     this._notifyIfRuntimeChanged(before);
   }
   runLate(props: OpInstanceMethodProps<Runtime, InputKey, Params, "runLate">) {
     const before = { ...this.runtime };
     const op = this.getOp();
-    op.runLate?.({ runtime: this.runtime, ...props });
+    op.runLate?.({ ...props, runtime: this.runtime, notify: this.notify });
     this._notifyIfRuntimeChanged(before);
   }
   destroy(props: OpInstanceMethodProps<Runtime, InputKey, Params, "destroy">) {
@@ -211,7 +213,7 @@ type OpInstanceMethodProps<
   MethodName extends "run" | "runLate" | "destroy" | "Render",
 > = Omit<
   Parameters<NonNullable<Op<Runtime, InputKey, Params>[MethodName]>>[0],
-  "runtime"
+  "runtime" | "notify"
 >;
 
 export type AnyOpInstance = OpInstance<

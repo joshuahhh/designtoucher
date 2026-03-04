@@ -124,6 +124,7 @@ export default defineOp({
         inputs: { tex1: runtime.tex },
         params: { horizontal: true },
         ctx,
+        notify() {},
       });
 
       runtime.out = (runtime.hflipOp.runtime as any).out as Tex;

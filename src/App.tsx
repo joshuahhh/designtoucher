@@ -1,10 +1,10 @@
 import clsx from "clsx";
 import { use100vh } from "react-div-100vh";
 import { Flow, initialFlow } from "./lib.js";
-import { useLocalStorage } from "./useLocalStorage.js";
+import { useIDB } from "./useIDB.js";
 
 export const App = () => {
-  const [flow, setFlow] = useLocalStorage<Flow>("flow", () => initialFlow);
+  const [flow, setFlow] = useIDB<Flow>("flow", () => initialFlow);
   const height = use100vh();
 
   if (!height) {

@@ -1,6 +1,6 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import DomNode from "./DomNode.js";
-import { useLocalStorage } from "./useLocalStorage.js";
+import { useIDB } from "./useIDB.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { onVideoFrame } from "./util.js";
 
@@ -166,7 +166,7 @@ export const useWebcam = ({
   const [stream, setStream] = useState<WebcamStream | null>(null);
   const streamRef = useRefForCallback(stream);
 
-  const [imgOverride, setImgOverride] = useLocalStorage<string | null>(
+  const [imgOverride, setImgOverride] = useIDB<string | null>(
     "webcam-imgOverride",
     () => null,
   );

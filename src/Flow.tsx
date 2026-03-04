@@ -75,7 +75,6 @@ import {
   useReactFlowSelection,
 } from "./react-flow-util.js";
 import { getTransitiveDownstream, getTransitiveUpstream } from "./toposort.js";
-import { useLocalStorage } from "./useLocalStorage.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { animate } from "./util.js";
 
@@ -329,6 +328,7 @@ type FlowNode = OpNode | PickerNode;
 export type Flow = {
   nodes: FlowNode[];
   edges: Edge[];
+  viewport: Viewport;
 };
 
 const getId = () => `n${Math.random().toString(16).slice(2)}`;
@@ -472,12 +472,6 @@ const FlowInnerNormalMode = ({
   const { screenToFlowPosition, getNodes } = useReactFlow();
 
   const flowUP = up(setFlow);
-
-  const [viewport, setViewport] = useLocalStorage<Viewport>("viewport", () => ({
-    x: 100,
-    y: 100,
-    zoom: 2,
-  }));
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
@@ -900,8 +894,8 @@ const FlowInnerNormalMode = ({
             nodeTypes={nodeTypes}
             maxZoom={10}
             minZoom={0.1}
-            viewport={viewport}
-            onViewportChange={setViewport}
+            viewport={flow.viewport}
+            onViewportChange={flowUP.viewport.$set}
             onDragOver={onDragOver}
             onDrop={onDrop}
             nodeOrigin={[0.5, 0.5]}

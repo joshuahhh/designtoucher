@@ -56,7 +56,7 @@ function flipY(data: Uint8Array, width: number, height: number) {
 }
 
 export default defineOp({
-  id: "segment",
+  id: "segment-selfie",
   inputKeys: ["img"] as const,
   outputKeys: ["bg", "hair", "body", "face", "clothes", "other"],
 
@@ -250,7 +250,7 @@ export default defineOp({
     return (
       <>
         <Sentence>
-          Segment <props.InputHandle inputKey="img" />
+          Segment selfie <props.InputHandle inputKey="img" />
           {error ? (
             <span title={error}> — error</span>
           ) : loading ? (

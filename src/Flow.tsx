@@ -39,11 +39,10 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { FaLightbulb, FaTrash } from "react-icons/fa";
+import { FaTrash } from "react-icons/fa";
 import { FaMagnifyingGlass, FaX } from "react-icons/fa6";
 import { up } from "update-proxy";
 import "./flow-base.css";
-import { HighlightMatches } from "./HighlightMatches.js";
 import { useKeyBindings } from "./keyboard.js";
 import { Tex } from "./mygl.js";
 import {
@@ -53,10 +52,10 @@ import {
   OmniCanvasHost,
   OmniCanvasOverlay,
 } from "./OmniCanvas.js";
+import { OpList } from "./OpList.js";
 import {
   AnyOpId,
   AnyOpInstance,
-  getOpId,
   InputHandle,
   makeInputHandleId,
   makeOutputHandleId,
@@ -68,7 +67,7 @@ import {
   sharedHandleClasses,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
-import { ops, opsInGroups } from "./ops/all-the-ops.js";
+import { opsInGroups } from "./ops/all-the-ops.js";
 import {
   CopyPaste,
   useNodeData,
@@ -169,12 +168,6 @@ const PickerNodeView = memo(function PickerNodeView(
     el?.focus();
   }, []);
 
-  const noopParamsUP = useMemo(() => up<Record<string, unknown>>(() => {}), []);
-  const paramsByOp = useMemo(
-    () => Object.fromEntries(ops.map((op) => [op.id, op.initParams?.() ?? {}])),
-    [],
-  );
-
   // Only show ops that have enough inputs/outputs for the number of connections
   const applicableOpsInGroups = useMemo(
     () =>
@@ -196,7 +189,17 @@ const PickerNodeView = memo(function PickerNodeView(
     [connectionCount, isOutput],
   );
 
-  const [opHasMatch, setOpHasMatch] = useState<Record<string, boolean>>({});
+  const renderOpWrapper = useCallback(
+    (opId: AnyOpId, children: React.ReactNode) => (
+      <div
+        onClick={() => transformPicker(props.id, opId)}
+        className="w-full text-left p-2 bg-white border border-gray-200 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all [&>*]:pointer-events-none"
+      >
+        {children}
+      </div>
+    ),
+    [transformPicker, props.id],
+  );
 
   return (
     <div
@@ -249,49 +252,16 @@ const PickerNodeView = memo(function PickerNodeView(
         />
       </div>
       <div className="overflow-auto p-2 nowheel [@media(pointer:coarse)]:nodrag">
-        {applicableOpsInGroups.map(([groupName, groupOps]) => (
-          <div
-            key={groupName}
-            className={clsx("mb-3", {
-              hidden: searchQuery && !groupOps.some((op) => opHasMatch[op.id]),
-            })}
-          >
-            <h4 className="text-xs text-gray-500 font-bold mb-1 px-1">
-              {groupName}
-            </h4>
-            <div className="flex flex-col gap-1">
-              {groupOps.map((op) => (
-                <HighlightMatches
-                  key={op.id}
-                  query={searchQuery}
-                  setHasMatches={(hasMatches) => {
-                    if (opHasMatch[op.id] === hasMatches) return;
-                    setOpHasMatch((prev) => ({
-                      ...prev,
-                      [op.id]: hasMatches,
-                    }));
-                  }}
-                  className={clsx({
-                    hidden: searchQuery && !opHasMatch[op.id],
-                  })}
-                >
-                  <div
-                    onClick={() => transformPicker(props.id, getOpId(op))}
-                    className="w-full text-left p-2 bg-white border border-gray-200 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all [&>*]:pointer-events-none"
-                  >
-                    <op.Render
-                      runtime={null}
-                      paramsUP={noopParamsUP}
-                      params={paramsByOp[op.id]}
-                      InputHandle={StubInputHandle}
-                      OutputHandle={StubOutputHandle}
-                    />
-                  </div>
-                </HighlightMatches>
-              ))}
-            </div>
-          </div>
-        ))}
+        <OpList
+          opsInGroups={applicableOpsInGroups}
+          searchQuery={searchQuery}
+          renderOpWrapper={renderOpWrapper}
+          InputHandle={StubInputHandle}
+          OutputHandle={StubOutputHandle}
+          groupClassName="mb-3"
+          groupHeadingClassName="text-xs text-gray-500 font-bold mb-1 px-1"
+          gapClassName="gap-1"
+        />
       </div>
     </div>
   );
@@ -1025,30 +995,30 @@ const Sidebar = memo(
       [setDraggedOpId],
     );
 
-    const noopParamsUP = useMemo(
-      () => up<Record<string, unknown>>(() => {}),
-      [],
-    );
-    const paramsByOp = useMemo(() => {
-      return Object.fromEntries(
-        ops.map((op) => [op.id, op.initParams?.() ?? {}]),
-      );
-    }, []);
-
     const [searchInput, setSearchInput] = useState("");
     const searchQuery = useMemo(
       () => searchInput.toLowerCase().trim(),
       [searchInput],
     );
 
-    const [opHasMatch, setOpHasMatch] = useState<Record<string, boolean>>({});
-
     useEffect(() => {
       if (!isSidebarExpanded) {
         setSearchInput("");
-        setOpHasMatch({});
       }
     }, [isSidebarExpanded]);
+
+    const renderOpWrapper = useCallback(
+      (opId: AnyOpId, children: React.ReactNode) => (
+        <div
+          draggable
+          onDragStart={(event) => onDragStart(event, opId)}
+          className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
+        >
+          {children}
+        </div>
+      ),
+      [onDragStart],
+    );
 
     const [searchInputDiv, setSearchInputDiv] =
       useState<HTMLInputElement | null>(null);
@@ -1094,69 +1064,16 @@ const Sidebar = memo(
               )}
             </TextField.Root>
             <div className="overflow-auto flex flex-col">
-              {opsInGroups.map(([groupName, groupOps]) => (
-                <div
-                  key={groupName}
-                  className={clsx("my-4", {
-                    hidden:
-                      searchQuery && !groupOps.some((op) => opHasMatch[op.id]),
-                  })}
-                >
-                  <h4 className="text-sm text-gray-600 mb-2 font-bold">
-                    {groupName}
-                  </h4>
-                  <div className="flex flex-col gap-2">
-                    {groupOps.map((op) => (
-                      <HighlightMatches
-                        key={op.id}
-                        query={searchQuery}
-                        setHasMatches={(hasMatches) => {
-                          if (opHasMatch[op.id] === hasMatches) return;
-                          setOpHasMatch((prev) => ({
-                            ...prev,
-                            [op.id]: hasMatches,
-                          }));
-                        }}
-                        className={clsx("shrink-0", {
-                          hidden: searchQuery && !opHasMatch[op.id],
-                        })}
-                      >
-                        <div
-                          draggable
-                          onDragStart={(event) =>
-                            onDragStart(event, getOpId(op))
-                          }
-                          className="p-3 bg-white border border-gray-300 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:shadow-sm transition-all select-none [&>*]:pointer-events-none"
-                        >
-                          <op.Render
-                            runtime={null}
-                            paramsUP={noopParamsUP}
-                            params={paramsByOp[op.id]}
-                            InputHandle={InputHandle}
-                            OutputHandle={OutputHandle}
-                          />
-                        </div>
-                        {(op.searchHints ?? []).map((hint, i) => (
-                          <div
-                            key={i}
-                            className={clsx(
-                              {
-                                "!hidden":
-                                  !searchQuery ||
-                                  !hint.toLowerCase().includes(searchQuery),
-                              },
-                              "text-xs text-gray-500 mt-2 ml-4 flex gap-2",
-                            )}
-                          >
-                            <FaLightbulb className="inline-block shrink-0" />{" "}
-                            {hint}
-                          </div>
-                        ))}
-                      </HighlightMatches>
-                    ))}
-                  </div>
-                </div>
-              ))}
+              <OpList
+                opsInGroups={opsInGroups}
+                searchQuery={searchQuery}
+                renderOpWrapper={renderOpWrapper}
+                InputHandle={InputHandle}
+                OutputHandle={OutputHandle}
+                groupClassName="my-4"
+                groupHeadingClassName="text-sm text-gray-600 mb-2 font-bold"
+                gapClassName="gap-2"
+              />
             </div>
           </div>
         </OmniCanvasOverlay>

@@ -62,12 +62,21 @@ export function useIDB<T>(key: string, init: () => T) {
     };
   }, [key]);
 
-  // Save to IDB on change (skip until initial load)
+  // Save to IDB on change, throttled (skip until initial load)
+  const pendingValue = useRef(value);
+  const timerRunning = useRef(false);
   useEffect(() => {
     if (!loaded.current) return;
-    idbSet(key, value).catch((e) =>
-      console.warn("error saving to IndexedDB", e),
-    );
+    pendingValue.current = value;
+    if (!timerRunning.current) {
+      timerRunning.current = true;
+      setTimeout(() => {
+        timerRunning.current = false;
+        idbSet(key, pendingValue.current).catch((e) =>
+          console.warn("error saving to IndexedDB", e),
+        );
+      }, 500);
+    }
   }, [key, value]);
 
   return [value, setValue] as const;

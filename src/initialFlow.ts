@@ -9,25 +9,6 @@ export const initialFlow: Flow = {
       data: { opId: "cam" as AnyOpId, params: {} },
       type: "operation",
     },
-    {
-      id: "n2",
-      position: { x: 100, y: 100 },
-      data: {
-        opId: "flip" as AnyOpId,
-        params: {
-          horizontal: true,
-        },
-      },
-      type: "operation",
-    },
   ],
-  edges: [
-    {
-      id: "n1-n2",
-      source: "n1",
-      sourceHandle: "n1:output:out",
-      target: "n2",
-      targetHandle: "n2:input:tex1",
-    },
-  ],
+  edges: [],
 };

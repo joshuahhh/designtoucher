@@ -34,16 +34,9 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 22
-          cache: "yarn"
-      - name: Cache dependencies
-        id: cache
-        uses: actions/cache@v3
-        with:
-          path: ./node_modules
-          key: node-modules-${{ hashFiles('yarn.lock') }}
+          cache: "npm"
       - name: Install dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: yarn
+        run: npm ci
       - name: Build
         run: npm run build
       - name: Setup Pages

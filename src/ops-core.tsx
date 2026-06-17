@@ -259,8 +259,10 @@ export const sharedHandleClasses = clsx(
 
 export const InputHandle = <InputKey extends string>({
   inputKey,
+  position: positionProp,
 }: {
   inputKey: InputKey;
+  position?: Position;
 }) => {
   const nodeId = useNodeId()!;
   const handleId = makeInputHandleId(nodeId, inputKey);
@@ -300,7 +302,7 @@ export const InputHandle = <InputKey extends string>({
   ) : (
     <Handle
       type="target"
-      position={Position.Top}
+      position={positionProp ?? Position.Top}
       id={handleId}
       className={className}
     >
@@ -552,10 +554,12 @@ export const SetFullscreenModalTexContext = createContext<
 export const OutputHandle = <OutputKey extends string>({
   outputKey,
   size,
+  position: positionProp,
   children,
 }: {
   outputKey: OutputKey;
   size?: number;
+  position?: Position;
   children?: ReactNode;
 }) => {
   const nodeId = useNodeId();
@@ -585,7 +589,7 @@ export const OutputHandle = <OutputKey extends string>({
     <>
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={positionProp ?? Position.Bottom}
         // TODO: customize
         id={makeOutputHandleId(nodeId, outputKey)}
         className={clsx(

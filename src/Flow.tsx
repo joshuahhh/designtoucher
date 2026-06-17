@@ -650,7 +650,9 @@ const FlowInnerNormalMode = ({
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
   }, []);
 
   const onDrop = useCallback(

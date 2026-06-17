@@ -2,7 +2,13 @@ import _ from "lodash";
 import { assert } from "../assert.js";
 import { AnyOp } from "../ops-core.js";
 
-export const ops = _.map(
+export type OpWithMetadata = AnyOp & {
+  groupName: string;
+  groupNum: number;
+  opNum: number;
+};
+
+export let ops: OpWithMetadata[] = _.map(
   import.meta.glob(["./*/*.tsx", "./*/*.js"], { eager: true }),
   (mod, filePath) => {
     const op = (mod as any).default as AnyOp;
@@ -22,19 +28,13 @@ export const ops = _.map(
   },
 );
 
-export let opsInGroups: [
-  string,
-  (AnyOp & { groupNum: number; opNum: number })[],
-][] = [];
-for (const op of ops) {
-  const group = opsInGroups.find(([name]) => name === op.groupName);
-  if (group) {
-    group[1].push(op);
-  } else {
-    opsInGroups.push([op.groupName, [op]]);
-  }
+if (import.meta.hot) {
+  const d = import.meta.hot.data;
+  const isReload = !!d.ops;
+  d.ops ??= [];
+  d.ops.length = 0;
+  d.ops.push(...ops);
+  ops = d.ops;
+  if (isReload) window.dispatchEvent(new CustomEvent("ops-hmr"));
+  import.meta.hot.accept();
 }
-for (const group of opsInGroups) {
-  group[1] = _.sortBy(group[1], (op) => op.opNum);
-}
-opsInGroups = _.sortBy(opsInGroups, ([, [firstOp]]) => firstOp.groupNum);

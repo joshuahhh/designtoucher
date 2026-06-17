@@ -26,6 +26,7 @@ import {
   Viewport,
 } from "@xyflow/react";
 import { clsx } from "clsx";
+import _ from "lodash";
 import {
   createContext,
   Dispatch,
@@ -67,7 +68,7 @@ import {
   sharedHandleClasses,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
-import { opsInGroups } from "./ops/all-the-ops.js";
+import { ops, OpWithMetadata } from "./ops/all-the-ops.js";
 import {
   CopyPaste,
   useNodeData,
@@ -75,7 +76,23 @@ import {
 } from "./react-flow-util.js";
 import { getTransitiveDownstream, getTransitiveUpstream } from "./toposort.js";
 import { useRefForCallback } from "./useRefForCallback.js";
-import { animate } from "./util.js";
+import { animate, tuple } from "./util.js";
+
+function putOpsIntoGroups(ops: OpWithMetadata[]) {
+  const groups: [string, OpWithMetadata[]][] = [];
+  for (const op of ops) {
+    const group = groups.find(([name]) => name === op.groupName);
+    if (group) {
+      group[1].push(op);
+    } else {
+      groups.push([op.groupName, [op]]);
+    }
+  }
+  for (const group of groups) {
+    group[1] = _.sortBy(group[1], (op) => op.opNum);
+  }
+  return _.sortBy(groups, ([, [firstOp]]) => firstOp.groupNum);
+}
 
 export const OpNodeView = memo(function OpNodeView(props: NodeProps<OpNode>) {
   const [data, setData] = useNodeData(props);
@@ -171,19 +188,18 @@ const PickerNodeView = memo(function PickerNodeView(
   // Only show ops that have enough inputs/outputs for the number of connections
   const applicableOpsInGroups = useMemo(
     () =>
-      opsInGroups
-        .map(
-          ([groupName, groupOps]) =>
-            [
-              groupName,
-              groupOps.filter((op) =>
-                isOutput
-                  ? (op.outputKeys ?? ["out"]).length >= connectionCount
-                  : (op.inputKeys?.length ?? 0) +
-                      (op.inputKeysLate?.length ?? 0) >=
-                    connectionCount,
-              ),
-            ] as [string, typeof groupOps],
+      putOpsIntoGroups(ops)
+        .map(([groupName, groupOps]) =>
+          tuple([
+            groupName,
+            groupOps.filter((op) =>
+              isOutput
+                ? (op.outputKeys ?? ["out"]).length >= connectionCount
+                : (op.inputKeys?.length ?? 0) +
+                    (op.inputKeysLate?.length ?? 0) >=
+                  connectionCount,
+            ),
+          ]),
         )
         .filter(([, groupOps]) => groupOps.length > 0),
     [connectionCount, isOutput],
@@ -358,6 +374,12 @@ const FlowInner = ({
   const resetOpInstances = useCallback(() => {
     setOpInstances({});
   }, []);
+
+  useEffect(() => {
+    const handler = () => resetOpInstances();
+    window.addEventListener("ops-hmr", handler);
+    return () => window.removeEventListener("ops-hmr", handler);
+  }, [resetOpInstances]);
 
   return (
     <SetFullscreenModalTexContext.Provider value={setFullscreenModalTex}>
@@ -1065,7 +1087,7 @@ const Sidebar = memo(
             </TextField.Root>
             <div className="overflow-auto flex flex-col">
               <OpList
-                opsInGroups={opsInGroups}
+                opsInGroups={putOpsIntoGroups(ops)}
                 searchQuery={searchQuery}
                 renderOpWrapper={renderOpWrapper}
                 InputHandle={InputHandle}

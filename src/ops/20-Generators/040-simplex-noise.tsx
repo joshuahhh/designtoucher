@@ -1,4 +1,4 @@
-import { DraggableRenderer, scale, translate } from "dragology";
+import { DraggableRenderer, param, scale, translate } from "dragology";
 import { useEffect, useRef, useState } from "react";
 import { UpdateProxy } from "update-proxy";
 import { Sentence, SentenceParamNumber } from "../../ops-core.js";
@@ -89,8 +89,8 @@ const SizeCircle = ({
           return (
             <g
               transform={translate(cx, cy) + scale(state.size)}
-              dragology={() =>
-                d.vary(state, [["size"]]).during((s) => ({
+              dragologyOnDrag={() =>
+                d.vary(state, [param("size")]).during((s) => ({
                   size: Math.round(s.size * 1000) / 1000,
                 }))
               }

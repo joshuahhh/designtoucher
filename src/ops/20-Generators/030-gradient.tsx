@@ -1,4 +1,4 @@
-import { DraggableRenderer, rotateDeg, translate } from "dragology";
+import { DraggableRenderer, param, rotateDeg, translate } from "dragology";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { UpdateProxy } from "update-proxy";
 import { Sentence, SentenceParamNumber } from "../../ops-core.js";
@@ -77,9 +77,9 @@ const AngleArrow = ({
           return (
             <g
               transform={translate(cx, cy) + rotateDeg(state.angle)}
-              dragology={() =>
+              dragologyOnDrag={() =>
                 d
-                  .vary(state, [["angle"]])
+                  .vary(state, [param("angle")])
                   .during((s) => ({ angle: Math.round(s.angle) }))
               }
             >

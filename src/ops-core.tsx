@@ -8,7 +8,8 @@ import {
   useUpdateNodeInternals,
 } from "@xyflow/react";
 import clsx from "clsx";
-import {
+import React, {
+  Component,
   createContext,
   createRef,
   Dispatch,
@@ -123,6 +124,47 @@ export function getOpId<
   return op.id as OpId<Runtime, InputKey, Params>;
 }
 
+function OpRenderInner({
+  opRender,
+  ...rest
+}: {
+  opRender: (...args: any[]) => React.ReactNode;
+  [key: string]: any;
+}) {
+  return opRender({ InputHandle, OutputHandle, ...rest });
+}
+
+class OpErrorBoundary extends Component<
+  { opId: string; children: ReactNode },
+  { error: Error | null }
+> {
+  override state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  override render() {
+    if (this.state.error) {
+      return (
+        <div className="text-[10px] p-1 text-red-400">
+          <div className="font-bold">{this.props.opId}: error</div>
+          <div className="text-gray-400 truncate">
+            {this.state.error.message}
+          </div>
+          <button
+            className="mt-1 text-blue-400 hover:text-blue-300 underline"
+            onClick={() => this.setState({ error: null })}
+          >
+            retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export class OpInstance<
   Runtime extends Record<string, unknown>,
   InputKey extends string,
@@ -170,12 +212,15 @@ export class OpInstance<
     ) {
       useSyncExternalStore(instance.subscribe, instance.getRevision);
       const op = instance.getOp();
-      return op.Render({
-        runtime: instance.runtime,
-        InputHandle,
-        OutputHandle,
-        ...props,
-      });
+      return (
+        <OpErrorBoundary opId={op.id}>
+          <OpRenderInner
+            opRender={op.Render}
+            runtime={instance.runtime}
+            {...props}
+          />
+        </OpErrorBoundary>
+      );
     });
   }
 

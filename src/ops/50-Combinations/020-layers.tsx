@@ -1,5 +1,6 @@
 import {
   Position,
+  useConnection,
   useEdges,
   useNodeId,
   useReactFlow,
@@ -134,24 +135,42 @@ export default defineOp({
 
     const params = props.params as unknown as LayersParams;
     const paramsUP = props.paramsUP as unknown as UpdateProxy<LayersParams>;
+    const isConnecting = useConnection((c) => c.inProgress);
 
-    // The "add" slot is always layer_{nextId}
-    const addKey = `layer_${params.nextId}`;
-    const addHandleId = makeInputHandleId(nodeId, addKey);
-    const hasAddConnection = edges.some((e) => e.targetHandle === addHandleId);
+    // Gap handles: one per insertion position
+    // gap 0 = top "add" slot (always visible)
+    // gaps 1..N = between/after rows (visible during connection drag)
+    const gapCount = params.order.length + 1;
+    const gapKey = (i: number) => `layer_${params.nextId + i}`;
 
-    // When someone connects to the add slot, promote it to a real layer
+    // Promote any gap handle that receives a connection
     useEffect(() => {
-      if (hasAddConnection) {
-        paramsUP.order.$((order: number[]) => [params.nextId, ...order]);
-        paramsUP.nextId.$set(params.nextId + 1);
+      for (let i = 0; i < gapCount; i++) {
+        const key = `layer_${params.nextId + i}`;
+        const handleId = makeInputHandleId(nodeId, key);
+        if (edges.some((e) => e.targetHandle === handleId)) {
+          const layerId = params.nextId + i;
+          paramsUP.order.$((order: number[]) => {
+            const next = [...order];
+            next.splice(i, 0, layerId);
+            return next;
+          });
+          paramsUP.nextId.$set(params.nextId + gapCount);
+          break;
+        }
       }
-    }, [hasAddConnection, params.nextId, paramsUP]);
+    }, [edges, params.nextId, gapCount, nodeId, paramsUP]);
 
     // Tell xyflow about handle changes
     useLayoutEffect(() => {
       updateNodeInternals(nodeId);
-    }, [params.order.length, params.nextId, nodeId, updateNodeInternals]);
+    }, [
+      params.order.length,
+      params.nextId,
+      isConnecting,
+      nodeId,
+      updateNodeInternals,
+    ]);
 
     // --- Drag-to-reorder ---
     const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -226,66 +245,76 @@ export default defineOp({
       paramsUP.order.$((order: number[]) => order.filter((_, i) => i !== idx));
     };
 
+    const gapHandle = (i: number) =>
+      isConnecting && (
+        <div
+          key={`gap-${i}`}
+          className="flex items-center gap-1 px-1 py-0.5 opacity-50"
+        >
+          <props.InputHandle
+            inputKey={gapKey(i) as any}
+            position={Position.Left}
+          />
+          <span className="text-[10px] text-blue-400 select-none">+</span>
+        </div>
+      );
+
     return (
       <>
         <Sentence>Layers</Sentence>
         <div className="flex items-stretch">
           <div
             ref={rowsRef}
-            className="flex flex-col min-w-0"
+            className="flex flex-col w-[60px]"
             onDragOver={handleContainerDragOver}
             onDrop={handleContainerDrop}
           >
-            <div className="flex items-center gap-1 px-1 py-0.5 opacity-50 border-b border-dashed border-gray-300 mb-0.5">
-              <props.InputHandle
-                inputKey={addKey as any}
-                position={Position.Left}
-              />
-              <span className="text-[10px] text-gray-400 select-none">
-                + layer
+            {params.order.length === 0 && !isConnecting && (
+              <span className="text-[10px] text-gray-400 select-none px-1 py-1 text-center">
+                connect outputs here
               </span>
-            </div>
-            {params.order.map((layerId, idx) => (
-              <div key={layerId}>
-                <div
-                  className={clsx(
-                    "h-0.5 -my-0.5 relative z-10",
-                    dropTarget === idx &&
-                      dragIdx !== null &&
-                      dragIdx !== idx &&
-                      dragIdx !== idx - 1
-                      ? "bg-blue-400"
-                      : "bg-transparent",
-                  )}
+            )}
+            {params.order.flatMap((layerId, idx) => [
+              gapHandle(idx),
+              <div
+                key={`divider-${idx}`}
+                className={clsx(
+                  "h-0.5 -my-0.5 relative z-10",
+                  dropTarget === idx &&
+                    dragIdx !== null &&
+                    dragIdx !== idx &&
+                    dragIdx !== idx - 1
+                    ? "bg-blue-400"
+                    : "bg-transparent",
+                )}
+              />,
+              <div
+                key={layerId}
+                data-layer-row
+                draggable
+                onDragStart={handleDragStart(idx)}
+                onDragEnd={handleDragEnd}
+                className={clsx(
+                  "nodrag flex items-center gap-1 px-1 py-0.5 transition-colors",
+                  dragIdx === idx && "opacity-40",
+                )}
+              >
+                <props.InputHandle
+                  inputKey={`layer_${layerId}` as any}
+                  position={Position.Left}
                 />
-                <div
-                  data-layer-row
-                  draggable
-                  onDragStart={handleDragStart(idx)}
-                  onDragEnd={handleDragEnd}
-                  className={clsx(
-                    "nodrag flex items-center gap-1 px-1 py-0.5 transition-colors",
-                    dragIdx === idx && "opacity-40",
-                  )}
+                <button
+                  onClick={handleRemove(idx)}
+                  className="nodrag text-gray-300 hover:text-red-500 text-xs ml-auto leading-none"
                 >
-                  <props.InputHandle
-                    inputKey={`layer_${layerId}` as any}
-                    position={Position.Left}
-                  />
-                  {params.order.length > 1 && (
-                    <button
-                      onClick={handleRemove(idx)}
-                      className="nodrag text-gray-300 hover:text-red-500 text-xs ml-auto leading-none"
-                    >
-                      ×
-                    </button>
-                  )}
-                  <span className="text-gray-400 cursor-grab select-none text-[10px]">
-                    ⠿
-                  </span>
-                </div>
-              </div>
-            ))}
+                  ×
+                </button>
+                <span className="text-gray-400 cursor-grab select-none text-[10px]">
+                  ⠿
+                </span>
+              </div>,
+            ])}
+            {gapHandle(params.order.length)}
             <div
               className={clsx(
                 "h-0.5 -my-0.5 relative z-10",

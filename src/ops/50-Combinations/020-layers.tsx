@@ -33,19 +33,64 @@ const fragSrc = `
   precision mediump float;
   uniform sampler2D texA;
   uniform sampler2D texB;
+  uniform float opacity;
+  uniform int blendMode;
   varying vec2 uv;
   void main() {
     vec4 A = texture2D(texA, uv);
     vec4 B = texture2D(texB, uv);
+    B.a *= opacity;
+
+    vec3 blended = B.rgb;
+    if (blendMode == 1) {
+      blended = A.rgb * B.rgb;
+    } else if (blendMode == 2) {
+      blended = A.rgb + B.rgb - A.rgb * B.rgb;
+    } else if (blendMode == 3) {
+      vec3 lo = 2.0 * A.rgb * B.rgb;
+      vec3 hi = 1.0 - 2.0 * (1.0 - A.rgb) * (1.0 - B.rgb);
+      blended = mix(lo, hi, step(0.5, A.rgb));
+    } else if (blendMode == 4) {
+      blended = A.rgb + B.rgb;
+    } else if (blendMode == 5) {
+      blended = min(A.rgb, B.rgb);
+    } else if (blendMode == 6) {
+      blended = max(A.rgb, B.rgb);
+    } else if (blendMode == 7) {
+      // mask: straight multiply of RGBA
+      gl_FragColor = vec4(A.rgb * B.rgb, A.a * B.a) * opacity;
+      return;
+    }
+
     float outA = B.a + A.a * (1.0 - B.a);
-    vec3 outRGB = (B.rgb * B.a + A.rgb * A.a * (1.0 - B.a)) / max(outA, 1e-6);
+    vec3 outRGB = (B.a * (1.0 - A.a) * B.rgb + B.a * A.a * blended + (1.0 - B.a) * A.a * A.rgb) / max(outA, 1e-6);
     gl_FragColor = vec4(outRGB, outA);
   }
 `;
 
+const BLEND_MODES = [
+  "normal",
+  "multiply",
+  "screen",
+  "overlay",
+  "add",
+  "darken",
+  "lighten",
+  "mask",
+] as const;
+type BlendMode = (typeof BLEND_MODES)[number];
+
+type LayerAttrs = {
+  opacity: number;
+  blendMode: BlendMode;
+};
+
+const defaultAttrs: LayerAttrs = { opacity: 1, blendMode: "normal" };
+
 type LayersParams = {
   order: number[];
   nextId: number;
+  attrs: Record<number, LayerAttrs>;
 };
 
 export default defineOp({
@@ -54,7 +99,7 @@ export default defineOp({
   outputKeys: ["out"],
 
   initParams(): LayersParams {
-    return { order: [], nextId: 0 };
+    return { order: [], nextId: 0, attrs: {} };
   },
 
   initRuntime(ctx) {
@@ -65,13 +110,13 @@ export default defineOp({
   },
 
   run({ runtime, inputs, params, ctx }) {
-    const { order } = params as LayersParams;
+    const { order, attrs } = params as LayersParams;
 
     // Gather textures back-to-front (last in order = back, first = front)
-    const layers: Tex[] = [];
+    const layers: { tex: Tex; attrs: LayerAttrs }[] = [];
     for (let i = order.length - 1; i >= 0; i--) {
       const tex = (inputs as Record<string, Tex | null>)[`layer_${order[i]}`];
-      if (tex) layers.push(tex);
+      if (tex) layers.push({ tex, attrs: attrs[order[i]] || defaultAttrs });
     }
 
     if (layers.length === 0) return;
@@ -79,40 +124,35 @@ export default defineOp({
     const fboA = runtime.fboA as Fbo;
     const fboB = runtime.fboB as Fbo;
     const program = runtime.program as ShaderProgram;
-    const { width, height } = layers[0];
+    const { width, height } = layers[0].tex;
     ensureFboSize(fboA, width, height);
     ensureFboSize(fboB, width, height);
 
     const { gl } = ctx;
     gl.disable(gl.BLEND);
 
-    if (layers.length === 1) {
-      ctx.draw({
-        tex: layers[0],
-        targetFramebuffer: fboA.framebuffer,
-        viewport: [0, 0, width, height],
-      });
-      runtime.out = fboA.tex;
-      return;
-    }
-
-    // Copy bottom layer to fboA
-    ctx.draw({
-      tex: layers[0],
-      targetFramebuffer: fboA.framebuffer,
-      viewport: [0, 0, width, height],
-    });
+    // Clear fboA to transparent, then composite all layers through the shader
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fboA.framebuffer);
+    gl.viewport(0, 0, width, height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
 
     let read = fboA;
     let write = fboB;
 
-    for (let i = 1; i < layers.length; i++) {
+    for (let i = 0; i < layers.length; i++) {
+      const la = layers[i];
       program.run({
         targetFramebuffer: write.framebuffer,
         viewport: [0, 0, width, height],
         uniforms: {
           texA: tuple(["sampler2D", read.tex.texture] as const),
-          texB: tuple(["sampler2D", layers[i].texture] as const),
+          texB: tuple(["sampler2D", la.tex.texture] as const),
+          opacity: tuple(["1f", la.attrs.opacity] as const),
+          blendMode: tuple([
+            "1i",
+            BLEND_MODES.indexOf(la.attrs.blendMode),
+          ] as const),
         },
         fullscreen: true,
       });
@@ -155,6 +195,7 @@ export default defineOp({
             next.splice(i, 0, layerId);
             return next;
           });
+          paramsUP.attrs[layerId].$set({ ...defaultAttrs });
           paramsUP.nextId.$set(params.nextId + gapCount);
           break;
         }
@@ -235,14 +276,20 @@ export default defineOp({
       setDropTarget(null);
     };
 
-    const handleRemove = (idx: number) => () => {
-      const layerId = params.order[idx];
+    const [selectedLayer, setSelectedLayer] = useState<number | null>(null);
+
+    const handleRemove = (layerId: number) => {
       const handleId = makeInputHandleId(nodeId, `layer_${layerId}`);
       const edgesToRemove = edges.filter((e) => e.targetHandle === handleId);
       if (edgesToRemove.length > 0) {
         deleteElements({ edges: edgesToRemove });
       }
-      paramsUP.order.$((order: number[]) => order.filter((_, i) => i !== idx));
+      paramsUP.order.$((order: number[]) =>
+        order.filter((id) => id !== layerId),
+      );
+      const { [layerId]: _, ...rest } = params.attrs;
+      paramsUP.attrs.$set(rest as any);
+      if (selectedLayer === layerId) setSelectedLayer(null);
     };
 
     const gapHandle = (i: number) =>
@@ -262,10 +309,13 @@ export default defineOp({
     return (
       <>
         <Sentence>Layers</Sentence>
-        <div className="flex items-stretch">
+        <div
+          className="flex items-stretch"
+          onClick={() => setSelectedLayer(null)}
+        >
           <div
             ref={rowsRef}
-            className="flex flex-col w-[60px]"
+            className="flex flex-col w-[100px]"
             onDragOver={handleContainerDragOver}
             onDrop={handleContainerDrop}
           >
@@ -274,46 +324,64 @@ export default defineOp({
                 connect outputs here
               </span>
             )}
-            {params.order.flatMap((layerId, idx) => [
-              gapHandle(idx),
-              <div
-                key={`divider-${idx}`}
-                className={clsx(
-                  "h-0.5 -my-0.5 relative z-10",
-                  dropTarget === idx &&
-                    dragIdx !== null &&
-                    dragIdx !== idx &&
-                    dragIdx !== idx - 1
-                    ? "bg-blue-400"
-                    : "bg-transparent",
-                )}
-              />,
-              <div
-                key={layerId}
-                data-layer-row
-                draggable
-                onDragStart={handleDragStart(idx)}
-                onDragEnd={handleDragEnd}
-                className={clsx(
-                  "nodrag flex items-center gap-1 px-1 py-0.5 transition-colors",
-                  dragIdx === idx && "opacity-40",
-                )}
-              >
-                <props.InputHandle
-                  inputKey={`layer_${layerId}` as any}
-                  position={Position.Left}
-                />
-                <button
-                  onClick={handleRemove(idx)}
-                  className="nodrag text-gray-300 hover:text-red-500 text-xs ml-auto leading-none"
+            {params.order.flatMap((layerId, idx) => {
+              const la = params.attrs[layerId] || defaultAttrs;
+              const isNonDefault =
+                la.opacity !== 1 || la.blendMode !== "normal";
+              return [
+                gapHandle(idx),
+                <div
+                  key={`divider-${idx}`}
+                  className={clsx(
+                    "h-0.5 -my-0.5 relative z-10",
+                    dropTarget === idx &&
+                      dragIdx !== null &&
+                      dragIdx !== idx &&
+                      dragIdx !== idx - 1
+                      ? "bg-blue-400"
+                      : "bg-transparent",
+                  )}
+                />,
+                <div
+                  key={layerId}
+                  data-layer-row
+                  draggable
+                  onDragStart={handleDragStart(idx)}
+                  onDragEnd={handleDragEnd}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedLayer(
+                      selectedLayer === layerId ? null : layerId,
+                    );
+                  }}
+                  className={clsx(
+                    "nodrag flex items-center gap-1 px-1 py-0.5 transition-colors cursor-pointer",
+                    dragIdx === idx && "opacity-40",
+                    selectedLayer === layerId && "bg-blue-500/20",
+                  )}
                 >
-                  ×
-                </button>
-                <span className="text-gray-400 cursor-grab select-none text-[10px]">
-                  ⠿
-                </span>
-              </div>,
-            ])}
+                  <props.InputHandle
+                    inputKey={`layer_${layerId}` as any}
+                    position={Position.Left}
+                  />
+                  {isNonDefault && (
+                    <span className="text-[9px] text-gray-400 select-none ml-auto truncate">
+                      {la.opacity !== 1 && `${Math.round(la.opacity * 100)}%`}
+                      {la.opacity !== 1 && la.blendMode !== "normal" && " "}
+                      {la.blendMode !== "normal" && la.blendMode}
+                    </span>
+                  )}
+                  <span
+                    className={clsx(
+                      "text-gray-400 cursor-grab select-none text-[10px]",
+                      !isNonDefault && "ml-auto",
+                    )}
+                  >
+                    ⠿
+                  </span>
+                </div>,
+              ];
+            })}
             {gapHandle(params.order.length)}
             <div
               className={clsx(
@@ -325,6 +393,66 @@ export default defineOp({
                   : "bg-transparent",
               )}
             />
+            {(() => {
+              const sel =
+                selectedLayer !== null && params.order.includes(selectedLayer)
+                  ? selectedLayer
+                  : null;
+              const la =
+                sel !== null ? params.attrs[sel] || defaultAttrs : defaultAttrs;
+              return (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className={clsx(
+                    "flex flex-col gap-px px-0.5 py-0.5 border-t border-gray-700 text-[9px] mt-auto",
+                    sel === null && "opacity-30 pointer-events-none",
+                  )}
+                >
+                  <div className="flex items-center gap-0.5 text-gray-400 select-none">
+                    <span>opacity</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={la.opacity}
+                      onChange={(e) =>
+                        sel !== null &&
+                        paramsUP.attrs[sel].opacity.$set(
+                          parseFloat(e.target.value),
+                        )
+                      }
+                      className="nodrag w-8 h-0.5 appearance-none bg-gray-300 rounded-full cursor-ew-resize [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-1.5 [&::-webkit-slider-thumb]:h-1.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-ew-resize"
+                    />
+                    <span>{Math.round(la.opacity * 100)}%</span>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <select
+                      value={la.blendMode}
+                      onChange={(e) =>
+                        sel !== null &&
+                        paramsUP.attrs[sel].blendMode.$set(
+                          e.target.value as BlendMode,
+                        )
+                      }
+                      className="nodrag h-4 bg-transparent text-gray-400 text-[9px] border border-gray-300 rounded px-0.5 outline-none cursor-pointer"
+                    >
+                      {BLEND_MODES.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => sel !== null && handleRemove(sel)}
+                      className="nodrag h-4 text-gray-400 hover:text-red-400 text-[9px] border border-gray-300 hover:border-red-400/50 rounded px-0.5"
+                    >
+                      delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           <props.OutputHandle outputKey="out" />
         </div>

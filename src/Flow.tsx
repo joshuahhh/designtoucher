@@ -66,6 +66,7 @@ import {
   parseOutputHandleId,
   SetFullscreenModalTexContext,
   sharedHandleClasses,
+  TakeSnapshotContext,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, OpWithMetadata } from "./ops/all-the-ops.js";
@@ -77,6 +78,7 @@ import {
 } from "./react-flow-util.js";
 import { getTransitiveDownstream, getTransitiveUpstream } from "./toposort.js";
 import { useRefForCallback } from "./useRefForCallback.js";
+import { useUndo } from "./useUndo.js";
 import { animate, tuple } from "./util.js";
 
 function putOpsIntoGroups(ops: OpWithMetadata[]) {
@@ -519,6 +521,8 @@ const FlowInnerNormalMode = ({
   const ctx = useContext(OmniCanvasContext);
   const { screenToFlowPosition, getNodes } = useReactFlow();
 
+  const { takeSnapshot, pushSnapshot, undo, redo } = useUndo(flow, setFlow);
+
   const flowUP = up(setFlow);
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
@@ -526,6 +530,7 @@ const FlowInnerNormalMode = ({
 
   const transformPicker = useCallback(
     (nodeId: string, opId: AnyOpId) => {
+      takeSnapshot();
       const op = opById(opId);
 
       // Determine picker mode from the current node before replacing it
@@ -605,7 +610,7 @@ const FlowInnerNormalMode = ({
         }
       });
     },
-    [flow.nodes, flowUP.nodes, flowUP.edges],
+    [flow.nodes, flowUP.nodes, flowUP.edges, takeSnapshot],
   );
 
   const onNodesChange = useCallback(
@@ -626,8 +631,16 @@ const FlowInnerNormalMode = ({
     dragNodeStartPos: { x: number; y: number };
   } | null>(null);
 
+  // Stash pre-drag snapshot so we only push to undo if the node actually moved
+  const preDragSnapshotRef = useRef<{
+    nodes: Flow["nodes"];
+    edges: Flow["edges"];
+  } | null>(null);
+
   const onNodeDragStart = useCallback(
     (_event: React.MouseEvent, node: Node) => {
+      preDragSnapshotRef.current = { nodes: flow.nodes, edges: flow.edges };
+
       // Walk up from event target to find a data-drag-mode attribute
       let target = _event.target as HTMLElement | null;
       let dragMode: "upstream" | "downstream" | null = null;
@@ -692,16 +705,34 @@ const FlowInnerNormalMode = ({
     [flowUP.nodes],
   );
 
-  const onNodeDragStop = useCallback(() => {
-    groupDragRef.current = null;
-  }, []);
+  const onNodeDragStop = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      groupDragRef.current = null;
+      const snapshot = preDragSnapshotRef.current;
+      preDragSnapshotRef.current = null;
+      if (!snapshot) return;
+
+      // Only push to undo if the node actually moved
+      const oldNode = snapshot.nodes.find((n) => n.id === node.id);
+      if (
+        oldNode &&
+        oldNode.position.x === node.position.x &&
+        oldNode.position.y === node.position.y
+      )
+        return;
+
+      pushSnapshot(snapshot);
+    },
+    [pushSnapshot],
+  );
 
   const onConnect = useCallback(
     (params: Connection) => {
+      takeSnapshot();
       // All handles accept multiple connections (multi-edges get implicitly summed).
       flowUP.edges.$((edges) => addEdge(params, edges));
     },
-    [flowUP.edges],
+    [flowUP.edges, takeSnapshot],
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -735,6 +766,7 @@ const FlowInnerNormalMode = ({
 
       if (!draggedOpId) return;
 
+      takeSnapshot();
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
@@ -761,6 +793,7 @@ const FlowInnerNormalMode = ({
       flowUP.nodes,
       resetOpInstances,
       setFlow,
+      takeSnapshot,
     ],
   );
 
@@ -788,6 +821,7 @@ const FlowInnerNormalMode = ({
       const { clientX, clientY } =
         "changedTouches" in event ? event.changedTouches[0] : event;
 
+      takeSnapshot();
       const dropPosition = screenToFlowPosition({ x: clientX, y: clientY });
 
       // Check if dropped on an existing picker node with matching mode
@@ -871,10 +905,24 @@ const FlowInnerNormalMode = ({
       flowUP.nodes.$((nodes) => [...nodes, newNode]);
       flowUP.edges.$((edges) => addEdge(newEdge, edges));
     },
-    [screenToFlowPosition, flowUP.nodes, flowUP.edges, getNodes],
+    [screenToFlowPosition, flowUP.nodes, flowUP.edges, getNodes, takeSnapshot],
   );
 
   useKeyBindings([
+    {
+      combo: "c+z",
+      action: (e) => {
+        e.preventDefault();
+        undo();
+      },
+    },
+    {
+      combo: "c+s+z,c+y",
+      action: (e) => {
+        e.preventDefault();
+        redo();
+      },
+    },
     {
       combo: "c+s+r",
       action: resetOpInstances,
@@ -907,9 +955,11 @@ const FlowInnerNormalMode = ({
   const deleteSelected = useCallback(() => {
     const selectedNodes = getNodes().filter((node) => node.selected);
     const selectedEdges = getEdges().filter((edge) => edge.selected);
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
 
+    takeSnapshot();
     deleteElements({ nodes: selectedNodes, edges: selectedEdges });
-  }, [getNodes, getEdges, deleteElements]);
+  }, [getNodes, getEdges, deleteElements, takeSnapshot]);
 
   // Track the pointer so a paste lands under the cursor (works nicely both
   // for same-project pastes and for pasting into a different project).
@@ -1009,52 +1059,54 @@ const FlowInnerNormalMode = ({
   );
 
   return (
-    <TransformPickerContext.Provider value={transformPicker}>
-      <div className="w-full h-full flex">
-        <div className="flex-1 relative">
-          <ReactFlow
-            nodes={flow.nodes}
-            edges={styledEdges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onConnectEnd={onConnectEnd}
-            onNodeDragStart={onNodeDragStart}
-            onNodeDrag={onNodeDrag}
-            onNodeDragStop={onNodeDragStop}
-            nodeTypes={nodeTypes}
-            maxZoom={10}
-            minZoom={0.1}
-            viewport={flow.viewport}
-            onViewportChange={flowUP.viewport.$set}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            nodeOrigin={[0.5, 0.5]}
-            className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
-            onPaneClick={onPaneClick}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background />
-            <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
-              <div className="contents pointer-events-auto">
-                <MiniMap zoomable pannable />
-                <Controls className="bg-gray-50" />
-                <SidebarToggleButton
-                  isSidebarExpanded={isSidebarExpanded}
-                  setIsSidebarExpanded={setIsSidebarExpanded}
-                />
-                <Toolbar onDelete={deleteSelected} />
-              </div>
-            </OmniCanvasOverlay>
-          </ReactFlow>
+    <TakeSnapshotContext.Provider value={takeSnapshot}>
+      <TransformPickerContext.Provider value={transformPicker}>
+        <div className="w-full h-full flex">
+          <div className="flex-1 relative">
+            <ReactFlow
+              nodes={flow.nodes}
+              edges={styledEdges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onConnectEnd={onConnectEnd}
+              onNodeDragStart={onNodeDragStart}
+              onNodeDrag={onNodeDrag}
+              onNodeDragStop={onNodeDragStop}
+              nodeTypes={nodeTypes}
+              maxZoom={10}
+              minZoom={0.1}
+              viewport={flow.viewport}
+              onViewportChange={flowUP.viewport.$set}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              nodeOrigin={[0.5, 0.5]}
+              className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
+              onPaneClick={onPaneClick}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background />
+              <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
+                <div className="contents pointer-events-auto">
+                  <MiniMap zoomable pannable />
+                  <Controls className="bg-gray-50" />
+                  <SidebarToggleButton
+                    isSidebarExpanded={isSidebarExpanded}
+                    setIsSidebarExpanded={setIsSidebarExpanded}
+                  />
+                  <Toolbar onDelete={deleteSelected} />
+                </div>
+              </OmniCanvasOverlay>
+            </ReactFlow>
+          </div>
+          <Sidebar
+            isSidebarExpanded={isSidebarExpanded}
+            setDraggedOpId={setDraggedOpId}
+            ctx={ctx}
+          />
         </div>
-        <Sidebar
-          isSidebarExpanded={isSidebarExpanded}
-          setDraggedOpId={setDraggedOpId}
-          ctx={ctx}
-        />
-      </div>
-    </TransformPickerContext.Provider>
+      </TransformPickerContext.Provider>
+    </TakeSnapshotContext.Provider>
   );
 };
 

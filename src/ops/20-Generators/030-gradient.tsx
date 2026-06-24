@@ -1,7 +1,24 @@
-import { DraggableRenderer, param, rotateDeg, translate } from "dragology";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DraggableRenderer,
+  DragStatus,
+  param,
+  rotateDeg,
+  translate,
+} from "dragology";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { UpdateProxy } from "update-proxy";
-import { Sentence, SentenceParamNumber } from "../../ops-core.js";
+import {
+  Sentence,
+  SentenceParamNumber,
+  TakeSnapshotContext,
+} from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
 export default defineFragOp({
@@ -60,6 +77,14 @@ const AngleArrow = ({
     return () => observer.disconnect();
   }, []);
 
+  const takeSnapshot = useContext(TakeSnapshotContext);
+  const onDragStatus = useCallback(
+    (status: DragStatus<{ angle: number }>) => {
+      if (status.type === "dragging") takeSnapshot();
+    },
+    [takeSnapshot],
+  );
+
   const state = useMemo(() => ({ angle }), [angle]);
 
   return (
@@ -68,6 +93,7 @@ const AngleArrow = ({
         width={size.width}
         height={size.height}
         state={state}
+        onDragStatus={onDragStatus}
         onDragState={({ angle }) => angleUP.$set(angle)}
         draggable={({ state, d }) => {
           const cx = size.width / 2;

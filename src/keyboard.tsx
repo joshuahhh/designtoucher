@@ -46,7 +46,14 @@ export function event_matches(e: KeyboardEvent, combo: string) {
 export function useKeyBindings(bindings: KeyBinding[]) {
   useEffect(() => {
     const on_keydown = (e: KeyboardEvent) => {
-      if (e.target !== document.body) return;
+      if (
+        e.target instanceof HTMLElement &&
+        (e.target.isContentEditable ||
+          e.target instanceof HTMLInputElement ||
+          e.target instanceof HTMLTextAreaElement ||
+          e.target instanceof HTMLSelectElement)
+      )
+        return;
       for (const command of bindings) {
         if (event_matches(e, command.combo)) {
           command.action(e);

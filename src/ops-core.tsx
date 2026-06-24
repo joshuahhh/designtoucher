@@ -445,6 +445,8 @@ export const SentenceParamNumber = ({
     }
   }, [dragging, nodeId, updateNodeInternals]);
 
+  const takeSnapshot = useContext(TakeSnapshotContext);
+
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverDisabled, setPopoverDisabled] = useState(false);
 
@@ -452,6 +454,7 @@ export const SentenceParamNumber = ({
     (e: React.PointerEvent<HTMLSpanElement>) => {
       e.preventDefault();
       e.stopPropagation();
+      takeSnapshot();
       setDragging(true);
       let moved = false;
       const startValue = value;
@@ -483,7 +486,7 @@ export const SentenceParamNumber = ({
       };
       document.addEventListener("pointerup", onPointerUp, { once: true });
     },
-    [max, min, step, value, valueUP],
+    [max, min, step, value, valueUP, takeSnapshot],
   );
 
   return (
@@ -501,6 +504,7 @@ export const SentenceParamNumber = ({
           className="underline decoration-dotted tabular-nums"
           onPointerDown={onPointerDown}
           onDoubleClick={() => {
+            takeSnapshot();
             valueUP.$set(0);
           }}
         >
@@ -517,6 +521,7 @@ export const SentenceParamNumber = ({
               max={max}
               step={step}
               onValueChange={(value) => {
+                if (!dragging) takeSnapshot();
                 valueUP.$set(parseFloat(value.toString()));
                 setDragging(true);
               }}
@@ -569,11 +574,13 @@ export const SentenceParamSelect = <T extends string>({
   valueUP: UpdateProxy<T>;
   options: (T | { value: T; label: string })[];
 }) => {
+  const takeSnapshot = useContext(TakeSnapshotContext);
   return (
     <select
       value={value ?? ""}
       className="text-xs font-['Varela_Round'] bg-transparent border-b border"
       onChange={(e) => {
+        takeSnapshot();
         valueUP.$set(e.target.value as T);
       }}
     >
@@ -595,6 +602,8 @@ export const SentenceParamSelect = <T extends string>({
 export const SetFullscreenModalTexContext = createContext<
   Dispatch<SetStateAction<Tex | null>>
 >(null as any);
+
+export const TakeSnapshotContext = createContext<() => void>(() => {});
 
 export const OutputHandle = <OutputKey extends string>({
   outputKey,

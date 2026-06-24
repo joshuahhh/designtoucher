@@ -304,12 +304,14 @@ export function Monitor({
   style,
   cornerRadiusPixels,
   checkerboardPixels,
+  sizing = "fill",
 }: {
   tex: Tex;
   className?: string;
   style?: React.CSSProperties;
   cornerRadiusPixels?: number;
   checkerboardPixels?: number;
+  sizing?: "fill" | "height";
 }) {
   const { draw, drawForMonitor } = useContext(OmniCanvasContext);
 
@@ -332,7 +334,10 @@ export function Monitor({
   return (
     <OmniCanvasGuest
       command={command}
-      className={clsx(className, "w-full h-full")}
+      className={clsx(
+        className,
+        sizing === "fill" ? "w-full h-full" : "h-full",
+      )}
       style={{ ...style, aspectRatio: tex.width / tex.height }}
     />
   );

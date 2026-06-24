@@ -352,18 +352,19 @@ export const InputHandle = <InputKey extends string>({
       className={className}
     >
       {sourceOutput ? (
-        <div className="-m-[1px] relative">
+        <>
           <Monitor
             tex={sourceOutput}
-            className="pointer-events-none"
+            className="pointer-events-none -mx-[0.5px]"
             cornerRadiusPixels={200}
+            sizing="height"
           />
           {edgeCount > 1 && (
             <div className="absolute -top-1.5 -right-1.5 bg-orange-500 text-white text-[8px] leading-none rounded-full w-3 h-3 flex items-center justify-center">
               {edgeCount}
             </div>
           )}
-        </div>
+        </>
       ) : null}
     </Handle>
   );

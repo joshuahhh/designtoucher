@@ -873,39 +873,40 @@ const FlowInnerNormalMode = ({
         return;
       }
 
-      return;
+      const PICKER_ENABLED = false;
+      if (PICKER_ENABLED) {
+        const newNodeId = getId();
+        const newNode: PickerNode = {
+          id: newNodeId,
+          type: "picker",
+          position: dropPosition,
+          origin: mode === "output" ? [0.5, 1] : [0.5, 0],
+          data: { mode },
+        };
 
-      const newNodeId = getId();
-      const newNode: PickerNode = {
-        id: newNodeId,
-        type: "picker",
-        position: dropPosition,
-        origin: mode === "output" ? [0.5, 1] : [0.5, 0],
-        data: { mode },
-      };
+        const pickerHandle =
+          mode === "output"
+            ? makeOutputHandleId(newNodeId, "_picker_0")
+            : makeInputHandleId(newNodeId, "_picker_0");
 
-      const pickerHandle =
-        mode === "output"
-          ? makeOutputHandleId(newNodeId, "_picker_0")
-          : makeInputHandleId(newNodeId, "_picker_0");
+        const newEdge =
+          mode === "output"
+            ? {
+                source: newNodeId,
+                sourceHandle: pickerHandle,
+                target: fromHandle.nodeId,
+                targetHandle: fromHandle.id ?? null,
+              }
+            : {
+                source: fromHandle.nodeId,
+                sourceHandle: fromHandle.id ?? null,
+                target: newNodeId,
+                targetHandle: pickerHandle,
+              };
 
-      const newEdge =
-        mode === "output"
-          ? {
-              source: newNodeId,
-              sourceHandle: pickerHandle,
-              target: fromHandle.nodeId,
-              targetHandle: fromHandle.id ?? null,
-            }
-          : {
-              source: fromHandle.nodeId,
-              sourceHandle: fromHandle.id ?? null,
-              target: newNodeId,
-              targetHandle: pickerHandle,
-            };
-
-      flowUP.nodes.$((nodes) => [...nodes, newNode]);
-      flowUP.edges.$((edges) => addEdge(newEdge, edges));
+        flowUP.nodes.$((nodes) => [...nodes, newNode]);
+        flowUP.edges.$((edges) => addEdge(newEdge, edges));
+      }
     },
     [screenToFlowPosition, flowUP.nodes, flowUP.edges, getNodes, takeSnapshot],
   );

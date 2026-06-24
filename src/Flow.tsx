@@ -873,6 +873,8 @@ const FlowInnerNormalMode = ({
         return;
       }
 
+      return;
+
       const newNodeId = getId();
       const newNode: PickerNode = {
         id: newNodeId,

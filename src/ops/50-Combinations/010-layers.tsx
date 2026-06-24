@@ -310,7 +310,7 @@ export default defineOp({
       <>
         <Sentence>Layers</Sentence>
         <div
-          className="flex items-stretch gap-2"
+          className="flex items-start gap-2"
           onClick={() => setSelectedLayer(null)}
         >
           <div

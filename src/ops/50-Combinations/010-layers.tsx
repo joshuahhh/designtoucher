@@ -310,12 +310,12 @@ export default defineOp({
       <>
         <Sentence>Layers</Sentence>
         <div
-          className="flex items-stretch"
+          className="flex items-stretch gap-2"
           onClick={() => setSelectedLayer(null)}
         >
           <div
             ref={rowsRef}
-            className="flex flex-col w-[100px]"
+            className="flex flex-col gap-0.5 w-[100px]"
             onDragOver={handleContainerDragOver}
             onDrop={handleContainerDrop}
           >
@@ -355,9 +355,9 @@ export default defineOp({
                     );
                   }}
                   className={clsx(
-                    "nodrag flex items-center gap-1 px-1 py-0.5 transition-colors cursor-pointer",
+                    "nodrag flex items-center gap-1 px-1 py-0.5 cursor-pointer rounded bg-black/5",
                     dragIdx === idx && "opacity-40",
-                    selectedLayer === layerId && "bg-blue-500/20",
+                    selectedLayer === layerId && "!bg-blue-500/20",
                   )}
                 >
                   <props.InputHandle
@@ -405,10 +405,12 @@ export default defineOp({
                   onClick={(e) => e.stopPropagation()}
                   className={clsx(
                     "flex flex-col gap-px px-0.5 py-0.5 border-t border-gray-700 text-[9px] mt-auto",
-                    sel === null && "opacity-30 pointer-events-none",
+                    sel === null
+                      ? "opacity-30 pointer-events-none text-gray-400"
+                      : "text-gray-700",
                   )}
                 >
-                  <div className="flex items-center gap-0.5 text-gray-400 select-none">
+                  <div className="flex items-center gap-0.5 select-none">
                     <span>opacity</span>
                     <input
                       type="range"
@@ -435,7 +437,7 @@ export default defineOp({
                           e.target.value as BlendMode,
                         )
                       }
-                      className="nodrag h-4 bg-transparent text-gray-400 text-[9px] border border-gray-300 rounded px-0.5 outline-none cursor-pointer"
+                      className="nodrag h-4 bg-transparent text-[9px] border border-gray-300 rounded px-0.5 outline-none cursor-pointer"
                     >
                       {BLEND_MODES.map((m) => (
                         <option key={m} value={m}>
@@ -445,7 +447,7 @@ export default defineOp({
                     </select>
                     <button
                       onClick={() => sel !== null && handleRemove(sel)}
-                      className="nodrag h-4 text-gray-400 hover:text-red-400 text-[9px] border border-gray-300 hover:border-red-400/50 rounded px-0.5"
+                      className="nodrag h-4 hover:text-red-400 text-[9px] border border-gray-300 hover:border-red-400/50 rounded px-0.5"
                     >
                       delete
                     </button>

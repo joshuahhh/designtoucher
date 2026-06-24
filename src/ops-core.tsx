@@ -501,7 +501,13 @@ export const SentenceParamNumber = ({
       <Popover.Trigger>
         <StableWidthSpan
           dragging={dragging}
-          className="underline decoration-dotted tabular-nums"
+          className={clsx(
+            "tabular-nums cursor-ew-resize select-none rounded px-1 font-semibold transition-colors",
+            "text-center",
+            dragging
+              ? "bg-blue-500 text-white ring-1 ring-blue-600"
+              : "bg-blue-100 text-blue-700 hover:bg-blue-200",
+          )}
           onPointerDown={onPointerDown}
           onDoubleClick={() => {
             takeSnapshot();

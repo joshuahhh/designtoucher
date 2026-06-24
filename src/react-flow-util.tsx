@@ -2,7 +2,6 @@ import {
   Edge,
   Node,
   NodeProps,
-  ReactFlowInstance,
   useOnSelectionChange,
   useReactFlow,
 } from "@xyflow/react";
@@ -64,57 +63,86 @@ export function useNodeData<D extends Record<string, unknown>>(
   return [data, setData];
 }
 
-export const CopyPaste = () => {
-  const rfInstance = useReactFlow();
-  useCopyPaste(rfInstance);
-  return null; // This component does not render anything
+// The shape we put on the clipboard. Stored as plain-text JSON (under a
+// marker key) so it survives crossing into a different project — even a
+// different browser tab — not just same-project pastes.
+const CLIPBOARD_MARKER = "designtoucher/clipboard@1";
+
+export type ClipboardPayload = {
+  marker: typeof CLIPBOARD_MARKER;
+  nodes: Node[];
+  edges: Edge[];
 };
 
-export const useCopyPaste = (rfInstance: ReactFlowInstance | null) => {
+// Don't hijack copy/paste when the user is interacting with a real text
+// field (inputs, textareas, or anything opting out via .nocopypaste).
+function shouldIgnoreClipboardEvent(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.classList.contains("nocopypaste")) return true;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+function parseClipboard(text: string): ClipboardPayload | null {
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as Partial<ClipboardPayload>;
+    if (parsed?.marker !== CLIPBOARD_MARKER || !Array.isArray(parsed.nodes)) {
+      return null;
+    }
+    return {
+      marker: CLIPBOARD_MARKER,
+      nodes: parsed.nodes,
+      edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Wires the browser copy/paste clipboard events to React Flow.
+ *
+ * - `getSelection` returns the nodes (and the edges among them) to copy.
+ *   Return null/empty to let the default copy behavior through.
+ * - `onPaste` receives the deserialized clipboard payload and is
+ *   responsible for assigning fresh ids and inserting into the graph.
+ */
+export const useCopyPaste = ({
+  getSelection,
+  onPaste,
+}: {
+  getSelection: () => { nodes: Node[]; edges: Edge[] };
+  onPaste: (payload: ClipboardPayload) => void;
+}) => {
   const onCopyCapture = useCallback(
     (event: ClipboardEvent) => {
-      if (
-        event.target instanceof HTMLElement &&
-        event.target.classList.contains("nocopypaste")
-      ) {
-        return;
-      }
+      if (shouldIgnoreClipboardEvent(event.target)) return;
+      const { nodes, edges } = getSelection();
+      if (nodes.length === 0) return; // nothing selected — let default copy run
       event.preventDefault();
-      const nodes = JSON.stringify(
-        rfInstance?.getNodes().filter((n) => n.selected),
-      );
-
-      event.clipboardData?.setData("flowchart:nodes", nodes);
+      const payload: ClipboardPayload = {
+        marker: CLIPBOARD_MARKER,
+        nodes,
+        edges,
+      };
+      event.clipboardData?.setData("text/plain", JSON.stringify(payload));
     },
-    [rfInstance],
+    [getSelection],
   );
 
   const onPasteCapture = useCallback(
     (event: ClipboardEvent) => {
-      if (
-        event.target instanceof HTMLElement &&
-        event.target.classList.contains("nocopypaste")
-      ) {
-        return;
-      }
+      if (shouldIgnoreClipboardEvent(event.target)) return;
+      const payload = parseClipboard(
+        event.clipboardData?.getData("text/plain") ?? "",
+      );
+      if (!payload) return; // not our data — let default paste run
       event.preventDefault();
-      const nodes = JSON.parse(
-        event.clipboardData?.getData("flowchart:nodes") || "[]",
-      ) as Node[] | undefined;
-      if (nodes) {
-        const randomId = () => Math.random().toString(16).slice(2);
-        rfInstance?.setNodes([
-          ...rfInstance.getNodes().map((n) => ({ ...n, selected: false })),
-          ...nodes.map((n) => ({
-            ...n,
-            selected: true,
-            id: randomId(),
-            position: { x: n.position.x + 10, y: n.position.y + 10 },
-          })),
-        ]);
-      }
+      onPaste(payload);
     },
-    [rfInstance],
+    [onPaste],
   );
 
   useEffect(() => {

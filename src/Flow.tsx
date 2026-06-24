@@ -70,7 +70,8 @@ import {
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, OpWithMetadata } from "./ops/all-the-ops.js";
 import {
-  CopyPaste,
+  ClipboardPayload,
+  useCopyPaste,
   useNodeData,
   useReactFlowSelection,
 } from "./react-flow-util.js";
@@ -318,6 +319,61 @@ export type Flow = {
 };
 
 const getId = () => `n${Math.random().toString(16).slice(2)}`;
+
+// Handle ids embed their node id (`${nodeId}:input:${key}`), so when a
+// node is given a fresh id on paste, the ids of edges connected to it
+// must be rewritten to point at the new node id.
+const remapHandleId = (
+  handleId: string | null | undefined,
+  idMap: Map<string, string>,
+): string | null => {
+  if (!handleId) return null;
+  const match = handleId.match(/^(.+):(input|output):(.+)$/);
+  if (!match) return handleId;
+  const newNodeId = idMap.get(match[1]) ?? match[1];
+  return `${newNodeId}:${match[2]}:${match[3]}`;
+};
+
+// Clone a copied selection with fresh ids: every node gets a new id, edge
+// endpoints and handle ids are remapped through that id map, and the whole
+// group is shifted by (dx, dy). Edges whose endpoints aren't both in the
+// selection are dropped (they'd dangle).
+const cloneForPaste = (
+  payload: ClipboardPayload,
+  dx: number,
+  dy: number,
+): { nodes: FlowNode[]; edges: Edge[] } => {
+  const idMap = new Map<string, string>();
+  for (const n of payload.nodes) idMap.set(n.id, getId());
+
+  const nodes = payload.nodes.map((n) => ({
+    ...n,
+    id: idMap.get(n.id)!,
+    position: { x: n.position.x + dx, y: n.position.y + dy },
+    selected: true,
+    dragging: false,
+  })) as FlowNode[];
+
+  const edges = payload.edges
+    .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+    .map((e) => {
+      const source = idMap.get(e.source)!;
+      const target = idMap.get(e.target)!;
+      const sourceHandle = remapHandleId(e.sourceHandle, idMap);
+      const targetHandle = remapHandleId(e.targetHandle, idMap);
+      return {
+        ...e,
+        id: `xy-edge__${source}${sourceHandle ?? ""}-${target}${targetHandle ?? ""}`,
+        source,
+        target,
+        sourceHandle,
+        targetHandle,
+        selected: true,
+      };
+    });
+
+  return { nodes, edges };
+};
 
 const FlowInner = ({
   flow,
@@ -855,6 +911,87 @@ const FlowInnerNormalMode = ({
     deleteElements({ nodes: selectedNodes, edges: selectedEdges });
   }, [getNodes, getEdges, deleteElements]);
 
+  // Track the pointer so a paste lands under the cursor (works nicely both
+  // for same-project pastes and for pasting into a different project).
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      lastPointerRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
+
+  const getSelection = useCallback(() => {
+    const selectedNodes = getNodes().filter((n) => n.selected);
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+    // Only copy edges whose endpoints are both in the selection; edges to
+    // un-copied nodes would dangle.
+    const internalEdges = getEdges().filter(
+      (e) => selectedIds.has(e.source) && selectedIds.has(e.target),
+    );
+    // Strip transient runtime fields; keep only what defines the node/edge.
+    const nodes = selectedNodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      origin: n.origin,
+      data: n.data,
+    })) as Node[];
+    const edges = internalEdges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      sourceHandle: e.sourceHandle,
+      target: e.target,
+      targetHandle: e.targetHandle,
+    }));
+    return { nodes, edges };
+  }, [getNodes, getEdges]);
+
+  const onPaste = useCallback(
+    (payload: ClipboardPayload) => {
+      if (payload.nodes.length === 0) return;
+
+      // Shift the pasted group so its center sits under the cursor; fall
+      // back to a small offset if we have no pointer position yet.
+      let dx = 20;
+      let dy = 20;
+      const pointer = lastPointerRef.current;
+      if (pointer) {
+        const cx =
+          payload.nodes.reduce((s, n) => s + n.position.x, 0) /
+          payload.nodes.length;
+        const cy =
+          payload.nodes.reduce((s, n) => s + n.position.y, 0) /
+          payload.nodes.length;
+        const target = screenToFlowPosition(pointer);
+        dx = target.x - cx;
+        dy = target.y - cy;
+      }
+
+      const { nodes: newNodes, edges: newEdges } = cloneForPaste(
+        payload,
+        dx,
+        dy,
+      );
+
+      setFlow((f) => ({
+        ...f,
+        nodes: [
+          ...f.nodes.map((n) => ({ ...n, selected: false })),
+          ...newNodes,
+        ],
+        edges: [
+          ...f.edges.map((e) => ({ ...e, selected: false })),
+          ...newEdges,
+        ],
+      }));
+    },
+    [screenToFlowPosition, setFlow],
+  );
+
+  useCopyPaste({ getSelection, onPaste });
+
   const styledEdges = useMemo(
     () =>
       flow.edges.map((e) => {
@@ -902,7 +1039,6 @@ const FlowInnerNormalMode = ({
               <div className="contents pointer-events-auto">
                 <MiniMap zoomable pannable />
                 <Controls className="bg-gray-50" />
-                <CopyPaste />
                 <SidebarToggleButton
                   isSidebarExpanded={isSidebarExpanded}
                   setIsSidebarExpanded={setIsSidebarExpanded}

@@ -206,7 +206,7 @@ export default defineOp({
     useLayoutEffect(() => {
       updateNodeInternals(nodeId);
     }, [
-      params.order.length,
+      params.order,
       params.nextId,
       isConnecting,
       nodeId,

@@ -43,6 +43,7 @@ import { createPortal } from "react-dom";
 import { FaTrash } from "react-icons/fa";
 import { FaMagnifyingGlass, FaX } from "react-icons/fa6";
 import { up } from "update-proxy";
+import { examples } from "./examples.js";
 import "./flow-base.css";
 import { useKeyBindings } from "./keyboard.js";
 import { Tex } from "./mygl.js";
@@ -742,6 +743,17 @@ const FlowInnerNormalMode = ({
     }
   }, []);
 
+  // Replace the whole graph with a loaded flow (from the examples list or a
+  // dropped file). Resetting op instances first tears down the live WebGL
+  // runtimes so they get rebuilt for the new graph.
+  const loadFlow = useCallback(
+    (data: Flow) => {
+      resetOpInstances();
+      setFlow(data);
+    },
+    [resetOpInstances, setFlow],
+  );
+
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -753,8 +765,7 @@ const FlowInnerNormalMode = ({
           reader.onload = (e) => {
             try {
               const data = JSON.parse(e.target?.result as string);
-              resetOpInstances();
-              setFlow(data);
+              loadFlow(data);
             } catch (err) {
               console.error("Failed to load flow from file", err);
             }
@@ -787,14 +798,7 @@ const FlowInnerNormalMode = ({
       flowUP.nodes.$((nodes) => [...nodes, newNode]);
       setDraggedOpId(null);
     },
-    [
-      draggedOpId,
-      screenToFlowPosition,
-      flowUP.nodes,
-      resetOpInstances,
-      setFlow,
-      takeSnapshot,
-    ],
+    [draggedOpId, screenToFlowPosition, flowUP.nodes, loadFlow, takeSnapshot],
   );
 
   const onConnectEnd: OnConnectEnd = useCallback(
@@ -1105,6 +1109,7 @@ const FlowInnerNormalMode = ({
           <Sidebar
             isSidebarExpanded={isSidebarExpanded}
             setDraggedOpId={setDraggedOpId}
+            loadFlow={loadFlow}
             ctx={ctx}
           />
         </div>
@@ -1191,14 +1196,61 @@ const SidebarToggleButton = memo(function SidebarToggleButton({
   );
 });
 
+// Saved-example links at the bottom of the Components panel. Clicking one
+// replaces the current graph with that example (after a confirm).
+const ExamplesSection = memo(function ExamplesSection({
+  loadFlow,
+  searchQuery,
+}: {
+  loadFlow: (flow: Flow) => void;
+  searchQuery: string;
+}) {
+  const filtered = useMemo(
+    () =>
+      searchQuery
+        ? examples.filter((ex) => ex.name.toLowerCase().includes(searchQuery))
+        : examples,
+    [searchQuery],
+  );
+
+  if (filtered.length === 0) return null;
+
+  return (
+    <div className="my-4">
+      <h4 className="text-sm text-gray-600 mb-2 font-bold">Examples</h4>
+      <div className="flex flex-col gap-0.5">
+        {filtered.map((ex) => (
+          <button
+            key={ex.id}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Load “${ex.name}”? This replaces your current program.`,
+                )
+              ) {
+                loadFlow(ex.flow);
+              }
+            }}
+            className="text-left px-2 py-1.5 rounded-md text-sm text-blue-700 hover:bg-blue-50 hover:text-blue-800 transition-colors"
+          >
+            {ex.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+});
+
 const Sidebar = memo(
   ({
     isSidebarExpanded,
     setDraggedOpId,
+    loadFlow,
     ctx,
   }: {
     isSidebarExpanded: boolean;
     setDraggedOpId: Dispatch<SetStateAction<AnyOpId | null>>;
+    loadFlow: (flow: Flow) => void;
     ctx: OmniCanvasContextType;
   }) => {
     const onDragStart = useCallback(
@@ -1289,6 +1341,7 @@ const Sidebar = memo(
                 groupHeadingClassName="text-sm text-gray-600 mb-2 font-bold"
                 gapClassName="gap-2"
               />
+              <ExamplesSection loadFlow={loadFlow} searchQuery={searchQuery} />
             </div>
           </div>
         </OmniCanvasOverlay>

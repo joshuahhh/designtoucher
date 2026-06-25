@@ -1,0 +1,92 @@
+{
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "operation",
+      "position": {
+        "x": 254.0506039008645,
+        "y": 52.929504854621115
+      },
+      "data": {
+        "opId": "cam",
+        "params": {
+          "deviceId": null
+        }
+      },
+      "measured": {
+        "width": 218,
+        "height": 154
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "nc1196dd991a8b",
+      "type": "operation",
+      "position": {
+        "x": 118.33498710759332,
+        "y": 280.10806034449007
+      },
+      "data": {
+        "opId": "delay",
+        "params": {
+          "framesOfDelay": 60
+        }
+      },
+      "measured": {
+        "width": 220,
+        "height": 156
+      },
+      "selected": true,
+      "dragging": false
+    },
+    {
+      "id": "n3cc9a7627e918",
+      "type": "operation",
+      "position": {
+        "x": 387.50883192277007,
+        "y": 310.4077339755179
+      },
+      "data": {
+        "opId": "blend",
+        "params": {
+          "ratio": 0.5
+        }
+      },
+      "measured": {
+        "width": 218,
+        "height": 154
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "n1",
+      "sourceHandle": "n1:output:out",
+      "target": "nc1196dd991a8b",
+      "targetHandle": "nc1196dd991a8b:input:tex1",
+      "id": "xy-edge__n1n1:output:out-nc1196dd991a8bnc1196dd991a8b:input:tex1"
+    },
+    {
+      "source": "n1",
+      "sourceHandle": "n1:output:out",
+      "target": "n3cc9a7627e918",
+      "targetHandle": "n3cc9a7627e918:input:tex2",
+      "id": "xy-edge__n1n1:output:out-n3cc9a7627e918n3cc9a7627e918:input:tex2"
+    },
+    {
+      "source": "nc1196dd991a8b",
+      "sourceHandle": "nc1196dd991a8b:output:out",
+      "target": "n3cc9a7627e918",
+      "targetHandle": "n3cc9a7627e918:input:tex1",
+      "id": "xy-edge__nc1196dd991a8bnc1196dd991a8b:output:out-n3cc9a7627e918n3cc9a7627e918:input:tex1"
+    }
+  ],
+  "viewport": {
+    "x": 313.2819507042934,
+    "y": 167.127646561429,
+    "zoom": 1.7327150346269926
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "operation",
+      "position": {
+        "x": 254.0506039008645,
+        "y": 52.929504854621115
+      },
+      "data": {
+        "opId": "cam",
+        "params": {
+          "deviceId": null
+        }
+      },
+      "measured": {
+        "width": 218,
+        "height": 154
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "nc0452fae1e8be",
+      "type": "operation",
+      "position": {
+        "x": 282.6588065854045,
+        "y": 257.1893283428416
+      },
+      "data": {
+        "opId": "kal",
+        "params": {
+          "strength": 0.014,
+          "size": 0.03
+        }
+      },
+      "measured": {
+        "width": 300,
+        "height": 156
+      },
+      "selected": true,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "n1",
+      "sourceHandle": "n1:output:out",
+      "target": "nc0452fae1e8be",
+      "targetHandle": "nc0452fae1e8be:input:tex1",
+      "id": "xy-edge__n1n1:output:out-nc0452fae1e8benc0452fae1e8be:input:tex1"
+    }
+  ],
+  "viewport": {
+    "x": 155.9843546466809,
+    "y": 135.00099809389292,
+    "zoom": 2.127316078067688
+  }
+}

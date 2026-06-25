@@ -1,0 +1,90 @@
+{
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "operation",
+      "position": {
+        "x": 254.0506039008645,
+        "y": 52.929504854621115
+      },
+      "data": {
+        "opId": "cam",
+        "params": {
+          "deviceId": null
+        }
+      },
+      "measured": {
+        "width": 218,
+        "height": 154
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "n3cc9a7627e918",
+      "type": "operation",
+      "position": {
+        "x": 387.50883192277007,
+        "y": 310.4077339755179
+      },
+      "data": {
+        "opId": "blend",
+        "params": {
+          "ratio": 0.5
+        }
+      },
+      "measured": {
+        "width": 218,
+        "height": 154
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "n5a628d28d0257",
+      "type": "operation",
+      "position": {
+        "x": 90.44652245973256,
+        "y": 273.4854514265718
+      },
+      "data": {
+        "opId": "flip",
+        "params": {
+          "horizontal": true
+        }
+      },
+      "measured": {
+        "width": 218,
+        "height": 155
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "n1",
+      "sourceHandle": "n1:output:out",
+      "target": "n3cc9a7627e918",
+      "targetHandle": "n3cc9a7627e918:input:tex2",
+      "id": "xy-edge__n1n1:output:out-n3cc9a7627e918n3cc9a7627e918:input:tex2"
+    },
+    {
+      "source": "n1",
+      "sourceHandle": "n1:output:out",
+      "target": "n5a628d28d0257",
+      "targetHandle": "n5a628d28d0257:input:tex1",
+      "id": "xy-edge__n1n1:output:out-n5a628d28d0257n5a628d28d0257:input:tex1"
+    },
+    {
+      "source": "n5a628d28d0257",
+      "sourceHandle": "n5a628d28d0257:output:out",
+      "target": "n3cc9a7627e918",
+      "targetHandle": "n3cc9a7627e918:input:tex1",
+      "id": "xy-edge__n5a628d28d0257n5a628d28d0257:output:out-n3cc9a7627e918n3cc9a7627e918:input:tex1"
+    }
+  ],
+  "viewport": {
+    "x": 362.383501946259,
+    "y": 164.67382800907524,
+    "zoom": 1.6211689014427668
+  }
+}

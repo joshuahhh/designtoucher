@@ -1,0 +1,82 @@
+{
+  "nodes": [
+    {
+      "id": "nc24d330d99a78",
+      "type": "operation",
+      "position": {
+        "x": 263.1536403604039,
+        "y": 33.5104947686678
+      },
+      "data": {
+        "opId": "cam",
+        "params": {
+          "deviceId": null
+        }
+      },
+      "measured": {
+        "width": 218,
+        "height": 154
+      }
+    },
+    {
+      "id": "n5d2a6020944828",
+      "type": "operation",
+      "position": {
+        "x": 443.6537527429097,
+        "y": 361.4350980770115
+      },
+      "data": {
+        "opId": "time-machine",
+        "params": {
+          "numFrames": 100
+        }
+      },
+      "measured": {
+        "width": 270,
+        "height": 154
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "n22e8f1dc787278",
+      "type": "operation",
+      "position": {
+        "x": 586.3772104237476,
+        "y": 94.57754331116975
+      },
+      "data": {
+        "opId": "gradient",
+        "params": {
+          "angle": 0
+        }
+      },
+      "measured": {
+        "width": 220,
+        "height": 155
+      },
+      "selected": true
+    }
+  ],
+  "edges": [
+    {
+      "source": "nc24d330d99a78",
+      "sourceHandle": "nc24d330d99a78:output:out",
+      "target": "n5d2a6020944828",
+      "targetHandle": "n5d2a6020944828:input:tex1",
+      "id": "xy-edge__nc24d330d99a78nc24d330d99a78:output:out-n5d2a6020944828n5d2a6020944828:input:tex1"
+    },
+    {
+      "source": "n22e8f1dc787278",
+      "sourceHandle": "n22e8f1dc787278:output:out",
+      "target": "n5d2a6020944828",
+      "targetHandle": "n5d2a6020944828:input:tex2",
+      "id": "xy-edge__n22e8f1dc787278n22e8f1dc787278:output:out-n5d2a6020944828n5d2a6020944828:input:tex2"
+    }
+  ],
+  "viewport": {
+    "x": -15.294673172026933,
+    "y": 127.35293170670184,
+    "zoom": 1.7544689380800413
+  }
+}

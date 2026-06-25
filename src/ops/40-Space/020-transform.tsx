@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { DraggableRenderer, DragStatus, param, translate } from "dragology";
 import {
   ReactNode,
@@ -9,7 +10,6 @@ import {
   useState,
 } from "react";
 import { LuRotateCcw } from "react-icons/lu";
-import clsx from "clsx";
 import { UpdateProxy } from "update-proxy";
 import {
   Sentence,
@@ -311,20 +311,15 @@ const TransformGizmo = ({
                 id="body"
                 transform={translate(center.x, center.y)}
                 dragologyOnDrag={() =>
-                  d.vary(state, [param("tx"), param("ty")]).during((s) => ({
-                    ...s,
-                    tx: round(s.tx, 3),
-                    ty: round(s.ty, 3),
-                  }))
+                  d.vary(state, [param("tx"), param("ty")])
                 }
               >
                 <polygon
                   points={bodyPoints}
-                  fill={ACCENT}
-                  fillOpacity={0.001}
+                  fill="none"
                   stroke={ACCENT}
                   strokeWidth={2}
-                  pointerEvents="all"
+                  pointerEvents="stroke"
                 />
               </g>
 
@@ -340,12 +335,7 @@ const TransformGizmo = ({
               <g
                 id="rotate"
                 transform={translate(knob.x, knob.y)}
-                dragologyOnDrag={() =>
-                  d.vary(state, [param("angle")]).during((s) => ({
-                    ...s,
-                    angle: round(s.angle, 1),
-                  }))
-                }
+                dragologyOnDrag={() => d.vary(state, [param("angle")])}
               >
                 <circle r={6} fill={ACCENT} pointerEvents="all" />
               </g>
@@ -357,13 +347,7 @@ const TransformGizmo = ({
                   id={`corner-${i}`}
                   transform={translate(p.x, p.y)}
                   dragologyOnDrag={() =>
-                    d
-                      .vary(state, [param("scaleX"), param("scaleY")])
-                      .during((s) => ({
-                        ...s,
-                        scaleX: round(s.scaleX, 3),
-                        scaleY: round(s.scaleY, 3),
-                      }))
+                    d.vary(state, [param("scaleX"), param("scaleY")])
                   }
                 >
                   <circle r={6} fill={ACCENT} pointerEvents="all" />

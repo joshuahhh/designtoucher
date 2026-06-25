@@ -69,10 +69,7 @@
       "data": {
         "opId": "layers",
         "params": {
-          "order": [
-            0,
-            2
-          ],
+          "order": [0, 2],
           "nextId": 3,
           "attrs": {
             "0": {

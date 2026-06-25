@@ -213,24 +213,10 @@ export default defineOp({
       updateNodeInternals,
     ]);
 
-    // --- Drag-to-reorder ---
+    // --- Drag-to-reorder (pointer-based, avoids HTML5 DnD conflicts with React Flow) ---
     const [dragIdx, setDragIdx] = useState<number | null>(null);
-    const [dropTarget, setDropTarget_] = useState<number | null>(null);
+    const [dropTarget, setDropTarget] = useState<number | null>(null);
     const dragIdxRef = useRef<number | null>(null);
-    const dropTargetRef = useRef<number | null>(null);
-    const setDropTarget = (v: number | null) => {
-      dropTargetRef.current = v;
-      setDropTarget_(v);
-    };
-
-    const handleDragStart = (idx: number) => (e: React.DragEvent) => {
-      dragIdxRef.current = idx;
-      setDragIdx(idx);
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", String(idx));
-      }
-    };
 
     const rowsRef = useRef<HTMLDivElement>(null);
 
@@ -245,35 +231,40 @@ export default defineOp({
       return rows.length;
     };
 
-    const handleContainerDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
+    const handleGripPointerDown = (idx: number) => (e: React.PointerEvent) => {
       e.stopPropagation();
-      setDropTarget(dropTargetFromY(e.clientY));
-    };
-
-    const handleContainerDrop = (e: React.DragEvent) => {
       e.preventDefault();
-      e.stopPropagation();
-      const fromIdx = dragIdxRef.current;
-      const toIdx = dropTargetFromY(e.clientY);
-      setDragIdx(null);
-      setDropTarget(null);
-      if (fromIdx === null || toIdx === fromIdx || toIdx === fromIdx + 1) {
-        return;
-      }
-      paramsUP.order.$((order: number[]) => {
-        const next = [...order];
-        const [item] = next.splice(fromIdx, 1);
-        const insertIdx = toIdx > fromIdx ? toIdx - 1 : toIdx;
-        next.splice(insertIdx, 0, item);
-        return next;
-      });
-    };
+      dragIdxRef.current = idx;
+      setDragIdx(idx);
 
-    const handleDragEnd = () => {
-      dragIdxRef.current = null;
-      setDragIdx(null);
-      setDropTarget(null);
+      let lastY = e.clientY;
+      const onMove = (ev: PointerEvent) => {
+        lastY = ev.clientY;
+        setDropTarget(dropTargetFromY(ev.clientY));
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+
+        const fromIdx = dragIdxRef.current;
+        const toIdx = dropTargetFromY(lastY);
+        dragIdxRef.current = null;
+        setDragIdx(null);
+        setDropTarget(null);
+
+        if (fromIdx === null || toIdx === fromIdx || toIdx === fromIdx + 1) {
+          return;
+        }
+        paramsUP.order.$((order: number[]) => {
+          const next = [...order];
+          const [item] = next.splice(fromIdx, 1);
+          const insertIdx = toIdx > fromIdx ? toIdx - 1 : toIdx;
+          next.splice(insertIdx, 0, item);
+          return next;
+        });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
     };
 
     const [selectedLayer, setSelectedLayer] = useState<number | null>(null);
@@ -313,12 +304,7 @@ export default defineOp({
           className="flex items-start gap-2"
           onClick={() => setSelectedLayer(null)}
         >
-          <div
-            ref={rowsRef}
-            className="flex flex-col gap-0.5 w-[100px]"
-            onDragOver={handleContainerDragOver}
-            onDrop={handleContainerDrop}
-          >
+          <div ref={rowsRef} className="flex flex-col gap-0.5 w-[100px]">
             {params.order.length === 0 && !isConnecting && (
               <span className="text-[10px] text-gray-400 select-none px-1 py-1 text-center">
                 connect outputs here
@@ -345,9 +331,7 @@ export default defineOp({
                 <div
                   key={layerId}
                   data-layer-row
-                  draggable
-                  onDragStart={handleDragStart(idx)}
-                  onDragEnd={handleDragEnd}
+                  onPointerDown={handleGripPointerDown(idx)}
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedLayer(

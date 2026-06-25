@@ -11,7 +11,6 @@ import clsx from "clsx";
 import React, {
   Component,
   createContext,
-  createRef,
   Dispatch,
   ForwardedRef,
   forwardRef,
@@ -25,7 +24,6 @@ import React, {
   useSyncExternalStore,
 } from "react";
 import { FaExpandArrowsAlt } from "react-icons/fa";
-import { mergeRefs } from "react-merge-refs";
 import { UpdateProxy } from "update-proxy";
 import { Tex } from "./mygl.js";
 import {
@@ -388,38 +386,75 @@ export const SentenceButton = forwardRef(
   },
 );
 
+// Reserves a fixed width for the widest string the field can ever show
+// (passed as `widest`), so the number never shifts as digits/sign change —
+// whether it's driven by dragging the number, the slider, or an on-canvas
+// gizmo. The widest string sits in the layout (invisible) while the actual
+// content is overlaid, centered, on top.
 const StableWidthSpan = forwardRef<
   HTMLSpanElement,
   {
-    dragging?: boolean;
+    widest?: string;
   } & React.HTMLAttributes<HTMLSpanElement>
->(({ dragging, ...otherProps }, forwardedRef) => {
-  const ref = createRef<HTMLSpanElement>();
-  const [minWidth, setMinWidth] = useState(0);
-
-  useLayoutEffect(() => {
-    if (dragging && ref.current) {
-      const w = ref.current.offsetWidth;
-      setMinWidth((prev) => Math.max(prev, w));
-    }
-    if (!dragging) {
-      setMinWidth(0); // release lock
-    }
-  }, [dragging, ref]);
-
+>(({ widest, children, style, ...otherProps }, forwardedRef) => {
   return (
     <span
-      ref={mergeRefs([ref, forwardedRef])}
+      ref={forwardedRef}
       {...otherProps}
-      style={{
-        ...otherProps.style,
-        // color: dragging ? "red" : "inherit",
-        display: "inline-block",
-        minWidth: dragging ? minWidth : "inherit",
-      }}
-    />
+      style={{ ...style, display: "inline-block", position: "relative" }}
+    >
+      <span aria-hidden style={{ visibility: "hidden" }}>
+        {widest ?? children}
+      </span>
+      <span
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          textAlign: "center",
+        }}
+      >
+        {children}
+      </span>
+    </span>
   );
 });
+
+// Number of decimal places implied by a step, e.g. 0.001 -> 3, 1 -> 0,
+// 1e-7 -> 7. Used to render param values with a fixed number of decimals.
+function decimalsForStep(step: number): number {
+  if (!Number.isFinite(step) || step <= 0) return 0;
+  const s = String(step);
+  const eMatch = s.match(/e-(\d+)$/i);
+  if (eMatch) return parseInt(eMatch[1], 10);
+  const dot = s.indexOf(".");
+  return dot === -1 ? 0 : s.length - dot - 1;
+}
+
+// Display a param value with a fixed number of decimals (so its width stays
+// stable during drags and float artifacts like 0.70100000000001 never show).
+// Strips a stray leading "-" from negative-zero results like "-0.000".
+function formatParamValue(value: number, step: number): string {
+  return value.toFixed(decimalsForStep(step)).replace(/^-(?=0(\.0+)?$)/, "");
+}
+
+// The widest string the field can show across [min, max] at this step: the
+// most integer digits either endpoint needs, a sign slot if values can go
+// negative, and the fixed decimals. Used to reserve a stable width.
+function widestParamValue(min: number, max: number, step: number): string {
+  const decimals = decimalsForStep(step);
+  const intDigits = (v: number) => {
+    const s = Math.abs(v).toFixed(decimals);
+    const dot = s.indexOf(".");
+    return dot === -1 ? s.length : dot;
+  };
+  const digits = Math.max(intDigits(min), intDigits(max));
+  return (
+    (min < 0 ? "-" : "") +
+    "0".repeat(digits) +
+    (decimals > 0 ? "." + "0".repeat(decimals) : "")
+  );
+}
 
 export const SentenceParamNumber = ({
   value,
@@ -501,7 +536,7 @@ export const SentenceParamNumber = ({
     >
       <Popover.Trigger>
         <StableWidthSpan
-          dragging={dragging}
+          widest={widestParamValue(min, max, step)}
           className={clsx(
             "tabular-nums cursor-ew-resize select-none rounded px-1 font-semibold transition-colors",
             "text-center",
@@ -515,7 +550,7 @@ export const SentenceParamNumber = ({
             valueUP.$set(0);
           }}
         >
-          {value}
+          {formatParamValue(value, step)}
         </StableWidthSpan>
       </Popover.Trigger>
       <MyPopoverContent>

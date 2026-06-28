@@ -52,6 +52,7 @@ import {
   FaXmark,
 } from "react-icons/fa6";
 import { LuExpand, LuShrink } from "react-icons/lu";
+import { useSearchParams } from "react-router-dom";
 import { up } from "update-proxy";
 import { examples } from "./examples.js";
 import "./flow-base.css";
@@ -444,11 +445,21 @@ const FlowInner = ({
   // vs contain. The editor and preview share the width via `paneFraction` (the
   // preview's share, 0..1). There is no separate fullscreen mode — "fullscreen"
   // is just the editor dragged/collapsed to nothing (paneFraction → 1).
+  //
+  // The `?preview=nodeId:outputKey` search param deep-links into full-screen
+  // preview. On mount we seed from the URL; changes sync back.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initPreview = useMemo((): PreviewTarget | null => {
+    const p = searchParams.get("preview");
+    if (!p) return null;
+    const [nodeId, outputKey = "out"] = p.split(":");
+    return { nodeId, outputKey };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [previewTarget, setPreviewTarget] = useState<PreviewTarget | null>(
-    null,
+    initPreview,
   );
   const [previewFit, setPreviewFit] = useState<PreviewFit>("cover");
-  const [paneFraction, setPaneFraction] = useState(0.5);
+  const [paneFraction, setPaneFraction] = useState(initPreview ? 1 : 0.5);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   // Width to restore the editor to when un-collapsing (via `f` / the button).
   const lastSplitFractionRef = useRef(0.5);
@@ -494,12 +505,44 @@ const FlowInner = ({
     [previewTarget, isFull, previewFit, setFull],
   );
 
-  // Close the preview if its node disappears (deleted, or graph replaced).
+  // Sync full-screen preview state to/from the URL search param.
   useEffect(() => {
-    if (
-      previewTarget &&
-      !flow.nodes.some((n) => n.id === previewTarget.nodeId)
-    ) {
+    if (previewTarget && isFull) {
+      const val =
+        previewTarget.outputKey === "out"
+          ? previewTarget.nodeId
+          : `${previewTarget.nodeId}:${previewTarget.outputKey}`;
+      setSearchParams(
+        (prev) => {
+          prev.set("preview", val);
+          return prev;
+        },
+        { replace: true },
+      );
+    } else {
+      setSearchParams(
+        (prev) => {
+          prev.delete("preview");
+          return prev;
+        },
+        { replace: true },
+      );
+    }
+  }, [previewTarget, isFull, setSearchParams]);
+
+  // Close the preview if its node disappears (deleted, or graph replaced).
+  // The "seen" ref prevents clearing a URL-sourced target before IDB has loaded
+  // the real graph — we only clear once the node has existed and then vanished.
+  const previewNodeSeen = useRef(false);
+  useEffect(() => {
+    if (!previewTarget) {
+      previewNodeSeen.current = false;
+      return;
+    }
+    const exists = flow.nodes.some((n) => n.id === previewTarget.nodeId);
+    if (exists) {
+      previewNodeSeen.current = true;
+    } else if (previewNodeSeen.current) {
       setPreviewTarget(null);
     }
   }, [flow.nodes, previewTarget]);

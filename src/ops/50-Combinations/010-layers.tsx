@@ -299,7 +299,7 @@ export default defineOp({
 
     return (
       <>
-        <Sentence>Layers</Sentence>
+        <Sentence>Stack layers</Sentence>
         <div
           className="flex items-start gap-2"
           onClick={() => setSelectedLayer(null)}

@@ -250,7 +250,7 @@ export default defineOp({
     return (
       <>
         <Sentence>
-          Segment selfie <props.InputHandle inputKey="img" />
+          Split <props.InputHandle inputKey="img" /> into selfie parts
           {error ? (
             <span title={error}> — error</span>
           ) : loading ? (

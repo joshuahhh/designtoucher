@@ -16,6 +16,10 @@ import React, {
 import { createPortal } from "react-dom";
 import { newTex, ShaderProgram, Tex } from "./mygl.js";
 
+export const CHECKER_PIXELS = 50;
+export const CHECKER_DARK = 0.8;
+export const CHECKER_LIGHT = 1.0;
+
 export interface DrawArgs {
   tex: Tex;
   viewport?: [number, number, number, number];
@@ -144,8 +148,8 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
           if (checkerboardPixels > 0.0) {
             vec3 checkerboard = vec3(
               mod(floor(uv.x * resolution.x / checkerboardPixels) +
-                  floor(uv.y * resolution.y / checkerboardPixels),
-                2.0) * 0.5 + 0.5
+                  floor((1.0 - uv.y) * resolution.y / checkerboardPixels),
+                2.0) * ${CHECKER_LIGHT - CHECKER_DARK} + ${CHECKER_DARK}
             );
             gl_FragColor = vec4(img.rgb * img.a + checkerboard * (1.0 - img.a), 1.0);
           } else {
@@ -322,7 +326,7 @@ export function Monitor({
           tex,
           viewport,
           cornerRadiusPixels: cornerRadiusPixels ?? 0,
-          checkerboardPixels: checkerboardPixels ?? 100,
+          checkerboardPixels: checkerboardPixels ?? CHECKER_PIXELS,
         });
       } else {
         draw({ tex, viewport });

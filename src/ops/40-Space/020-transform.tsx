@@ -1,16 +1,9 @@
 import clsx from "clsx";
-import { DraggableRenderer, DragStatus, param, translate } from "dragology";
-import {
-  ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { param, translate } from "dragology";
+import { ReactNode, useContext, useMemo } from "react";
 import { LuRotateCcw } from "react-icons/lu";
 import { UpdateProxy } from "update-proxy";
+import { ACCENT, Gizmo } from "../../gizmo.js";
 import {
   Sentence,
   SentenceParamNumber,
@@ -164,9 +157,6 @@ const round = (v: number, decimals: number) => {
   return Math.round(v * f) / f;
 };
 
-// The app's accent blue (Tailwind blue-500), used for the on-canvas gizmo.
-const ACCENT = "#3b82f6";
-
 // One labelled axis cell, e.g. "X [number]".
 const Axis = ({ label, children }: { label: string; children: ReactNode }) => (
   <span className="inline-flex items-center gap-0.5">
@@ -225,138 +215,96 @@ const TransformGizmo = ({
   params: TransformParams;
   paramsUP: UpdateProxy<TransformParams>;
 }) => {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setSize({ width, height });
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  const takeSnapshot = useContext(TakeSnapshotContext);
-  const onDragStatus = useCallback(
-    (status: DragStatus<TransformParams>) => {
-      if (status.type === "dragging") takeSnapshot();
-    },
-    [takeSnapshot],
-  );
-
   const { scaleX, scaleY, angle, tx, ty } = params;
   const state = useMemo(
     () => ({ scaleX, scaleY, angle, tx, ty }),
     [scaleX, scaleY, angle, tx, ty],
   );
 
-  const { width: W, height: H } = size;
-
   return (
-    <div ref={ref} className="h-full">
-      <DraggableRenderer
-        width={W}
-        height={H}
-        state={state}
-        onDragStatus={onDragStatus}
-        onDragState={(s) => paramsUP.$set(s)}
-        draggable={({ state, d }) => {
-          const a = (state.angle * Math.PI) / 180;
-          const cos = Math.cos(a);
-          const sin = Math.sin(a);
+    <Gizmo state={state} onState={(s) => paramsUP.$set(s)}>
+      {({ state, d, W, H }) => {
+        const a = (state.angle * Math.PI) / 180;
+        const cos = Math.cos(a);
+        const sin = Math.sin(a);
 
-          // Forward transform of a normalized corner (nx, ny in [-1, 1],
-          // y pointing down) into overlay-pixel space. Mirrors the shader.
-          // NOTE: dragology tracks element positions via translate(), so
-          // every draggable element must be positioned with a transform.
-          const proj = (nx: number, ny: number) => {
-            const rx = nx * (W / 2) * state.scaleX;
-            const ry = ny * (H / 2) * state.scaleY;
-            return {
-              x: W / 2 + (cos * rx - sin * ry) + state.tx * W,
-              y: H / 2 + (sin * rx + cos * ry) + state.ty * H,
-            };
+        const proj = (nx: number, ny: number) => {
+          const rx = nx * (W / 2) * state.scaleX;
+          const ry = ny * (H / 2) * state.scaleY;
+          return {
+            x: W / 2 + (cos * rx - sin * ry) + state.tx * W,
+            y: H / 2 + (sin * rx + cos * ry) + state.ty * H,
           };
+        };
 
-          const center = proj(0, 0);
-          const corners = [
-            { nx: -1, ny: -1 },
-            { nx: 1, ny: -1 },
-            { nx: 1, ny: 1 },
-            { nx: -1, ny: 1 },
-          ].map((n) => proj(n.nx, n.ny));
+        const center = proj(0, 0);
+        const corners = [
+          { nx: -1, ny: -1 },
+          { nx: 1, ny: -1 },
+          { nx: 1, ny: 1 },
+          { nx: -1, ny: 1 },
+        ].map((n) => proj(n.nx, n.ny));
 
-          // Box outline as points relative to the (translatable) center.
-          const bodyPoints = corners
-            .map((p) => `${p.x - center.x},${p.y - center.y}`)
-            .join(" ");
+        const bodyPoints = corners
+          .map((p) => `${p.x - center.x},${p.y - center.y}`)
+          .join(" ");
 
-          // Rotation handle: a knob poking out past the top edge.
-          const topMid = proj(0, -1);
-          let ux = topMid.x - center.x;
-          let uy = topMid.y - center.y;
-          const ulen = Math.hypot(ux, uy) || 1;
-          ux /= ulen;
-          uy /= ulen;
-          const ARM = 14;
-          const knob = { x: topMid.x + ux * ARM, y: topMid.y + uy * ARM };
+        const topMid = proj(0, -1);
+        let ux = topMid.x - center.x;
+        let uy = topMid.y - center.y;
+        const ulen = Math.hypot(ux, uy) || 1;
+        ux /= ulen;
+        uy /= ulen;
+        const ARM = 14;
+        const knob = { x: topMid.x + ux * ARM, y: topMid.y + uy * ARM };
 
-          return (
-            <g>
-              {/* Body — drag to translate. Tracked position = center. */}
-              <g
-                id="body"
-                transform={translate(center.x, center.y)}
-                dragologyOnDrag={() =>
-                  d.vary(state, [param("tx"), param("ty")])
-                }
-              >
-                <polygon
-                  points={bodyPoints}
-                  fill="none"
-                  stroke={ACCENT}
-                  strokeWidth={2}
-                  pointerEvents="stroke"
-                />
-              </g>
-
-              {/* Rotation arm (decorative) + draggable knob */}
-              <line
-                x1={topMid.x}
-                y1={topMid.y}
-                x2={knob.x}
-                y2={knob.y}
+        return (
+          <g>
+            <g
+              id="body"
+              transform={translate(center.x, center.y)}
+              dragologyOnDrag={() => d.vary(state, [param("tx"), param("ty")])}
+            >
+              <polygon
+                points={bodyPoints}
+                fill="none"
                 stroke={ACCENT}
                 strokeWidth={2}
+                pointerEvents="stroke"
               />
+            </g>
+
+            <line
+              x1={topMid.x}
+              y1={topMid.y}
+              x2={knob.x}
+              y2={knob.y}
+              stroke={ACCENT}
+              strokeWidth={2}
+            />
+            <g
+              id="rotate"
+              transform={translate(knob.x, knob.y)}
+              dragologyOnDrag={() => d.vary(state, [param("angle")])}
+            >
+              <circle r={6} fill={ACCENT} pointerEvents="all" />
+            </g>
+
+            {corners.map((p, i) => (
               <g
-                id="rotate"
-                transform={translate(knob.x, knob.y)}
-                dragologyOnDrag={() => d.vary(state, [param("angle")])}
+                key={i}
+                id={`corner-${i}`}
+                transform={translate(p.x, p.y)}
+                dragologyOnDrag={() =>
+                  d.vary(state, [param("scaleX"), param("scaleY")])
+                }
               >
                 <circle r={6} fill={ACCENT} pointerEvents="all" />
               </g>
-
-              {/* Corner handles — drag to scale */}
-              {corners.map((p, i) => (
-                <g
-                  key={i}
-                  id={`corner-${i}`}
-                  transform={translate(p.x, p.y)}
-                  dragologyOnDrag={() =>
-                    d.vary(state, [param("scaleX"), param("scaleY")])
-                  }
-                >
-                  <circle r={6} fill={ACCENT} pointerEvents="all" />
-                </g>
-              ))}
-            </g>
-          );
-        }}
-      />
-    </div>
+            ))}
+          </g>
+        );
+      }}
+    </Gizmo>
   );
 };

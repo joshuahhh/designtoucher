@@ -604,7 +604,7 @@ export const MyArrow = () => (
 );
 
 // TODO: this generic doesn't seem to work to constrain "options"
-export const SentenceParamSelect = <T extends string>({
+export const SentenceParamSelect = <T extends string | number>({
   value,
   valueUP,
   options,
@@ -614,20 +614,24 @@ export const SentenceParamSelect = <T extends string>({
   options: (T | { value: T; label: string })[];
 }) => {
   const takeSnapshot = useContext(TakeSnapshotContext);
+  const coerce =
+    typeof value === "number"
+      ? (v: string) => Number(v) as T
+      : (v: string) => v as T;
   return (
     <select
       value={value ?? ""}
       className="text-xs font-['Varela_Round'] bg-transparent border-b border"
       onChange={(e) => {
         takeSnapshot();
-        valueUP.$set(e.target.value as T);
+        valueUP.$set(coerce(e.target.value));
       }}
     >
       {options.map((option) => {
         const { value, label } =
-          typeof option === "string"
-            ? { value: option, label: option }
-            : option;
+          typeof option === "object" && option !== null
+            ? option
+            : { value: option, label: String(option) };
         return (
           <option key={value} value={value}>
             {label}
@@ -676,6 +680,30 @@ export function usePreviewTex(target: PreviewTarget | null): Tex | null {
   useSyncExternalStore(subscribe, () => instance?.getRevision() ?? 0);
   return instance && target
     ? ((instance.runtime[target.outputKey] as Tex | null) ?? null)
+    : null;
+}
+
+/** Resolve the live texture feeding a given input key on the current node. */
+export function useInputTex(inputKey: string): Tex | null {
+  const nodeId = useNodeId()!;
+  const handleId = makeInputHandleId(nodeId, inputKey);
+  const edges = useEdges();
+  const edge = edges.find((e) => e.targetHandle === handleId) ?? null;
+  const opInstances = useContext(OpInstancesContext);
+
+  const sourceHandleParsed = edge && parseOutputHandleId(edge.sourceHandle!);
+  const sourceInstance =
+    opInstances && sourceHandleParsed
+      ? opInstances[sourceHandleParsed.nodeId]
+      : null;
+  const subscribe = useCallback(
+    (cb: () => void) => sourceInstance?.subscribe(cb) ?? (() => {}),
+    [sourceInstance],
+  );
+  useSyncExternalStore(subscribe, () => sourceInstance?.getRevision() ?? 0);
+
+  return sourceInstance
+    ? (sourceInstance.runtime[sourceHandleParsed!.key] as Tex | null)
     : null;
 }
 

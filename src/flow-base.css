@@ -217,6 +217,18 @@ svg.react-flow__connectionline {
   pointer-events: all;
   cursor: grab;
 }
+.react-flow__handle-bottom {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='40'%3E%3Cline x1='15' y1='15' x2='15' y2='37' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='15' cy='15' r='8.25' fill='white'/%3E%3Cline x1='15' y1='15' x2='15' y2='37' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3Ccircle cx='15' cy='15' r='6' fill='white' stroke='black' stroke-width='2.25'/%3E%3C/svg%3E")
+      15 15,
+    crosshair;
+}
+.react-flow__handle-top {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='40'%3E%3Cline x1='15' y1='3' x2='15' y2='25' stroke='white' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='15' cy='25' r='8.25' fill='white'/%3E%3Cline x1='15' y1='3' x2='15' y2='25' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3Ccircle cx='15' cy='25' r='6' fill='white' stroke='black' stroke-width='2.25'/%3E%3C/svg%3E")
+      15 25,
+    crosshair;
+}
 /* .react-flow__handle {
   position: absolute;
   pointer-events: none;

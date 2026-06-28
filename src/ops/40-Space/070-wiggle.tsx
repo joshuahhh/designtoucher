@@ -2,10 +2,10 @@ import { Sentence, SentenceParamNumber } from "../../ops-core.js";
 import { defineFragOp } from "../../ops-frag.js";
 
 export default defineFragOp({
-  id: "kal",
+  id: "wiggle",
   inputKeys: ["tex1"],
   initParams: () => ({
-    strength: 0.1,
+    strength: 0.025,
     size: 0.03,
   }),
   // TODO: booleans end up as floats in the shader

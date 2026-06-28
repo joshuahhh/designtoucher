@@ -551,7 +551,10 @@ const FlowInner = ({
           </div>
           {previewTarget && (
             <>
-              <SplitDivider onDrag={onSplitDrag} />
+              <SplitDivider
+                onDrag={onSplitDrag}
+                onToggleFull={() => setFull(!isFull)}
+              />
               <SplitPreviewPane
                 target={previewTarget}
                 growFraction={paneFraction}
@@ -633,7 +636,13 @@ const NoOutput = () => (
 // Draggable splitter between the editor and the preview pane. It sits in the
 // underlay layer; the WebGL canvas above it is pointer-events:none, so it still
 // receives the drag. Pointer capture keeps the drag alive over the canvas.
-const SplitDivider = ({ onDrag }: { onDrag: (clientX: number) => void }) => {
+const SplitDivider = ({
+  onDrag,
+  onToggleFull,
+}: {
+  onDrag: (clientX: number) => void;
+  onToggleFull: () => void;
+}) => {
   const [dragging, setDragging] = useState(false);
 
   // While dragging, keep the resize cursor and suppress text selection
@@ -667,6 +676,7 @@ const SplitDivider = ({ onDrag }: { onDrag: (clientX: number) => void }) => {
           e.currentTarget.releasePointerCapture(e.pointerId);
           setDragging(false);
         }}
+        onDoubleClick={onToggleFull}
         className={clsx(
           "w-full h-full cursor-col-resize pointer-events-auto transition-colors",
           dragging ? "bg-blue-500" : "bg-gray-600 hover:bg-blue-500",

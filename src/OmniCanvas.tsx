@@ -38,6 +38,7 @@ export type OmniCanvasContextType = {
     args: DrawArgs & {
       cornerRadiusPixels?: number;
       checkerboardPixels?: number;
+      uvScale?: [number, number];
     },
   ): void;
   emptyTex: Tex;
@@ -130,6 +131,10 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
         uniform vec2 resolution;
         uniform float cornerRadiusPixels;
         uniform float checkerboardPixels;
+        // Crop applied to the sampled image so it "covers" the monitor without
+        // distortion. [1,1] = no crop (the image is stretched to fill, i.e.
+        // "contain" when the monitor matches the texture aspect).
+        uniform vec2 uvScale;
         varying vec2 uv;
         void main() {
           float cornerAlpha = 1.0;
@@ -144,7 +149,8 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
               }
             }
           }
-          vec4 img = texture2D(tex1, uv);
+          vec2 imgUv = (uv - 0.5) * uvScale + 0.5;
+          vec4 img = texture2D(tex1, imgUv);
           if (checkerboardPixels > 0.0) {
             vec3 checkerboard = vec3(
               mod(floor(uv.x * resolution.x / checkerboardPixels) +
@@ -166,9 +172,11 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       targetFramebuffer,
       cornerRadiusPixels,
       checkerboardPixels,
+      uvScale,
     }: DrawArgs & {
       cornerRadiusPixels?: number;
       checkerboardPixels?: number;
+      uvScale?: [number, number];
     }) => {
       drawForMonitorProgram.run({
         targetFramebuffer: targetFramebuffer || null,
@@ -178,6 +186,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
           resolution: ["2f", [tex.width, tex.height]],
           cornerRadiusPixels: ["1f", cornerRadiusPixels],
           checkerboardPixels: ["1f", checkerboardPixels],
+          uvScale: ["2f", uvScale ?? [1, 1]],
         },
         fullscreen: true,
       });
@@ -309,6 +318,7 @@ export function Monitor({
   cornerRadiusPixels,
   checkerboardPixels,
   sizing = "fill",
+  objectFit = "contain",
 }: {
   tex: Tex;
   className?: string;
@@ -316,23 +326,48 @@ export function Monitor({
   cornerRadiusPixels?: number;
   checkerboardPixels?: number;
   sizing?: "fill" | "height";
+  // "contain": the guest div is given the texture's aspect ratio and the
+  //   image fills it exactly (the surrounding layout letterboxes).
+  // "cover": the guest div fills its container (any shape) and the image is
+  //   cropped to cover it without distortion (computed per-frame from the
+  //   drawn rect's aspect vs the texture's).
+  objectFit?: "contain" | "cover";
 }) {
   const { draw, drawForMonitor } = useContext(OmniCanvasContext);
 
   const command = useCallback(
     (viewport: [number, number, number, number]) => {
-      if (cornerRadiusPixels || checkerboardPixels) {
+      let uvScale: [number, number] = [1, 1];
+      if (objectFit === "cover") {
+        const [, , w, h] = viewport;
+        const containerAspect = w / h;
+        const texAspect = tex.width / tex.height;
+        uvScale =
+          containerAspect >= texAspect
+            ? [1, texAspect / containerAspect]
+            : [containerAspect / texAspect, 1];
+      }
+
+      if (cornerRadiusPixels || checkerboardPixels || objectFit === "cover") {
         drawForMonitor({
           tex,
           viewport,
           cornerRadiusPixels: cornerRadiusPixels ?? 0,
           checkerboardPixels: checkerboardPixels ?? CHECKER_PIXELS,
+          uvScale,
         });
       } else {
         draw({ tex, viewport });
       }
     },
-    [cornerRadiusPixels, checkerboardPixels, draw, drawForMonitor, tex],
+    [
+      cornerRadiusPixels,
+      checkerboardPixels,
+      objectFit,
+      draw,
+      drawForMonitor,
+      tex,
+    ],
   );
 
   return (
@@ -340,9 +375,18 @@ export function Monitor({
       command={command}
       className={clsx(
         className,
-        sizing === "fill" ? "w-full h-full" : "h-full",
+        objectFit === "cover"
+          ? "w-full h-full"
+          : sizing === "fill"
+            ? "w-full h-full"
+            : "h-full",
       )}
-      style={{ ...style, aspectRatio: tex.width / tex.height }}
+      style={{
+        ...style,
+        // In "cover" mode the div takes its container's shape; in "contain"
+        // mode it is constrained to the texture's aspect ratio.
+        aspectRatio: objectFit === "cover" ? undefined : tex.width / tex.height,
+      }}
     />
   );
 }

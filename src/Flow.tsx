@@ -1,3 +1,4 @@
+import { autoUpdate } from "@floating-ui/dom";
 import { TextField, Theme } from "@radix-ui/themes";
 import "@radix-ui/themes/styles.css";
 import {
@@ -31,17 +32,26 @@ import {
   createContext,
   Dispatch,
   memo,
+  ReactNode,
   SetStateAction,
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { FaTrash } from "react-icons/fa";
-import { FaMagnifyingGlass, FaX } from "react-icons/fa6";
+import {
+  FaCompress,
+  FaExpand,
+  FaMagnifyingGlass,
+  FaX,
+  FaXmark,
+} from "react-icons/fa6";
+import { LuExpand, LuShrink } from "react-icons/lu";
 import { up } from "update-proxy";
 import { examples } from "./examples.js";
 import "./flow-base.css";
@@ -65,9 +75,13 @@ import {
   OutputHandle,
   parseInputHandleId,
   parseOutputHandleId,
-  SetFullscreenModalTexContext,
+  PreviewApi,
+  PreviewContext,
+  PreviewFit,
+  PreviewTarget,
   sharedHandleClasses,
   TakeSnapshotContext,
+  usePreviewTex,
 } from "./ops-core.js";
 import { opById, OpNode, runFlow } from "./ops-flow.js";
 import { ops, OpWithMetadata } from "./ops/all-the-ops.js";
@@ -426,8 +440,84 @@ const FlowInner = ({
     });
   }, [flowRef, ctx, flowUP, opInstancesRef]);
 
-  const [fullscreenModalTex, setFullscreenModalTex] = useState<Tex | null>(
+  // Preview state. A preview shows one op *output* (`target`); `fit` is cover
+  // vs contain. The editor and preview share the width via `paneFraction` (the
+  // preview's share, 0..1). There is no separate fullscreen mode — "fullscreen"
+  // is just the editor dragged/collapsed to nothing (paneFraction → 1).
+  const [previewTarget, setPreviewTarget] = useState<PreviewTarget | null>(
     null,
+  );
+  const [previewFit, setPreviewFit] = useState<PreviewFit>("cover");
+  const [paneFraction, setPaneFraction] = useState(0.5);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  // Width to restore the editor to when un-collapsing (via `f` / the button).
+  const lastSplitFractionRef = useRef(0.5);
+
+  const isFull = previewTarget !== null && paneFraction >= EDITOR_COLLAPSED_AT;
+
+  const onSplitDrag = useCallback((clientX: number) => {
+    const el = splitContainerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const f = Math.min(
+      1,
+      Math.max(MIN_PANE_FRACTION, (rect.right - clientX) / rect.width),
+    );
+    setPaneFraction(f);
+  }, []);
+
+  // Collapse the editor (full preview) <-> restore the last split width.
+  const setFull = useCallback((full: boolean) => {
+    setPaneFraction((f) => {
+      if (full) {
+        if (f < EDITOR_COLLAPSED_AT) lastSplitFractionRef.current = f;
+        return 1;
+      }
+      return f >= EDITOR_COLLAPSED_AT ? lastSplitFractionRef.current : f;
+    });
+  }, []);
+
+  const previewApi: PreviewApi = useMemo(
+    () => ({
+      target: previewTarget,
+      mode: isFull ? "full" : "split",
+      fit: previewFit,
+      open: (target) => {
+        setPreviewTarget(target);
+        // Always reveal the editor when (re)opening a preview from a node.
+        setFull(false);
+      },
+      setMode: (m) => setFull(m === "full"),
+      setFit: setPreviewFit,
+      close: () => setPreviewTarget(null),
+    }),
+    [previewTarget, isFull, previewFit, setFull],
+  );
+
+  // Close the preview if its node disappears (deleted, or graph replaced).
+  useEffect(() => {
+    if (
+      previewTarget &&
+      !flow.nodes.some((n) => n.id === previewTarget.nodeId)
+    ) {
+      setPreviewTarget(null);
+    }
+  }, [flow.nodes, previewTarget]);
+
+  // `f` collapses the editor for a full-width preview (and back); Escape
+  // closes. Accelerators only — both are also reachable by the pane buttons
+  // and by dragging the divider.
+  useKeyBindings(
+    useMemo(
+      () =>
+        previewTarget
+          ? [
+              { combo: "f", action: () => setFull(!isFull) },
+              { combo: "Escape", action: () => setPreviewTarget(null) },
+            ]
+          : [],
+      [previewTarget, isFull, setFull],
+    ),
   );
 
   const resetOpInstances = useCallback(() => {
@@ -441,72 +531,219 @@ const FlowInner = ({
   }, [resetOpInstances]);
 
   return (
-    <SetFullscreenModalTexContext.Provider value={setFullscreenModalTex}>
+    <PreviewContext.Provider value={previewApi}>
       <OpInstancesContext.Provider value={opInstances}>
-        {fullscreenModalTex ? (
-          <FullscreenModal tex={fullscreenModalTex} />
-        ) : (
-          <FlowInnerNormalMode
-            flow={flow}
-            setFlow={setFlow}
-            resetOpInstances={resetOpInstances}
-          />
-        )}
+        <div ref={splitContainerRef} className="w-full h-full flex">
+          <div
+            className="min-w-0 relative"
+            style={{
+              flexGrow: previewTarget ? 1 - paneFraction : 1,
+              flexBasis: 0,
+            }}
+          >
+            <EditorOverlayClip>
+              <FlowInnerNormalMode
+                flow={flow}
+                setFlow={setFlow}
+                resetOpInstances={resetOpInstances}
+              />
+            </EditorOverlayClip>
+          </div>
+          {previewTarget && (
+            <>
+              <SplitDivider onDrag={onSplitDrag} />
+              <SplitPreviewPane
+                target={previewTarget}
+                growFraction={paneFraction}
+              />
+            </>
+          )}
+        </div>
       </OpInstancesContext.Provider>
-    </SetFullscreenModalTexContext.Provider>
+    </PreviewContext.Provider>
   );
 };
 
-export const FullscreenModal = ({ tex }: { tex: Tex }) => {
-  const { underlayDiv } = useContext(OmniCanvasContext);
-  const setFullscreenModalTex = useContext(SetFullscreenModalTexContext);
+// The editor is considered "collapsed" (full-width preview) at/above this
+// pane fraction; the divider clamps the preview no smaller than MIN.
+const EDITOR_COLLAPSED_AT = 0.98;
+const MIN_PANE_FRACTION = 0.15;
 
-  const close = useCallback(
-    () => setFullscreenModalTex(null),
-    [setFullscreenModalTex],
-  );
-
-  useKeyBindings([
-    {
-      combo: "Escape",
-      action: close,
-    },
-  ]);
-
+// The preview image surface. In "cover" mode the Monitor fills the pane and
+// crops; in "contain" mode it is letterboxed at the texture's aspect ratio and
+// centered.
+const PreviewSurface = ({ tex, fit }: { tex: Tex; fit: PreviewFit }) => {
+  if (fit === "cover") {
+    return <Monitor tex={tex} objectFit="cover" checkerboardPixels={100} />;
+  }
   const aspectRatio = tex.width / tex.height;
-
-  return createPortal(
-    <div className="fixed inset-0 bg-black grid place-items-center [container-type:size]">
-      <OmniCanvasOverlay className="absolute inset-0">
-        <button
-          onClick={close}
-          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 pointer-events-auto"
-          title="Press ESC to close"
-        >
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </OmniCanvasOverlay>
-
+  return (
+    <div className="absolute inset-0 grid place-items-center">
       <div
         style={{
           width: `min(100cqw,calc(100cqh*${aspectRatio}))`,
-          aspectRatio: aspectRatio,
+          aspectRatio,
         }}
       >
         <Monitor tex={tex} checkerboardPixels={100} />
       </div>
-    </div>,
-    underlayDiv,
+    </div>
+  );
+};
+
+// Fit / collapse-editor / close controls for the preview pane. Lives in the
+// overlay layer (above the WebGL canvas).
+const PreviewControls = () => {
+  const { mode, setMode, fit, setFit, close } = useContext(PreviewContext);
+  const btn =
+    "bg-black/70 text-white p-2 rounded hover:bg-black/90 transition-colors pointer-events-auto";
+  return (
+    <div className="absolute top-3 right-3 z-10 flex gap-1.5">
+      <button
+        onClick={() => setFit(fit === "cover" ? "contain" : "cover")}
+        className={btn}
+        title={
+          fit === "cover"
+            ? "Fit: show the whole frame"
+            : "Fill: cover the area (may crop)"
+        }
+      >
+        {fit === "cover" ? <LuShrink /> : <LuExpand />}
+      </button>
+      <button
+        onClick={() => setMode(mode === "full" ? "split" : "full")}
+        className={btn}
+        title={mode === "full" ? "Exit fullscreen (f)" : "Fullscreen (f)"}
+      >
+        {mode === "full" ? <FaCompress /> : <FaExpand />}
+      </button>
+      <button onClick={close} className={btn} title="Close preview (Esc)">
+        <FaXmark />
+      </button>
+    </div>
+  );
+};
+
+const NoOutput = () => (
+  <div className="absolute inset-0 grid place-items-center text-gray-500 text-sm select-none">
+    No output yet
+  </div>
+);
+
+// Draggable splitter between the editor and the preview pane. It sits in the
+// underlay layer; the WebGL canvas above it is pointer-events:none, so it still
+// receives the drag. Pointer capture keeps the drag alive over the canvas.
+const SplitDivider = ({ onDrag }: { onDrag: (clientX: number) => void }) => {
+  const [dragging, setDragging] = useState(false);
+
+  // While dragging, keep the resize cursor and suppress text selection
+  // everywhere — not just over the thin divider.
+  useEffect(() => {
+    if (!dragging) return;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [dragging]);
+
+  // The anchor reserves the 2px gutter in the flex row; the visible/draggable
+  // strip is portaled into the overlay layer (above the WebGL canvas) by
+  // OmniCanvasOverlay — same mechanism every other above-canvas control uses.
+  return (
+    <OmniCanvasOverlay className="w-2 h-full shrink-0 relative">
+      <div
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setDragging(true);
+        }}
+        onPointerMove={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) onDrag(e.clientX);
+        }}
+        onPointerUp={(e) => {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+          setDragging(false);
+        }}
+        className={clsx(
+          "w-full h-full cursor-col-resize pointer-events-auto transition-colors",
+          dragging ? "bg-blue-500" : "bg-gray-600 hover:bg-blue-500",
+        )}
+      />
+    </OmniCanvasOverlay>
+  );
+};
+
+const SplitPreviewPane = ({
+  target,
+  growFraction,
+}: {
+  target: PreviewTarget;
+  growFraction: number;
+}) => {
+  const tex = usePreviewTex(target);
+  const { fit } = useContext(PreviewContext);
+  return (
+    <div
+      className="h-full min-w-0 bg-black relative [container-type:size] overflow-hidden"
+      style={{ flexGrow: growFraction, flexBasis: 0 }}
+    >
+      {tex ? <PreviewSurface tex={tex} fit={fit} /> : <NoOutput />}
+      <OmniCanvasOverlay className="absolute inset-0">
+        <PreviewControls />
+      </OmniCanvasOverlay>
+    </div>
+  );
+};
+
+// The editor's above-canvas overlays (chrome, node-handle buttons, the
+// component sidebar) all portal into the single full-window overlay layer and
+// are positioned at the editor's edges. With a preview pane alongside, nothing
+// stops them spilling past the divider as the editor narrows. This gives the
+// editor subtree its own overflow-hidden overlay div (tracking the editor
+// region) so all of that content is clipped to the editor.
+const EditorOverlayClip = ({ children }: { children: ReactNode }) => {
+  const ctx = useContext(OmniCanvasContext);
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
+  const [clip, setClip] = useState<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!anchor || !clip) return;
+    const update = () => {
+      const cr = ctx.overlayDiv.getBoundingClientRect();
+      const r = anchor.getBoundingClientRect();
+      clip.style.transform = `translate(${r.left - cr.left}px, ${r.top - cr.top}px)`;
+      clip.style.width = `${r.width}px`;
+      clip.style.height = `${r.height}px`;
+    };
+    update();
+    return autoUpdate(anchor, clip, update, { animationFrame: true });
+  }, [anchor, clip, ctx.overlayDiv]);
+
+  // Hand the subtree a context whose overlayDiv is our clipped div, so every
+  // OmniCanvasOverlay inside portals (and positions) into it.
+  const childCtx = useMemo(
+    () => (clip ? { ...ctx, overlayDiv: clip } : ctx),
+    [ctx, clip],
+  );
+
+  return (
+    <>
+      <div ref={setAnchor} className="absolute inset-0 pointer-events-none" />
+      {createPortal(
+        <div
+          ref={setClip}
+          className="absolute top-0 left-0 overflow-hidden pointer-events-none"
+          style={{ willChange: "transform,width,height" }}
+        />,
+        ctx.overlayDiv,
+      )}
+      <OmniCanvasContext.Provider value={childCtx}>
+        {children}
+      </OmniCanvasContext.Provider>
+    </>
   );
 };
 
@@ -1303,45 +1540,55 @@ const Sidebar = memo(
         <div className={clsx(isSidebarExpanded ? "w-72" : "w-0", transition)} />
         {/* we position the overlay separately, and staticly (for perf) */}
         <OmniCanvasOverlay className="absolute top-0 right-0 bottom-0 w-72 pointer-events-none">
-          {/* this part slides in & out */}
-          <div
-            className={clsx(
-              isSidebarExpanded ? "translate-x-0" : "translate-x-full",
-              transition,
-              "bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col pointer-events-auto",
-            )}
-          >
-            <h3 className="text-lg font-semibold text-gray-800">Components</h3>
-            <TextField.Root
-              ref={setSearchInputDiv}
-              className="mt-2 mb-4 shrink-0"
-              placeholder="Search for a component…"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            >
-              <TextField.Slot>
-                <FaMagnifyingGlass className="w-3 h-3 text-gray-500" />
-              </TextField.Slot>
-              {searchInput && (
-                <TextField.Slot>
-                  <button onClick={() => setSearchInput("")}>
-                    <FaX className="w-3 h-3 text-gray-500" />
-                  </button>
-                </TextField.Slot>
+          {/* Clip the slide so the collapsed (translate-x-full) panel stays
+              hidden within this 72-wide box instead of spilling to the right —
+              important in split mode, where "to the right" is the preview. */}
+          <div className="w-full h-full overflow-hidden pointer-events-none">
+            {/* this part slides in & out */}
+            <div
+              className={clsx(
+                isSidebarExpanded ? "translate-x-0" : "translate-x-full",
+                transition,
+                "bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col pointer-events-auto",
               )}
-            </TextField.Root>
-            <div className="overflow-auto flex flex-col">
-              <OpList
-                opsInGroups={putOpsIntoGroups(ops)}
-                searchQuery={searchQuery}
-                renderOpWrapper={renderOpWrapper}
-                InputHandle={InputHandle}
-                OutputHandle={OutputHandle}
-                groupClassName="my-4"
-                groupHeadingClassName="text-sm text-gray-600 mb-2 font-bold"
-                gapClassName="gap-2"
-              />
-              <ExamplesSection loadFlow={loadFlow} searchQuery={searchQuery} />
+            >
+              <h3 className="text-lg font-semibold text-gray-800">
+                Components
+              </h3>
+              <TextField.Root
+                ref={setSearchInputDiv}
+                className="mt-2 mb-4 shrink-0"
+                placeholder="Search for a component…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              >
+                <TextField.Slot>
+                  <FaMagnifyingGlass className="w-3 h-3 text-gray-500" />
+                </TextField.Slot>
+                {searchInput && (
+                  <TextField.Slot>
+                    <button onClick={() => setSearchInput("")}>
+                      <FaX className="w-3 h-3 text-gray-500" />
+                    </button>
+                  </TextField.Slot>
+                )}
+              </TextField.Root>
+              <div className="overflow-auto flex flex-col">
+                <OpList
+                  opsInGroups={putOpsIntoGroups(ops)}
+                  searchQuery={searchQuery}
+                  renderOpWrapper={renderOpWrapper}
+                  InputHandle={InputHandle}
+                  OutputHandle={OutputHandle}
+                  groupClassName="my-4"
+                  groupHeadingClassName="text-sm text-gray-600 mb-2 font-bold"
+                  gapClassName="gap-2"
+                />
+                <ExamplesSection
+                  loadFlow={loadFlow}
+                  searchQuery={searchQuery}
+                />
+              </div>
             </div>
           </div>
         </OmniCanvasOverlay>

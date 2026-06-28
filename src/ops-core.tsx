@@ -11,19 +11,17 @@ import clsx from "clsx";
 import React, {
   Component,
   createContext,
-  Dispatch,
   ForwardedRef,
   forwardRef,
   memo,
   ReactNode,
-  SetStateAction,
   useCallback,
   useContext,
   useLayoutEffect,
   useState,
   useSyncExternalStore,
 } from "react";
-import { FaExpandArrowsAlt } from "react-icons/fa";
+import { LuPanelRight, LuPanelRightClose } from "react-icons/lu";
 import { UpdateProxy } from "update-proxy";
 import { Tex } from "./mygl.js";
 import {
@@ -640,9 +638,46 @@ export const SentenceParamSelect = <T extends string>({
   );
 };
 
-export const SetFullscreenModalTexContext = createContext<
-  Dispatch<SetStateAction<Tex | null>>
->(null as any);
+// A preview shows a single op *output* (a node can have several, e.g. the
+// selfie op), so we target by node id + output key rather than by node.
+export type PreviewTarget = { nodeId: string; outputKey: string };
+export type PreviewMode = "split" | "full";
+export type PreviewFit = "cover" | "contain";
+
+export type PreviewApi = {
+  target: PreviewTarget | null;
+  mode: PreviewMode;
+  fit: PreviewFit;
+  /** Open the given output in split mode (the entry point; `f` then toggles full). */
+  open: (target: PreviewTarget) => void;
+  setMode: (mode: PreviewMode) => void;
+  setFit: (fit: PreviewFit) => void;
+  close: () => void;
+};
+
+export const PreviewContext = createContext<PreviewApi>({
+  target: null,
+  mode: "split",
+  fit: "cover",
+  open: () => {},
+  setMode: () => {},
+  setFit: () => {},
+  close: () => {},
+});
+
+/** Resolve the live texture for a preview target, re-rendering as it updates. */
+export function usePreviewTex(target: PreviewTarget | null): Tex | null {
+  const opInstances = useContext(OpInstancesContext);
+  const instance = target ? (opInstances[target.nodeId] ?? null) : null;
+  const subscribe = useCallback(
+    (cb: () => void) => instance?.subscribe(cb) ?? (() => {}),
+    [instance],
+  );
+  useSyncExternalStore(subscribe, () => instance?.getRevision() ?? 0);
+  return instance && target
+    ? ((instance.runtime[target.outputKey] as Tex | null) ?? null)
+    : null;
+}
 
 export const TakeSnapshotContext = createContext<() => void>(() => {});
 
@@ -659,7 +694,10 @@ export const OutputHandle = <OutputKey extends string>({
 }) => {
   const nodeId = useNodeId();
 
-  const setFullscreenModalTex = useContext(SetFullscreenModalTexContext);
+  const preview = useContext(PreviewContext);
+  const isActive =
+    preview.target?.nodeId === nodeId &&
+    preview.target?.outputKey === outputKey;
 
   const [isHovered, setIsHovered] = useState(false);
 
@@ -689,7 +727,11 @@ export const OutputHandle = <OutputKey extends string>({
         id={makeOutputHandleId(nodeId, outputKey)}
         className={clsx(
           sharedHandleClasses,
-          "border-4 border-black hover:border-blue-300 relative",
+          "border-4 relative transition-all",
+          // Highlight the output currently shown in the preview pane.
+          isActive
+            ? "border-blue-500 ring-2 ring-blue-400"
+            : "border-black hover:border-blue-300",
           { "border-dashed": !output },
         )}
         style={{
@@ -709,15 +751,24 @@ export const OutputHandle = <OutputKey extends string>({
             }}
           />
         )}
-        {output && (isHovered || children) && (
+        {output && (isHovered || isActive || children) && (
           <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full pointer-events-none">
-            {isHovered && (
+            {(isHovered || isActive) && (
               <button
-                onClick={() => setFullscreenModalTex(output)}
-                className="absolute top-1 right-1 bg-black/70 text-white p-1 rounded hover:bg-black/90 transition-colors pointer-events-auto z-10"
-                title="View fullscreen"
+                onClick={() =>
+                  isActive
+                    ? preview.close()
+                    : preview.open({ nodeId, outputKey })
+                }
+                className={clsx(
+                  "absolute top-1 right-1 p-1 rounded transition-colors pointer-events-auto z-10",
+                  isActive
+                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                    : "bg-black/70 text-white hover:bg-black/90",
+                )}
+                title={isActive ? "Close preview" : "Preview (split-screen)"}
               >
-                <FaExpandArrowsAlt />
+                {isActive ? <LuPanelRightClose /> : <LuPanelRight />}
               </button>
             )}
             {children}

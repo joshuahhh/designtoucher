@@ -37,7 +37,7 @@ export default defineOp({
   initParams: (): PaintParams => ({
     dataURL: "",
     color: "#ffffff",
-    brushSize: 8,
+    brushSize: 80,
     tool: "brush",
   }),
   initRuntime(ctx) {

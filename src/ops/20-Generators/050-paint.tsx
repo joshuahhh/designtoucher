@@ -1,5 +1,5 @@
 import { Inset, Popover } from "@radix-ui/themes";
-import { Handle, Position, useNodeId } from "@xyflow/react";
+
 import clsx from "clsx";
 import { useCallback, useContext, useEffect, useRef } from "react";
 import { ChromePicker } from "react-color";
@@ -13,11 +13,9 @@ import {
 } from "../../OmniCanvas.js";
 import {
   defineOp,
-  makeOutputHandleId,
   MyPopoverContent,
   Sentence,
   SentenceParamNumber,
-  sharedHandleClasses,
   TakeSnapshotContext,
 } from "../../ops-core.js";
 
@@ -118,7 +116,6 @@ export default defineOp({
     const { params, paramsUP, runtime } = props;
     const containerRef = useRef<HTMLDivElement>(null);
     const takeSnapshot = useContext(TakeSnapshotContext);
-    const nodeId = useNodeId();
 
     const colorRef = useRef(params.color);
     colorRef.current = params.color;
@@ -294,8 +291,6 @@ export default defineOp({
       paramsUP.dataURL.$set("");
     }, [runtime, paramsUP, takeSnapshot]);
 
-    if (!nodeId) return null;
-
     return (
       <>
         <Sentence>Paint</Sentence>
@@ -365,7 +360,7 @@ export default defineOp({
         </div>
         <div
           ref={containerRef}
-          className="nodrag nopan overflow-hidden rounded-sm border-4 border-black"
+          className="nodrag nopan overflow-hidden rounded-sm border border-gray-300"
           style={{
             position: "relative",
             width: 200,
@@ -374,16 +369,7 @@ export default defineOp({
             background: CHECKER_BG,
           }}
         />
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          id={makeOutputHandleId(nodeId, "out")}
-          className={clsx(
-            sharedHandleClasses,
-            "!relative !transform-none border-2 border-black hover:border-blue-300",
-          )}
-          style={{ width: 200, height: 8 }}
-        />
+        <props.OutputHandle outputKey="out" showPreview={false} />
       </>
     );
   },

@@ -714,11 +714,13 @@ export const OutputHandle = <OutputKey extends string>({
   size,
   position: positionProp,
   children,
+  showPreview = true,
 }: {
   outputKey: OutputKey;
   size?: number;
   position?: Position;
   children?: ReactNode;
+  showPreview?: boolean;
 }) => {
   const nodeId = useNodeId();
 
@@ -756,7 +758,6 @@ export const OutputHandle = <OutputKey extends string>({
         className={clsx(
           sharedHandleClasses,
           "border-4 relative transition-all",
-          // Highlight the output currently shown in the preview pane.
           isActive
             ? "border-blue-500 ring-2 ring-blue-400"
             : "border-black hover:border-blue-300",
@@ -768,16 +769,20 @@ export const OutputHandle = <OutputKey extends string>({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {output ? (
-          <div className="-m-[1px]">
-            <Monitor tex={output} cornerRadiusPixels={20} />
-          </div>
+        {showPreview ? (
+          output ? (
+            <div className="-m-[1px]">
+              <Monitor tex={output} cornerRadiusPixels={20} />
+            </div>
+          ) : (
+            <div
+              style={{
+                aspectRatio: "1.77778 / 1",
+              }}
+            />
+          )
         ) : (
-          <div
-            style={{
-              aspectRatio: "1.77778 / 1",
-            }}
-          />
+          <div style={{ height: 8 }} />
         )}
         {output && (isHovered || isActive || children) && (
           <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full pointer-events-none">

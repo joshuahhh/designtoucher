@@ -642,6 +642,51 @@ export const SentenceParamSelect = <T extends string | number>({
   );
 };
 
+export const SentenceParamColor = ({
+  r,
+  g,
+  b,
+  rUP,
+  gUP,
+  bUP,
+}: {
+  r: number;
+  g: number;
+  b: number;
+  rUP: UpdateProxy<number>;
+  gUP: UpdateProxy<number>;
+  bUP: UpdateProxy<number>;
+}) => {
+  const takeSnapshot = useContext(TakeSnapshotContext);
+
+  const toHex = (n: number) =>
+    Math.round(Math.max(0, Math.min(1, n)) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  const hexValue = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+
+  return (
+    <span className="relative inline-block h-5 w-8 align-middle">
+      <span
+        className="absolute inset-0 rounded-md border border-gray-300 shadow-sm"
+        style={{ backgroundColor: hexValue }}
+      />
+      <input
+        type="color"
+        value={hexValue}
+        className="absolute inset-0 cursor-pointer opacity-0"
+        onChange={(e) => {
+          takeSnapshot();
+          const hex = e.target.value;
+          rUP.$set(parseInt(hex.slice(1, 3), 16) / 255);
+          gUP.$set(parseInt(hex.slice(3, 5), 16) / 255);
+          bUP.$set(parseInt(hex.slice(5, 7), 16) / 255);
+        }}
+      />
+    </span>
+  );
+};
+
 // A preview shows a single op *output* (a node can have several, e.g. the
 // selfie op), so we target by node id + output key rather than by node.
 export type PreviewTarget = { nodeId: string; outputKey: string };

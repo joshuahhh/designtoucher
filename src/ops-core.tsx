@@ -1,5 +1,5 @@
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { Popover, Slider } from "@radix-ui/themes";
+import { Inset, Popover, Slider } from "@radix-ui/themes";
 import {
   Handle,
   Position,
@@ -21,6 +21,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
+import { ChromePicker } from "react-color";
 import { LuPanelRight, LuPanelRightClose } from "react-icons/lu";
 import { UpdateProxy } from "update-proxy";
 import { Tex } from "./mygl.js";
@@ -646,44 +647,62 @@ export const SentenceParamColor = ({
   r,
   g,
   b,
+  a,
   rUP,
   gUP,
   bUP,
+  aUP,
 }: {
   r: number;
   g: number;
   b: number;
+  /** Optional alpha channel — pass `a`/`aUP` together to enable an alpha slider. */
+  a?: number;
   rUP: UpdateProxy<number>;
   gUP: UpdateProxy<number>;
   bUP: UpdateProxy<number>;
+  aUP?: UpdateProxy<number>;
 }) => {
   const takeSnapshot = useContext(TakeSnapshotContext);
 
-  const toHex = (n: number) =>
-    Math.round(Math.max(0, Math.min(1, n)) * 255)
-      .toString(16)
-      .padStart(2, "0");
-  const hexValue = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  // ChromePicker fires onChange continuously while dragging; snapshot only on
+  // the first change of an interaction (matching the number-param slider).
+  const [dragging, setDragging] = useState(false);
+
+  const swatchColor = aUP
+    ? `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(
+        b * 255,
+      )}, ${a ?? 1})`
+    : `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(
+        b * 255,
+      )})`;
 
   return (
-    <span className="relative inline-block h-5 w-8 align-middle">
-      <span
-        className="absolute inset-0 rounded-md border border-gray-300 shadow-sm"
-        style={{ backgroundColor: hexValue }}
-      />
-      <input
-        type="color"
-        value={hexValue}
-        className="absolute inset-0 cursor-pointer opacity-0"
-        onChange={(e) => {
-          takeSnapshot();
-          const hex = e.target.value;
-          rUP.$set(parseInt(hex.slice(1, 3), 16) / 255);
-          gUP.$set(parseInt(hex.slice(3, 5), 16) / 255);
-          bUP.$set(parseInt(hex.slice(5, 7), 16) / 255);
-        }}
-      />
-    </span>
+    <Popover.Root>
+      <Popover.Trigger>
+        <button
+          className="inline-block h-5 w-8 cursor-pointer rounded-md border border-gray-300 align-middle shadow-sm"
+          style={{ backgroundColor: swatchColor }}
+        />
+      </Popover.Trigger>
+      <MyPopoverContent>
+        <Inset>
+          <ChromePicker
+            disableAlpha={!aUP}
+            color={{ r: r * 255, g: g * 255, b: b * 255, a: a ?? 1 }}
+            onChange={({ rgb }) => {
+              if (!dragging) takeSnapshot();
+              setDragging(true);
+              rUP.$set(rgb.r / 255);
+              gUP.$set(rgb.g / 255);
+              bUP.$set(rgb.b / 255);
+              aUP?.$set(rgb.a ?? 1);
+            }}
+            onChangeComplete={() => setDragging(false)}
+          />
+        </Inset>
+      </MyPopoverContent>
+    </Popover.Root>
   );
 };
 

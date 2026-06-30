@@ -79,6 +79,19 @@ body,
   overflow: hidden;
 }
 
+html {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable]:not([contenteditable="false"]),
+.cm-editor {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 @font-face {
   font-display: swap;
   font-family: "Varela Round";

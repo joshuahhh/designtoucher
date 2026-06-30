@@ -2,13 +2,18 @@ import {
   DraggableRenderer,
   DragSpecBuilder,
   DragStatus,
+  lessThan,
+  param,
+  rotateDeg,
   Svgx,
+  translate,
 } from "dragology";
 import {
   ReactElement,
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -65,5 +70,71 @@ export function Gizmo<S extends object>({
         draggable={({ state, d }) => children({ state, d, W, H }) as Svgx}
       />
     </div>
+  );
+}
+
+type ArrowState = { angle: number; scale: number };
+
+export function ArrowGizmo({
+  angle,
+  scale,
+  onState,
+}: {
+  angle: number;
+  scale?: number;
+  onState: (s: { angle: number; scale: number }) => void;
+}) {
+  const s = scale ?? 1;
+  const hasScale = scale !== undefined;
+  const state = useMemo(() => ({ angle, scale: s }), [angle, s]);
+
+  return (
+    <Gizmo state={state} onState={onState}>
+      {({ state, d, W, H }) => {
+        const cx = W / 2;
+        const cy = H / 2;
+        const c = Math.min(cx, cy);
+        const halfLen = c * 0.7 * state.scale;
+        const a = (state.angle * Math.PI) / 180;
+        const cosA = Math.cos(a);
+        const sinA = Math.sin(a);
+        const dx = cosA * halfLen;
+        const dy = sinA * halfLen;
+        const headLen = Math.max(halfLen, 14);
+        const hdx = cosA * headLen;
+        const hdy = sinA * headLen;
+
+        const varyParams = hasScale
+          ? [param<ArrowState>("angle"), param<ArrowState>("scale")]
+          : [param<ArrowState>("angle")];
+
+        return (
+          <g>
+            <line
+              x1={cx - dx}
+              y1={cy - dy}
+              x2={cx + dx}
+              y2={cy + dy}
+              stroke={ACCENT}
+              strokeWidth={2}
+              pointerEvents="none"
+            />
+            <g
+              transform={translate(cx + hdx, cy + hdy) + rotateDeg(state.angle)}
+              dragologyOnDrag={() =>
+                d
+                  .vary(state, varyParams, {
+                    constraint: (s) => lessThan(0, s.scale),
+                  })
+                  .during((s) => ({ ...s, angle: Math.round(s.angle) }))
+              }
+            >
+              <polygon points="0,0 -10,-5 -10,5" fill={ACCENT} />
+              <circle r={12} fill="transparent" pointerEvents="all" />
+            </g>
+          </g>
+        );
+      }}
+    </Gizmo>
   );
 }

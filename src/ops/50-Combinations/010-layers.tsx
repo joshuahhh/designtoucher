@@ -118,6 +118,15 @@ export default defineOp({
       const tex = (inputs as Record<string, Tex | null>)[`layer_${order[i]}`];
       if (tex) layers.push({ tex, attrs: attrs[order[i]] || defaultAttrs });
     }
+    // Include provisional (not-yet-promoted) gap handle connections
+    const orderSet = new Set(order.map((id) => `layer_${id}`));
+    for (const [key, tex] of Object.entries(
+      inputs as Record<string, Tex | null>,
+    )) {
+      if (tex && key.startsWith("layer_") && !orderSet.has(key)) {
+        layers.push({ tex, attrs: defaultAttrs });
+      }
+    }
 
     if (layers.length === 0) return;
 
@@ -188,7 +197,9 @@ export default defineOp({
       for (let i = 0; i < gapCount; i++) {
         const key = `layer_${params.nextId + i}`;
         const handleId = makeInputHandleId(nodeId, key);
-        if (edges.some((e) => e.targetHandle === handleId)) {
+        if (
+          edges.some((e) => e.targetHandle === handleId && !e.data?.provisional)
+        ) {
           const layerId = params.nextId + i;
           paramsUP.order.$((order: number[]) => {
             const next = [...order];

@@ -800,6 +800,208 @@ const EditorOverlayClip = ({ children }: { children: ReactNode }) => {
   );
 };
 
+type ProvisionalConnection = {
+  source: string;
+  sourceHandle: string | null;
+  target: string;
+  targetHandle: string | null;
+};
+
+function useConnectionFeedforward(
+  flowRef: React.RefObject<Flow | null>,
+  flowUP: { edges: { $: (fn: (edges: Edge[]) => Edge[]) => void } },
+  provisionalRef: React.MutableRefObject<ProvisionalConnection | null>,
+  snapshotTakenRef: React.MutableRefObject<boolean>,
+  takeSnapshot: () => void,
+) {
+  const inProgress = useConnection((c) => c.inProgress);
+  const fromHandle = useConnection((c) => c.fromHandle);
+  const toHandle = useConnection((c) => c.toHandle);
+  const { screenToFlowPosition, getNodes } = useReactFlow();
+  const ffStore = useStoreApi();
+  const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
+  const preDragEdgesRef = useRef<Edge[] | null>(null);
+
+  useEffect(() => {
+    if (!inProgress) {
+      setHoverNodeId(null);
+      return;
+    }
+
+    const onMove = (e: PointerEvent) => {
+      const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const nodes = getNodes();
+      const hit = nodes.find((n) => {
+        if (n.type !== "operation") return false;
+        const w = n.measured?.width ?? 200;
+        const h = n.measured?.height ?? 100;
+        return (
+          pos.x >= n.position.x - w / 2 &&
+          pos.x <= n.position.x + w / 2 &&
+          pos.y >= n.position.y - h / 2 &&
+          pos.y <= n.position.y + h / 2
+        );
+      });
+      setHoverNodeId(hit?.id ?? null);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [inProgress, screenToFlowPosition, getNodes]);
+
+  useEffect(() => {
+    if (!inProgress) {
+      flowUP.edges.$((edges) => {
+        if (!edges.some((e) => e.data?.provisional)) return edges;
+        return edges.map((e) =>
+          e.data?.provisional
+            ? { ...e, data: { ...e.data, provisional: undefined } }
+            : e,
+        );
+      });
+      provisionalRef.current = null;
+      snapshotTakenRef.current = false;
+      preDragEdgesRef.current = null;
+      return;
+    }
+
+    if (!fromHandle?.id) return;
+
+    if (!preDragEdgesRef.current) {
+      preDragEdgesRef.current = flowRef.current?.edges ?? [];
+    }
+
+    const fromIsSource = fromHandle.type === "source";
+
+    let target: ProvisionalConnection | null = null;
+
+    if (toHandle && toHandle.nodeId !== fromHandle.nodeId) {
+      if (fromIsSource && toHandle.type === "target") {
+        target = {
+          source: fromHandle.nodeId,
+          sourceHandle: fromHandle.id,
+          target: toHandle.nodeId,
+          targetHandle: toHandle.id ?? null,
+        };
+      } else if (!fromIsSource && toHandle.type === "source") {
+        target = {
+          source: toHandle.nodeId,
+          sourceHandle: toHandle.id ?? null,
+          target: fromHandle.nodeId,
+          targetHandle: fromHandle.id,
+        };
+      }
+    }
+
+    if (!target && hoverNodeId && hoverNodeId !== fromHandle.nodeId) {
+      const nodes = getNodes();
+      const hitNode = nodes.find((n) => n.id === hoverNodeId);
+      if (hitNode?.type === "operation") {
+        const hitOp = opById((hitNode as OpNode).data.opId);
+        if (fromIsSource) {
+          let targetHandleId: string | undefined;
+          const allInputKeys = [
+            ...(hitOp.inputKeys ?? []),
+            ...(hitOp.inputKeysLate ?? []),
+          ];
+          if (allInputKeys.length > 0) {
+            targetHandleId = makeInputHandleId(hitNode.id, allInputKeys[0]);
+          } else {
+            const internal = ffStore.getState().nodeLookup.get(hitNode.id);
+            const firstHandle = internal?.internals.handleBounds?.target?.[0];
+            if (firstHandle?.id) targetHandleId = firstHandle.id;
+          }
+          if (targetHandleId) {
+            target = {
+              source: fromHandle.nodeId,
+              sourceHandle: fromHandle.id,
+              target: hitNode.id,
+              targetHandle: targetHandleId,
+            };
+          }
+        } else {
+          let sourceHandleId: string | undefined;
+          const allOutputKeys = hitOp.outputKeys ?? ["out"];
+          if (allOutputKeys.length > 0) {
+            sourceHandleId = makeOutputHandleId(hitNode.id, allOutputKeys[0]);
+          } else {
+            const internal = ffStore.getState().nodeLookup.get(hitNode.id);
+            const firstHandle = internal?.internals.handleBounds?.source?.[0];
+            if (firstHandle?.id) sourceHandleId = firstHandle.id;
+          }
+          if (sourceHandleId) {
+            target = {
+              source: hitNode.id,
+              sourceHandle: sourceHandleId,
+              target: fromHandle.nodeId,
+              targetHandle: fromHandle.id,
+            };
+          }
+        }
+      }
+    }
+
+    const prev = provisionalRef.current;
+    const same =
+      prev &&
+      target &&
+      prev.source === target.source &&
+      prev.sourceHandle === target.sourceHandle &&
+      prev.target === target.target &&
+      prev.targetHandle === target.targetHandle;
+
+    if (same) return;
+
+    if (prev) {
+      flowUP.edges.$((edges) =>
+        edges.filter(
+          (e) =>
+            !(
+              e.source === prev.source &&
+              e.sourceHandle === prev.sourceHandle &&
+              e.target === prev.target &&
+              e.targetHandle === prev.targetHandle
+            ),
+        ),
+      );
+      provisionalRef.current = null;
+    }
+
+    if (target) {
+      const preExisting = preDragEdgesRef.current!.some(
+        (e) =>
+          e.source === target!.source &&
+          e.sourceHandle === target!.sourceHandle &&
+          e.target === target!.target &&
+          e.targetHandle === target!.targetHandle,
+      );
+
+      if (!preExisting) {
+        if (!snapshotTakenRef.current) {
+          takeSnapshot();
+          snapshotTakenRef.current = true;
+        }
+        provisionalRef.current = target;
+        flowUP.edges.$((edges) =>
+          addEdge({ ...target!, data: { provisional: true } }, edges),
+        );
+      }
+    }
+  }, [
+    inProgress,
+    fromHandle,
+    toHandle,
+    hoverNodeId,
+    flowRef,
+    flowUP,
+    provisionalRef,
+    snapshotTakenRef,
+    takeSnapshot,
+    getNodes,
+    ffStore,
+  ]);
+}
+
 const FlowInnerNormalMode = ({
   flow,
   setFlow,
@@ -811,13 +1013,26 @@ const FlowInnerNormalMode = ({
 }) => {
   const ctx = useContext(OmniCanvasContext);
   const { screenToFlowPosition, getNodes } = useReactFlow();
+  const store = useStoreApi();
 
   const { takeSnapshot, pushSnapshot, undo, redo } = useUndo(flow, setFlow);
 
+  const flowRef = useRefForCallback(flow);
   const flowUP = up(setFlow);
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
+
+  const provisionalRef = useRef<ProvisionalConnection | null>(null);
+  const feedforwardSnapshotTakenRef = useRef(false);
+
+  useConnectionFeedforward(
+    flowRef,
+    flowUP,
+    provisionalRef,
+    feedforwardSnapshotTakenRef,
+    takeSnapshot,
+  );
 
   const transformPicker = useCallback(
     (nodeId: string, opId: AnyOpId) => {
@@ -1019,7 +1234,11 @@ const FlowInnerNormalMode = ({
 
   const onConnect = useCallback(
     (params: Connection) => {
-      takeSnapshot();
+      if (!provisionalRef.current) {
+        takeSnapshot();
+      }
+      provisionalRef.current = null;
+      feedforwardSnapshotTakenRef.current = false;
       // All handles accept multiple connections (multi-edges get implicitly summed).
       flowUP.edges.$((edges) => addEdge(params, edges));
     },
@@ -1093,7 +1312,17 @@ const FlowInnerNormalMode = ({
 
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
-      if (connectionState.isValid) return;
+      if (connectionState.isValid) {
+        provisionalRef.current = null;
+        feedforwardSnapshotTakenRef.current = false;
+        return;
+      }
+
+      if (provisionalRef.current) {
+        provisionalRef.current = null;
+        feedforwardSnapshotTakenRef.current = false;
+        return;
+      }
 
       const { fromHandle } = connectionState;
       if (!fromHandle?.id) return;
@@ -1167,6 +1396,79 @@ const FlowInnerNormalMode = ({
         return;
       }
 
+      // Dropped on an operation node's body → connect to its first input/output
+      const hitOpNode = rfNodes.find((n) => {
+        if (n.type !== "operation") return false;
+        if (n.id === fromHandle.nodeId) return false;
+        const w = n.measured?.width ?? 200;
+        const h = n.measured?.height ?? 100;
+        // nodeOrigin is [0.5, 0.5]
+        const left = n.position.x - w / 2;
+        const top = n.position.y - h / 2;
+        return (
+          dropPosition.x >= left &&
+          dropPosition.x <= left + w &&
+          dropPosition.y >= top &&
+          dropPosition.y <= top + h
+        );
+      }) as OpNode | undefined;
+
+      if (hitOpNode) {
+        const hitOp = opById(hitOpNode.data.opId);
+        if (mode === "input") {
+          let targetHandle: string | undefined;
+          const allInputKeys = [
+            ...(hitOp.inputKeys ?? []),
+            ...(hitOp.inputKeysLate ?? []),
+          ];
+          if (allInputKeys.length > 0) {
+            targetHandle = makeInputHandleId(hitOpNode.id, allInputKeys[0]);
+          } else {
+            const internal = store.getState().nodeLookup.get(hitOpNode.id);
+            const firstHandle = internal?.internals.handleBounds?.target?.[0];
+            if (firstHandle?.id) targetHandle = firstHandle.id;
+          }
+          if (targetHandle) {
+            flowUP.edges.$((edges) =>
+              addEdge(
+                {
+                  source: fromHandle.nodeId,
+                  sourceHandle: fromHandle.id ?? null,
+                  target: hitOpNode.id,
+                  targetHandle,
+                },
+                edges,
+              ),
+            );
+            return;
+          }
+        } else {
+          let sourceHandle: string | undefined;
+          const allOutputKeys = hitOp.outputKeys ?? ["out"];
+          if (allOutputKeys.length > 0) {
+            sourceHandle = makeOutputHandleId(hitOpNode.id, allOutputKeys[0]);
+          } else {
+            const internal = store.getState().nodeLookup.get(hitOpNode.id);
+            const firstHandle = internal?.internals.handleBounds?.source?.[0];
+            if (firstHandle?.id) sourceHandle = firstHandle.id;
+          }
+          if (sourceHandle) {
+            flowUP.edges.$((edges) =>
+              addEdge(
+                {
+                  source: hitOpNode.id,
+                  sourceHandle,
+                  target: fromHandle.nodeId,
+                  targetHandle: fromHandle.id ?? null,
+                },
+                edges,
+              ),
+            );
+            return;
+          }
+        }
+      }
+
       const PICKER_ENABLED = false;
       if (PICKER_ENABLED) {
         const newNodeId = getId();
@@ -1202,7 +1504,14 @@ const FlowInnerNormalMode = ({
         flowUP.edges.$((edges) => addEdge(newEdge, edges));
       }
     },
-    [screenToFlowPosition, flowUP.nodes, flowUP.edges, getNodes, takeSnapshot],
+    [
+      screenToFlowPosition,
+      flowUP.nodes,
+      flowUP.edges,
+      getNodes,
+      takeSnapshot,
+      store,
+    ],
   );
 
   useKeyBindings([
@@ -1242,7 +1551,6 @@ const FlowInnerNormalMode = ({
     },
   ]);
 
-  const store = useStoreApi();
   const { getEdges, deleteElements } = useReactFlow();
 
   const onPaneClick = useCallback(() => {

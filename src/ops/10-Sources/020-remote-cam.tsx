@@ -94,7 +94,7 @@ export default defineOp({
       );
     }
 
-    const senderUrl = window.location.href + "#sender/" + id;
+    const senderUrl = "https://joshuahhh.com/designtoucher/#sender/" + id;
     const buttonClassName = clsx(
       "border border-gray-300 rounded-md p-1 shadow-sm hover:bg-gray-50 transition-colors",
     );

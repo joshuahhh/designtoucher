@@ -106,3 +106,17 @@ textarea,
 .react-flow__edges {
   z-index: 1001;
 }
+
+/* A wire whose drop would create a loop: thick, red. */
+.react-flow__edge.cyclic-edge .react-flow__edge-path {
+  stroke: #ef4444;
+  stroke-width: 5;
+  filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.9));
+}
+
+/* The existing wires that close the loop: bolded red so the cycle is obvious. */
+.react-flow__edge.loop-edge .react-flow__edge-path {
+  stroke: #ef4444;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.55));
+}

@@ -805,7 +805,67 @@ type ProvisionalConnection = {
   sourceHandle: string | null;
   target: string;
   targetHandle: string | null;
+  cyclic?: boolean;
 };
+
+/**
+ * Would adding a data-flow edge source→target create a cycle among `edges`?
+ * Data flows source→target, so a loop forms iff `target` can already reach
+ * `source` going downstream — the new edge would close that path.
+ */
+function wouldCreateCycle(
+  source: string,
+  target: string,
+  edges: Edge[],
+): boolean {
+  if (source === target) return true;
+  return getTransitiveDownstream(target, edges).has(source);
+}
+
+/**
+ * IDs of the existing edges that, together with a cyclic edge source→target,
+ * form the loop — i.e. a shortest path of edges from `target` back to `source`.
+ * `edges` should exclude the provisional edge itself.
+ */
+function findLoopEdgeIds(
+  source: string,
+  target: string,
+  edges: Edge[],
+): Set<string> {
+  const adj = new Map<string, Edge[]>();
+  for (const e of edges) {
+    let outs = adj.get(e.source);
+    if (!outs) {
+      outs = [];
+      adj.set(e.source, outs);
+    }
+    outs.push(e);
+  }
+  const prevEdge = new Map<string, Edge>();
+  const visited = new Set<string>([target]);
+  const queue = [target];
+  let qi = 0;
+  while (qi < queue.length) {
+    const cur = queue[qi++];
+    if (cur === source) break;
+    for (const e of adj.get(cur) ?? []) {
+      if (!visited.has(e.target)) {
+        visited.add(e.target);
+        prevEdge.set(e.target, e);
+        queue.push(e.target);
+      }
+    }
+  }
+  const result = new Set<string>();
+  let node = source;
+  while (node !== target) {
+    const e = prevEdge.get(node);
+    if (!e) break;
+    result.add(e.id);
+    node = e.source;
+  }
+  return result;
+}
 
 function useConnectionFeedforward(
   flowRef: React.RefObject<Flow | null>,
@@ -853,11 +913,21 @@ function useConnectionFeedforward(
     if (!inProgress) {
       flowUP.edges.$((edges) => {
         if (!edges.some((e) => e.data?.provisional)) return edges;
-        return edges.map((e) =>
-          e.data?.provisional
-            ? { ...e, data: { ...e.data, provisional: undefined } }
-            : e,
-        );
+        // Drop loop-creating previews; commit the rest by clearing the flag.
+        return edges
+          .filter((e) => !(e.data?.provisional && e.data?.cyclic))
+          .map((e) =>
+            e.data?.provisional
+              ? {
+                  ...e,
+                  data: {
+                    ...e.data,
+                    provisional: undefined,
+                    cyclic: undefined,
+                  },
+                }
+              : e,
+          );
       });
       provisionalRef.current = null;
       snapshotTakenRef.current = false;
@@ -875,7 +945,11 @@ function useConnectionFeedforward(
 
     let target: ProvisionalConnection | null = null;
 
-    if (toHandle && toHandle.nodeId !== fromHandle.nodeId) {
+    // Same-node connections are allowed through here so a self-loop still gets
+    // a preview edge (it'll be flagged cyclic and rejected). The hover-node-body
+    // path below still excludes the origin node, so we don't flash red the
+    // instant a drag starts over its own node.
+    if (toHandle) {
       if (fromIsSource && toHandle.type === "target") {
         target = {
           source: fromHandle.nodeId,
@@ -977,13 +1051,20 @@ function useConnectionFeedforward(
       );
 
       if (!preExisting) {
-        if (!snapshotTakenRef.current) {
+        const cyclic = wouldCreateCycle(
+          target.source,
+          target.target,
+          preDragEdgesRef.current!,
+        );
+        // A cyclic preview will be rejected on drop, so don't snapshot for it —
+        // that would leave a no-op entry in the undo history.
+        if (!cyclic && !snapshotTakenRef.current) {
           takeSnapshot();
           snapshotTakenRef.current = true;
         }
-        provisionalRef.current = target;
+        provisionalRef.current = { ...target, cyclic };
         flowUP.edges.$((edges) =>
-          addEdge({ ...target!, data: { provisional: true } }, edges),
+          addEdge({ ...target!, data: { provisional: true, cyclic } }, edges),
         );
       }
     }
@@ -1234,6 +1315,20 @@ const FlowInnerNormalMode = ({
 
   const onConnect = useCallback(
     (params: Connection) => {
+      // Refuse connections that would create a loop. The cyclic preview edge (if
+      // any) is left for the feedforward cleanup to remove on drag-end.
+      const baseEdges = (flowRef.current?.edges ?? []).filter(
+        (e) => !e.data?.provisional,
+      );
+      if (
+        params.source &&
+        params.target &&
+        wouldCreateCycle(params.source, params.target, baseEdges)
+      ) {
+        provisionalRef.current = null;
+        feedforwardSnapshotTakenRef.current = false;
+        return;
+      }
       if (!provisionalRef.current) {
         takeSnapshot();
       }
@@ -1242,7 +1337,7 @@ const FlowInnerNormalMode = ({
       // All handles accept multiple connections (multi-edges get implicitly summed).
       flowUP.edges.$((edges) => addEdge(params, edges));
     },
-    [flowUP.edges, takeSnapshot],
+    [flowUP.edges, takeSnapshot, flowRef],
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -1414,6 +1509,14 @@ const FlowInnerNormalMode = ({
       }) as OpNode | undefined;
 
       if (hitOpNode) {
+        // Refuse a body-drop connection that would create a loop.
+        const candSource = mode === "input" ? fromHandle.nodeId : hitOpNode.id;
+        const candTarget = mode === "input" ? hitOpNode.id : fromHandle.nodeId;
+        if (
+          wouldCreateCycle(candSource, candTarget, flowRef.current?.edges ?? [])
+        ) {
+          return;
+        }
         const hitOp = opById(hitOpNode.data.opId);
         if (mode === "input") {
           let targetHandle: string | undefined;
@@ -1511,6 +1614,7 @@ const FlowInnerNormalMode = ({
       getNodes,
       takeSnapshot,
       store,
+      flowRef,
     ],
   );
 
@@ -1647,21 +1751,35 @@ const FlowInnerNormalMode = ({
 
   useCopyPaste({ getSelection, onPaste });
 
-  const styledEdges = useMemo(
-    () =>
-      flow.edges.map((e) => {
-        // TODO: we should prob make a custom edge at some point
-        const { nodeId, key } = parseInputHandleId(e.targetHandle!);
-        const node = flow.nodes.find((n) => n.id === nodeId);
-        const op = node?.type === "operation" ? opById(node.data.opId) : null;
-        const isLate = op?.inputKeysLate?.includes(key);
-        return {
-          ...e,
-          className: clsx({ "[stroke-dasharray:5,5]": isLate }),
-        };
-      }),
-    [flow.edges, flow.nodes],
-  );
+  const styledEdges = useMemo(() => {
+    // While a loop-creating wire is being previewed, also highlight the existing
+    // edges that close the loop.
+    const cyclicProvisional = flow.edges.find(
+      (e) => e.data?.provisional && e.data?.cyclic,
+    );
+    const loopEdgeIds = cyclicProvisional
+      ? findLoopEdgeIds(
+          cyclicProvisional.source,
+          cyclicProvisional.target,
+          flow.edges.filter((e) => e.id !== cyclicProvisional.id),
+        )
+      : null;
+    return flow.edges.map((e) => {
+      // TODO: we should prob make a custom edge at some point
+      const { nodeId, key } = parseInputHandleId(e.targetHandle!);
+      const node = flow.nodes.find((n) => n.id === nodeId);
+      const op = node?.type === "operation" ? opById(node.data.opId) : null;
+      const isLate = op?.inputKeysLate?.includes(key);
+      return {
+        ...e,
+        className: clsx({
+          "[stroke-dasharray:5,5]": isLate,
+          "cyclic-edge": e.data?.provisional && e.data?.cyclic,
+          "loop-edge": loopEdgeIds?.has(e.id),
+        }),
+      };
+    });
+  }, [flow.edges, flow.nodes]);
 
   return (
     <TakeSnapshotContext.Provider value={takeSnapshot}>

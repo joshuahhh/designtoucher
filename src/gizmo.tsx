@@ -73,6 +73,8 @@ export function Gizmo<S extends object>({
   );
 }
 
+const mod = (a: number, n: number) => ((a % n) + n) % n;
+
 type ArrowState = { angle: number; scale: number };
 
 export function ArrowGizmo({
@@ -126,7 +128,10 @@ export function ArrowGizmo({
                   .vary(state, varyParams, {
                     constraint: (s) => lessThan(0, s.scale),
                   })
-                  .during((s) => ({ ...s, angle: Math.round(s.angle) }))
+                  .during((s) => ({
+                    ...s,
+                    angle: mod(Math.round(s.angle) + 180, 360) - 180,
+                  }))
               }
             >
               <polygon points="0,0 -10,-5 -10,5" fill={ACCENT} />

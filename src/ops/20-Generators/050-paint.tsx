@@ -5,11 +5,18 @@ import { useCallback, useContext, useEffect, useRef } from "react";
 import { ChromePicker } from "react-color";
 import { FaTrash } from "react-icons/fa";
 import { LuBrush, LuEraser } from "react-icons/lu";
-import { newTex } from "../../mygl.js";
+import {
+  destroyFbo,
+  ensureFboSize,
+  newFbo,
+  newTex,
+  ShaderProgram,
+} from "../../mygl.js";
 import {
   CHECKER_DARK,
   CHECKER_LIGHT,
   CHECKER_PIXELS,
+  Monitor,
 } from "../../OmniCanvas.js";
 import {
   defineOp,
@@ -32,6 +39,79 @@ type PaintParams = {
   tool: "brush" | "eraser";
 };
 
+const BRUSH_VERT = `
+  attribute vec2 position;
+  varying vec2 uv;
+  void main() {
+    uv = 0.5 * (position + 1.0);
+    gl_Position = vec4(position, 0.0, 1.0);
+  }
+`;
+
+const BRUSH_FRAG = `
+  precision mediump float;
+  varying vec2 uv;
+  uniform sampler2D existing;
+  uniform vec2 p1;
+  uniform vec2 p2;
+  uniform float radius;
+  uniform vec3 brushColor;
+  uniform vec2 resolution;
+  uniform int tool;
+
+  void main() {
+    vec2 pos = vec2(uv.x, 1.0 - uv.y) * resolution;
+
+    vec2 ab = p2 - p1;
+    float abLen2 = dot(ab, ab);
+    float t = abLen2 > 0.0 ? clamp(dot(pos - p1, ab) / abLen2, 0.0, 1.0) : 0.0;
+    float d = length(pos - p1 - ab * t) - radius;
+
+    float srcA = clamp(0.5 - d, 0.0, 1.0);
+
+    vec4 dst = texture2D(existing, uv);
+
+    if (tool == 0) {
+      // Source-over compositing in straight alpha
+      float dstA = dst.a;
+      float outA = srcA + dstA * (1.0 - srcA);
+      vec3 outRGB = outA > 0.001
+        ? (brushColor * srcA + dst.rgb * dstA * (1.0 - srcA)) / outA
+        : vec3(0.0);
+      gl_FragColor = vec4(outRGB, outA);
+    } else {
+      // Destination-out (eraser)
+      gl_FragColor = vec4(dst.rgb, dst.a * (1.0 - srcA));
+    }
+  }
+`;
+
+const hexToRgb = (hex: string): [number, number, number] => {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+
+function readFboToDataURL(gl: WebGL2RenderingContext, fb: WebGLFramebuffer) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  const pixels = new Uint8Array(W * H * 4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  const flipped = new Uint8Array(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    const src = (H - 1 - y) * W * 4;
+    flipped.set(pixels.subarray(src, src + W * 4), y * W * 4);
+  }
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  c.getContext("2d")!.putImageData(
+    new ImageData(new Uint8ClampedArray(flipped.buffer), W, H),
+    0,
+    0,
+  );
+  return c.toDataURL();
+}
+
 export default defineOp({
   id: "paint",
   initParams: (): PaintParams => ({
@@ -41,29 +121,34 @@ export default defineOp({
     tool: "brush",
   }),
   initRuntime(ctx) {
-    const canvas = document.createElement("canvas");
-    canvas.width = W;
-    canvas.height = H;
+    const { gl } = ctx;
+    const outFbo = newFbo(gl);
+    ensureFboSize(outFbo, W, H);
+    const readTex = newTex(gl, W, H);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, outFbo.framebuffer);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
     return {
-      out: newTex(ctx.gl, W, H),
-      canvas,
-      dirty: false,
+      gl,
+      outFbo,
+      readTex,
+      brushProgram: new ShaderProgram(gl, BRUSH_VERT, BRUSH_FRAG),
+      out: outFbo.tex,
       lastSyncedDataURL: "" as string,
     };
   },
   run({ runtime, params, ctx, notify }) {
     const { gl } = ctx;
 
-    // Restore canvas from saved data (initial load or undo)
     if (params.dataURL !== runtime.lastSyncedDataURL) {
       runtime.lastSyncedDataURL = params.dataURL;
       if (params.dataURL) {
         const img = new Image();
         img.onload = () => {
-          const c = runtime.canvas.getContext("2d")!;
-          c.clearRect(0, 0, W, H);
-          c.drawImage(img, 0, 0);
-          gl.bindTexture(gl.TEXTURE_2D, runtime.out.texture);
+          gl.bindTexture(gl.TEXTURE_2D, runtime.outFbo.tex.texture);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
           gl.texSubImage2D(
             gl.TEXTURE_2D,
@@ -72,45 +157,22 @@ export default defineOp({
             0,
             gl.RGBA,
             gl.UNSIGNED_BYTE,
-            runtime.canvas,
+            img,
           );
           notify();
         };
         img.src = params.dataURL;
       } else {
-        runtime.canvas.getContext("2d")!.clearRect(0, 0, W, H);
-        gl.bindTexture(gl.TEXTURE_2D, runtime.out.texture);
-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-        gl.texSubImage2D(
-          gl.TEXTURE_2D,
-          0,
-          0,
-          0,
-          gl.RGBA,
-          gl.UNSIGNED_BYTE,
-          runtime.canvas,
-        );
+        gl.bindFramebuffer(gl.FRAMEBUFFER, runtime.outFbo.framebuffer);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       }
-      return;
-    }
-
-    if (runtime.dirty) {
-      runtime.dirty = false;
-      gl.bindTexture(gl.TEXTURE_2D, runtime.out.texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        runtime.canvas,
-      );
     }
   },
-  destroy({ runtime, ctx }) {
-    ctx.gl.deleteTexture(runtime.out.texture);
+  destroy({ runtime }) {
+    destroyFbo(runtime.outFbo);
+    runtime.gl.deleteTexture(runtime.readTex.texture);
   },
   Render(props) {
     const { params, paramsUP, runtime } = props;
@@ -130,18 +192,8 @@ export default defineOp({
 
     useEffect(() => {
       if (!runtime) return;
-      const canvas = runtime.canvas;
       const container = containerRef.current;
       if (!container) return;
-
-      canvas.style.position = "absolute";
-      canvas.style.inset = "0";
-      canvas.style.width = "100%";
-      canvas.style.height = "100%";
-      canvas.style.display = "block";
-      canvas.style.cursor = "crosshair";
-      canvas.className = "nodrag nopan";
-      container.appendChild(canvas);
 
       const cursorDiv = document.createElement("div");
       cursorDiv.style.position = "absolute";
@@ -149,13 +201,14 @@ export default defineOp({
       cursorDiv.style.border = "1.5px solid rgba(0,0,0,0.5)";
       cursorDiv.style.pointerEvents = "none";
       cursorDiv.style.display = "none";
+      cursorDiv.style.zIndex = "10";
       container.appendChild(cursorDiv);
 
       const updateCursor = (e: PointerEvent) => {
-        const rect = canvas.getBoundingClientRect();
+        const rect = container.getBoundingClientRect();
+        const localScale = container.offsetWidth / W;
         const zoom =
-          canvas.offsetWidth > 0 ? rect.width / canvas.offsetWidth : 1;
-        const localScale = canvas.offsetWidth / W;
+          container.offsetWidth > 0 ? rect.width / container.offsetWidth : 1;
         const size = brushSizeRef.current * localScale;
         const x = (e.clientX - rect.left) / zoom;
         const y = (e.clientY - rect.top) / zoom;
@@ -166,94 +219,79 @@ export default defineOp({
         cursorDiv.style.display = "block";
       };
 
-      const ctx2d = canvas.getContext("2d")!;
       let drawing = false;
       let lastX = 0;
       let lastY = 0;
 
       const getPos = (e: PointerEvent) => {
-        const rect = canvas.getBoundingClientRect();
+        const rect = container.getBoundingClientRect();
         return {
           x: ((e.clientX - rect.left) / rect.width) * W,
           y: ((e.clientY - rect.top) / rect.height) * H,
         };
       };
 
+      const drawBrushGL = (x1: number, y1: number, x2: number, y2: number) => {
+        const gl = runtime.gl;
+
+        // Snapshot current FBO into read texture
+        gl.bindFramebuffer(gl.FRAMEBUFFER, runtime.outFbo.framebuffer);
+        gl.bindTexture(gl.TEXTURE_2D, runtime.readTex.texture);
+        gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, W, H);
+
+        const [r, g, b] = hexToRgb(colorRef.current);
+
+        runtime.brushProgram.run({
+          viewport: [0, 0, W, H],
+          uniforms: {
+            existing: ["sampler2D", runtime.readTex.texture],
+            p1: ["2f", [x1, y1]],
+            p2: ["2f", [x2, y2]],
+            radius: ["1f", brushSizeRef.current / 2],
+            brushColor: ["3f", [r / 255, g / 255, b / 255]],
+            resolution: ["2f", [W, H]],
+            tool: ["1i", toolRef.current === "eraser" ? 1 : 0],
+          },
+          fullscreen: true,
+          targetFramebuffer: runtime.outFbo.framebuffer,
+        });
+      };
+
       const onPointerDown = (e: PointerEvent) => {
         if (e.button !== 0) return;
         e.stopPropagation();
-        const rect = canvas.getBoundingClientRect();
         console.log("paint pointerdown", {
-          drawing,
-          rectW: rect.width,
-          rectH: rect.height,
-          offsetW: canvas.offsetWidth,
-          offsetH: canvas.offsetHeight,
           color: colorRef.current,
           brushSize: brushSizeRef.current,
-          canvasParent: canvas.parentElement?.tagName,
         });
         takeSnapshotRef.current();
         drawing = true;
-        canvas.setPointerCapture(e.pointerId);
+        container.setPointerCapture(e.pointerId);
         const pos = getPos(e);
         lastX = pos.x;
         lastY = pos.y;
 
-        const size = brushSizeRef.current;
-        ctx2d.globalCompositeOperation =
-          toolRef.current === "eraser" ? "destination-out" : "source-over";
-        ctx2d.fillStyle = colorRef.current;
-        ctx2d.beginPath();
-        ctx2d.arc(pos.x, pos.y, size / 2, 0, Math.PI * 2);
-        ctx2d.fill();
-        const pixel = ctx2d.getImageData(
-          Math.round(pos.x),
-          Math.round(pos.y),
-          1,
-          1,
-        ).data;
-        console.log(
-          "paint after fill",
-          "pos:",
-          pos.x,
-          pos.y,
-          "pixel:",
-          pixel[0],
-          pixel[1],
-          pixel[2],
-          pixel[3],
-        );
-        runtime.dirty = true;
+        drawBrushGL(pos.x, pos.y, pos.x, pos.y);
       };
 
       const onPointerMove = (e: PointerEvent) => {
         updateCursor(e);
         if (!drawing) return;
         const pos = getPos(e);
-        const size = brushSizeRef.current;
 
-        ctx2d.globalCompositeOperation =
-          toolRef.current === "eraser" ? "destination-out" : "source-over";
-        ctx2d.strokeStyle = colorRef.current;
-        ctx2d.lineWidth = size;
-        ctx2d.lineCap = "round";
-        ctx2d.lineJoin = "round";
-        ctx2d.beginPath();
-        ctx2d.moveTo(lastX, lastY);
-        ctx2d.lineTo(pos.x, pos.y);
-        ctx2d.stroke();
+        drawBrushGL(lastX, lastY, pos.x, pos.y);
 
         lastX = pos.x;
         lastY = pos.y;
-        runtime.dirty = true;
       };
 
       const onPointerUp = () => {
         if (!drawing) return;
         drawing = false;
-        ctx2d.globalCompositeOperation = "source-over";
-        const dataURL = canvas.toDataURL();
+        const dataURL = readFboToDataURL(
+          runtime.gl,
+          runtime.outFbo.framebuffer,
+        );
         runtime.lastSyncedDataURL = dataURL;
         paramsUPRef.current.dataURL.$set(dataURL);
       };
@@ -262,31 +300,32 @@ export default defineOp({
         if (!drawing) cursorDiv.style.display = "none";
       };
 
-      console.log("paint effect setup", {
-        canvasInDOM: canvas.isConnected,
-        containerChildren: container.childNodes.length,
-      });
-      canvas.addEventListener("pointerdown", onPointerDown);
-      canvas.addEventListener("pointermove", onPointerMove);
-      canvas.addEventListener("pointerleave", onPointerLeave);
-      canvas.addEventListener("pointerup", onPointerUp);
+      console.log("paint effect setup");
+      container.addEventListener("pointerdown", onPointerDown);
+      container.addEventListener("pointermove", onPointerMove);
+      container.addEventListener("pointerleave", onPointerLeave);
+      container.addEventListener("pointerup", onPointerUp);
 
       return () => {
         console.log("paint effect cleanup");
-        canvas.removeEventListener("pointerdown", onPointerDown);
-        canvas.removeEventListener("pointermove", onPointerMove);
-        canvas.removeEventListener("pointerleave", onPointerLeave);
-        canvas.removeEventListener("pointerup", onPointerUp);
+        container.removeEventListener("pointerdown", onPointerDown);
+        container.removeEventListener("pointermove", onPointerMove);
+        container.removeEventListener("pointerleave", onPointerLeave);
+        container.removeEventListener("pointerup", onPointerUp);
         cursorDiv.remove();
-        canvas.remove();
       };
     }, [runtime]);
 
     const handleClear = useCallback(() => {
       if (!runtime) return;
       takeSnapshot();
-      runtime.canvas.getContext("2d")!.clearRect(0, 0, W, H);
-      runtime.dirty = true;
+
+      const gl = runtime.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, runtime.outFbo.framebuffer);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
       runtime.lastSyncedDataURL = "";
       paramsUP.dataURL.$set("");
     }, [runtime, paramsUP, takeSnapshot]);
@@ -368,7 +407,11 @@ export default defineOp({
             cursor: "crosshair",
             background: CHECKER_BG,
           }}
-        />
+        >
+          {runtime && (
+            <Monitor tex={runtime.out} checkerboardPixels={CHECKER_PIXELS} />
+          )}
+        </div>
         <props.OutputHandle outputKey="out" showPreview={false} />
       </>
     );

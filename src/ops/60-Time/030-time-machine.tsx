@@ -49,9 +49,9 @@ export default defineOp({
 
           void main(){
             // index texture gives offset [0,1] → [0,DEPTH)
-            float offsetF = texture(uIndex, vUV).r * float(uDepth);
-            int   offset  = int(offsetF + 0.5);            // round to nearest slice
-            int   layer   = wrap(uHead - offset, uDepth);
+            float offsetF = texture(uIndex, vUV).r * float(uDepth - 1);
+            int   offset  = int(offsetF + 0.5);
+            int   layer   = wrap(uHead - 1 - offset, uDepth);
             float w       = (float(layer) + 0.5) / float(uDepth);  // texel centre
             frag = texture(uTex3D, vec3(vUV, w));
           }

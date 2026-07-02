@@ -94,6 +94,7 @@ import {
   useReactFlowSelection,
 } from "./react-flow-util.js";
 import { getTransitiveDownstream, getTransitiveUpstream } from "./toposort.js";
+import { PhoneCaptureState } from "./usePhoneCapture.js";
 import { useRefForCallback } from "./useRefForCallback.js";
 import { useUndo } from "./useUndo.js";
 import { animate, tuple } from "./util.js";
@@ -311,16 +312,22 @@ const nodeTypes: NodeTypes = {
 export const Flow = ({
   flow,
   setFlow,
+  phoneCapture,
 }: {
   flow: Flow;
   setFlow: Dispatch<SetStateAction<Flow>>;
+  phoneCapture: PhoneCaptureState;
 }) => (
   <div className="flex w-full h-full overflow-hidden box-border relative">
     <ReactFlowProvider>
       <OmniCanvasHost>
         {/* !min-h-[initial] is to override some default radix-theme thing that uses dvh and messes up height on ipad (!!!) */}
         <Theme appearance="light" className="w-full h-full !min-h-[initial]">
-          <FlowInner flow={flow} setFlow={setFlow} />
+          <FlowInner
+            flow={flow}
+            setFlow={setFlow}
+            phoneCapture={phoneCapture}
+          />
         </Theme>
       </OmniCanvasHost>
     </ReactFlowProvider>
@@ -397,9 +404,11 @@ const cloneForPaste = (
 const FlowInner = ({
   flow,
   setFlow,
+  phoneCapture,
 }: {
   flow: Flow;
   setFlow: Dispatch<SetStateAction<Flow>>;
+  phoneCapture: PhoneCaptureState;
 }) => {
   const ctx = useContext(OmniCanvasContext);
 
@@ -590,6 +599,7 @@ const FlowInner = ({
                 flow={flow}
                 setFlow={setFlow}
                 resetOpInstances={resetOpInstances}
+                phoneCapture={phoneCapture}
               />
             </EditorOverlayClip>
           </div>
@@ -1105,10 +1115,12 @@ const FlowInnerNormalMode = ({
   flow,
   setFlow,
   resetOpInstances,
+  phoneCapture,
 }: {
   flow: Flow;
   setFlow: Dispatch<SetStateAction<Flow>>;
   resetOpInstances: () => void;
+  phoneCapture: PhoneCaptureState;
 }) => {
   const ctx = useContext(OmniCanvasContext);
   const { screenToFlowPosition, getNodes } = useReactFlow();
@@ -1839,6 +1851,7 @@ const FlowInnerNormalMode = ({
                     onDelete={deleteSelected}
                     flow={flow}
                     loadFlow={loadFlow}
+                    phoneCapture={phoneCapture}
                   />
                 </div>
               </OmniCanvasOverlay>
@@ -1860,17 +1873,19 @@ const Toolbar = memo(function Toolbar({
   onDelete,
   flow,
   loadFlow,
+  phoneCapture,
 }: {
   onDelete: () => void;
   flow: Flow;
   loadFlow: (flow: Flow) => void;
+  phoneCapture: PhoneCaptureState;
 }) {
   const { selectedNodes, selectedEdges } = useReactFlowSelection<Node, Edge>();
   const hasSelection = selectedNodes.length > 0 || selectedEdges.length > 0;
 
   return (
     <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 select-none">
-      <Menu flow={flow} loadFlow={loadFlow} />
+      <Menu flow={flow} loadFlow={loadFlow} phoneCapture={phoneCapture} />
       {hasSelection && (
         <button
           onClick={onDelete}

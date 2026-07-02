@@ -4,6 +4,7 @@ import { use100vh } from "react-div-100vh";
 import { Flow, initialFlow } from "./lib.js";
 import { clearProjectFromURL, getProjectFromURL } from "./share.js";
 import { useIDB } from "./useIDB.js";
+import { usePhoneCapture } from "./usePhoneCapture.js";
 
 export const App = () => {
   const projectOverride = useMemo(() => {
@@ -17,6 +18,9 @@ export const App = () => {
     () => initialFlow,
     projectOverride,
   );
+
+  const phoneCapture = usePhoneCapture(setFlow);
+
   const height = use100vh();
 
   if (!height) {
@@ -28,7 +32,7 @@ export const App = () => {
       className={clsx("w-full h-full", { "p-20 bg-red-500": false })}
       style={{ height }}
     >
-      <Flow flow={flow} setFlow={setFlow} />
+      <Flow flow={flow} setFlow={setFlow} phoneCapture={phoneCapture} />
     </div>
   );
 };

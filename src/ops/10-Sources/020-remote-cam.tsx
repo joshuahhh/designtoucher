@@ -4,6 +4,7 @@ import Peer from "peerjs";
 import { QRCodeSVG } from "qrcode.react";
 import { LuCopy, LuQrCode } from "react-icons/lu";
 import { CopyButton } from "../../CopyButton.js";
+import { BASE_URL } from "../../lib.js";
 import { newTex, Tex } from "../../mygl.js";
 import { defineOp, MyPopoverContent, Sentence } from "../../ops-core.js";
 import { stopStream, WebcamStream } from "../../webcam.js";
@@ -94,7 +95,7 @@ export default defineOp({
       );
     }
 
-    const senderUrl = "https://joshuahhh.com/designtoucher/#sender/" + id;
+    const senderUrl = BASE_URL + "/sender/" + id;
     const buttonClassName = clsx(
       "border border-gray-300 rounded-md p-1 shadow-sm hover:bg-gray-50 transition-colors",
     );

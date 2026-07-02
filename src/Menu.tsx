@@ -1,10 +1,21 @@
 import { clsx } from "clsx";
+import { QRCodeSVG } from "qrcode.react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { FaBars, FaDownload, FaFile, FaLink, FaUpload } from "react-icons/fa6";
+import {
+  FaBars,
+  FaCamera,
+  FaDownload,
+  FaFile,
+  FaLink,
+  FaUpload,
+  FaXmark,
+} from "react-icons/fa6";
 
 import { Flow } from "./Flow.js";
 import { initialFlow } from "./initialFlow.js";
+import { BASE_URL } from "./lib.js";
 import { makeShareUrl } from "./share.js";
+import { PhoneCaptureState } from "./usePhoneCapture.js";
 
 type Toast = {
   message: string;
@@ -14,12 +25,15 @@ type Toast = {
 export const Menu = memo(function Menu({
   flow,
   loadFlow,
+  phoneCapture,
 }: {
   flow: Flow;
   loadFlow: (flow: Flow) => void;
+  phoneCapture: PhoneCaptureState;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [captureOpen, setCaptureOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -119,6 +133,11 @@ export const Menu = memo(function Menu({
     setIsOpen(false);
   }, [loadFlow]);
 
+  const handlePhoneCamera = useCallback(() => {
+    setCaptureOpen(true);
+    setIsOpen(false);
+  }, []);
+
   const itemClass =
     "w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded transition-colors flex items-center gap-2";
 
@@ -134,8 +153,12 @@ export const Menu = memo(function Menu({
 
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-48 z-50">
+          <button onClick={handlePhoneCamera} className={itemClass}>
+            <FaCamera className="w-3.5 h-3.5 shrink-0" /> Phone Camera
+          </button>
+          <div className="border-t border-gray-200 my-1" />
           <button onClick={handleShare} className={itemClass}>
-            <FaLink className="w-3.5 h-3.5 shrink-0" /> Copy Link
+            <FaLink className="w-3.5 h-3.5 shrink-0" /> Share Link
           </button>
           <button onClick={handleSave} className={itemClass}>
             <FaDownload className="w-3.5 h-3.5 shrink-0" /> Save File
@@ -179,6 +202,61 @@ export const Menu = memo(function Menu({
           </button>
         </div>
       )}
+
+      {captureOpen && (
+        <PhoneCapturePanel
+          phoneCapture={phoneCapture}
+          onClose={() => setCaptureOpen(false)}
+        />
+      )}
     </div>
   );
 });
+
+function PhoneCapturePanel({
+  phoneCapture,
+  onClose,
+}: {
+  phoneCapture: PhoneCaptureState;
+  onClose: () => void;
+}) {
+  const captureUrl = phoneCapture.peerId
+    ? `${BASE_URL}/capture/${phoneCapture.peerId}`
+    : null;
+
+  return (
+    <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl p-4 w-72 z-50 pointer-events-auto">
+      <div className="flex justify-between items-center mb-3">
+        <span className="font-medium text-sm">Phone Camera</span>
+        <button
+          onClick={onClose}
+          className="p-1 hover:bg-gray-100 rounded transition-colors"
+        >
+          <FaXmark className="w-3.5 h-3.5 text-gray-500" />
+        </button>
+      </div>
+
+      {captureUrl ? (
+        <>
+          <div className="flex justify-center mb-3 bg-white p-2 rounded border border-gray-100">
+            <QRCodeSVG value={captureUrl} size={200} />
+          </div>
+          <p className="text-xs text-gray-500 mb-2">
+            Scan with your phone to capture photos. They'll appear as nodes in
+            the canvas.
+          </p>
+          {phoneCapture.captureCount > 0 && (
+            <p className="text-xs text-green-600">
+              {phoneCapture.captureCount} photo
+              {phoneCapture.captureCount !== 1 ? "s" : ""} received
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="text-sm text-gray-500 text-center py-4">
+          Connecting...
+        </div>
+      )}
+    </div>
+  );
+}

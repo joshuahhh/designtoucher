@@ -57,6 +57,7 @@ import { up } from "update-proxy";
 import { examples } from "./examples.js";
 import "./flow-base.css";
 import { useKeyBindings } from "./keyboard.js";
+import { Menu } from "./Menu.js";
 import { Tex } from "./mygl.js";
 import {
   Monitor,
@@ -1817,7 +1818,11 @@ const FlowInnerNormalMode = ({
                     isSidebarExpanded={isSidebarExpanded}
                     setIsSidebarExpanded={setIsSidebarExpanded}
                   />
-                  <Toolbar onDelete={deleteSelected} />
+                  <Toolbar
+                    onDelete={deleteSelected}
+                    flow={flow}
+                    loadFlow={loadFlow}
+                  />
                 </div>
               </OmniCanvasOverlay>
             </ReactFlow>
@@ -1834,26 +1839,21 @@ const FlowInnerNormalMode = ({
   );
 };
 
-const Toolbar = memo(function Toolbar({ onDelete }: { onDelete: () => void }) {
+const Toolbar = memo(function Toolbar({
+  onDelete,
+  flow,
+  loadFlow,
+}: {
+  onDelete: () => void;
+  flow: Flow;
+  loadFlow: (flow: Flow) => void;
+}) {
   const { selectedNodes, selectedEdges } = useReactFlowSelection<Node, Edge>();
   const hasSelection = selectedNodes.length > 0 || selectedEdges.length > 0;
 
-  // const isMultiTouch =
-  //   navigator.maxTouchPoints !== undefined && navigator.maxTouchPoints > 1;
-
   return (
     <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 select-none">
-      {/* {isMultiTouch && (
-        <button
-          className="bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-colors"
-          title="Lasso selection on hold"
-          onPointerDown={onLassoPointerDown}
-          onPointerUp={onLassoPointerUp}
-        >
-          <LuLasso className="w-4 h-4 text-grey-600" />
-        </button>
-      )} */}
-
+      <Menu flow={flow} loadFlow={loadFlow} />
       {hasSelection && (
         <button
           onClick={onDelete}

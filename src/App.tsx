@@ -1,10 +1,22 @@
 import clsx from "clsx";
+import { useMemo } from "react";
 import { use100vh } from "react-div-100vh";
 import { Flow, initialFlow } from "./lib.js";
+import { clearProjectFromURL, getProjectFromURL } from "./share.js";
 import { useIDB } from "./useIDB.js";
 
 export const App = () => {
-  const [flow, setFlow] = useIDB<Flow>("flow", () => initialFlow);
+  const projectOverride = useMemo(() => {
+    const flow = getProjectFromURL();
+    if (flow) clearProjectFromURL();
+    return flow;
+  }, []);
+
+  const [flow, setFlow] = useIDB<Flow>(
+    "flow",
+    () => initialFlow,
+    projectOverride,
+  );
   const height = use100vh();
 
   if (!height) {
@@ -12,7 +24,6 @@ export const App = () => {
   }
 
   return (
-    // for testing layout & omnicanvas & such, you can put some padding here
     <div
       className={clsx("w-full h-full", { "p-20 bg-red-500": false })}
       style={{ height }}

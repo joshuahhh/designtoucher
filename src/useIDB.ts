@@ -49,13 +49,18 @@ export async function idbSet<T>(key: string, value: T): Promise<void> {
 /**
  * Like useLocalStorage, but backed by IndexedDB.
  * Loads the initial value asynchronously; uses `init()` until loaded.
+ *
+ * When `initialOverride` is provided, it is used as the initial value and
+ * the IDB load is skipped (the override is saved to IDB on the next change).
  */
-export function useIDB<T>(key: string, init: () => T) {
-  const [value, setValue] = useState<T>(init);
-  const loaded = useRef(false);
+export function useIDB<T>(key: string, init: () => T, initialOverride?: T) {
+  const hasOverride = initialOverride !== undefined;
+  const [value, setValue] = useState<T>(hasOverride ? initialOverride! : init);
+  const loaded = useRef(hasOverride);
 
-  // Load from IDB on mount
+  // Load from IDB on mount (skipped when an override was provided)
   useEffect(() => {
+    if (loaded.current) return;
     let cancelled = false;
     idbGet<T>(key).then((stored) => {
       if (cancelled) return;

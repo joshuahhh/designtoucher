@@ -32,6 +32,7 @@ export type OmniCanvasContextType = {
   setGuestCommand(
     div: HTMLDivElement,
     command: null | ((viewport: [number, number, number, number]) => void),
+    priority?: number,
   ): void;
   draw(args: DrawArgs): void;
   drawForMonitor(
@@ -56,11 +57,17 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
   const [overlayDiv, setOverlayDiv] = useState<HTMLDivElement | null>(null);
   const [gl, setGl] = useState<WebGL2RenderingContext | null>(null);
 
-  // Map each guest <div> to its draw callback
+  // Map each guest <div> to its draw callback + priority. All guests share one
+  // canvas with depth testing off, so paint order == stacking order. Guests are
+  // drawn low-priority first, so higher priority ends up on top; ties keep Map
+  // insertion order (React mount timing).
   const guestCommandsRef = useRef(
     new Map<
       HTMLDivElement,
-      (viewport: [number, number, number, number]) => void
+      {
+        command: (viewport: [number, number, number, number]) => void;
+        priority: number;
+      }
     >(),
   );
 
@@ -195,9 +202,10 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
     const setGuestCommand = (
       div: HTMLDivElement,
       command: null | ((viewport: [number, number, number, number]) => void),
+      priority = 0,
     ) => {
       if (command) {
-        guestCommandsRef.current.set(div, command);
+        guestCommandsRef.current.set(div, { command, priority });
       } else {
         guestCommandsRef.current.delete(div);
       }
@@ -242,7 +250,14 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       const { left: canvasLeft, top: canvasTop } =
         canvas.getBoundingClientRect();
 
-      guestCommandsRef.current.forEach((command, div) => {
+      // Draw low priority first so higher-priority guests (e.g. the split-screen
+      // preview) end up on top. A stable sort keeps Map insertion order within a
+      // priority tier.
+      const guests = [...guestCommandsRef.current.entries()].sort(
+        (a, b) => a[1].priority - b[1].priority,
+      );
+
+      guests.forEach(([div, { command }]) => {
         const rectCSS = div.getBoundingClientRect();
         const bottomCSS = hCSS - (rectCSS.bottom - canvasTop);
 
@@ -299,18 +314,20 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
 
 export function OmniCanvasGuest({
   command,
+  priority,
   ...props
 }: {
   command: (viewport: [number, number, number, number]) => void;
+  priority?: number;
 } & React.HTMLAttributes<HTMLDivElement>) {
   const { setGuestCommand } = useContext(OmniCanvasContext);
   const [div, setDiv] = useState<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
     if (!div) return;
-    setGuestCommand(div, command);
+    setGuestCommand(div, command, priority);
     return () => setGuestCommand(div, null);
-  }, [div, command, setGuestCommand]);
+  }, [div, command, priority, setGuestCommand]);
 
   return <div ref={setDiv} {...props} />;
 }
@@ -323,6 +340,7 @@ export function Monitor({
   checkerboardPixels,
   sizing = "fill",
   objectFit = "contain",
+  priority,
 }: {
   tex: Tex;
   className?: string;
@@ -330,6 +348,10 @@ export function Monitor({
   cornerRadiusPixels?: number;
   checkerboardPixels?: number;
   sizing?: "fill" | "height";
+  // Stacking order among all guests on the shared canvas; higher draws on top.
+  // Defaults to 0 (node-preview thumbnails). The split-screen preview raises
+  // this so it always paints above overlapping node previews.
+  priority?: number;
   // "contain": the guest div is given the texture's aspect ratio and the
   //   image fills it exactly (the surrounding layout letterboxes).
   // "cover": the guest div fills its container (any shape) and the image is
@@ -377,6 +399,7 @@ export function Monitor({
   return (
     <OmniCanvasGuest
       command={command}
+      priority={priority}
       className={clsx(
         className,
         objectFit === "cover"

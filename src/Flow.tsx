@@ -616,12 +616,25 @@ const FlowInner = ({
 const EDITOR_COLLAPSED_AT = 0.98;
 const MIN_PANE_FRACTION = 0.15;
 
+// Stacking priority for the split-screen preview on the shared OmniCanvas. Node
+// previews default to 0; the pane must always paint above node thumbnails that
+// spill into its region (guests draw into their full rect, ignoring the
+// editor's overflow clip).
+const PREVIEW_PRIORITY = 1000;
+
 // The preview image surface. In "cover" mode the Monitor fills the pane and
 // crops; in "contain" mode it is letterboxed at the texture's aspect ratio and
 // centered.
 const PreviewSurface = ({ tex, fit }: { tex: Tex; fit: PreviewFit }) => {
   if (fit === "cover") {
-    return <Monitor tex={tex} objectFit="cover" checkerboardPixels={100} />;
+    return (
+      <Monitor
+        tex={tex}
+        objectFit="cover"
+        checkerboardPixels={100}
+        priority={PREVIEW_PRIORITY}
+      />
+    );
   }
   const aspectRatio = tex.width / tex.height;
   return (
@@ -632,7 +645,11 @@ const PreviewSurface = ({ tex, fit }: { tex: Tex; fit: PreviewFit }) => {
           aspectRatio,
         }}
       >
-        <Monitor tex={tex} checkerboardPixels={100} />
+        <Monitor
+          tex={tex}
+          checkerboardPixels={100}
+          priority={PREVIEW_PRIORITY}
+        />
       </div>
     </div>
   );

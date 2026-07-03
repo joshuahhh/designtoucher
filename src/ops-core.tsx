@@ -352,7 +352,7 @@ export const InputHandle = <InputKey extends string>({
           <Monitor
             tex={sourceOutput}
             className="pointer-events-none -mx-[0.5px]"
-            cornerRadiusPixels={200}
+            cornerRadiusPixels={4.5}
             sizing="height"
           />
           {edgeCount > 1 && (
@@ -836,7 +836,7 @@ export const OutputHandle = <OutputKey extends string>({
         {showPreview ? (
           output ? (
             <div className="-m-[1px]">
-              <Monitor tex={output} cornerRadiusPixels={20} />
+              <Monitor tex={output} cornerRadiusPixels={3} />
             </div>
           ) : (
             <div

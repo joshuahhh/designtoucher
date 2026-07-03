@@ -24,14 +24,20 @@ export interface DrawArgs {
   tex: Tex;
   viewport?: [number, number, number, number];
   targetFramebuffer?: WebGLFramebuffer;
-  cornerRadiusPixels?: number;
 }
+
+// viewport: drawn rect in device pixels; layoutSize: the guest div's
+// unzoomed layout size in CSS px (offsetWidth/offsetHeight)
+export type GuestCommand = (
+  viewport: [number, number, number, number],
+  layoutSize: [number, number],
+) => void;
 
 export type OmniCanvasContextType = {
   gl: WebGL2RenderingContext;
   setGuestCommand(
     div: HTMLDivElement,
-    command: null | ((viewport: [number, number, number, number]) => void),
+    command: null | GuestCommand,
     priority?: number,
   ): void;
   draw(args: DrawArgs): void;
@@ -40,6 +46,9 @@ export type OmniCanvasContextType = {
       cornerRadiusPixels?: number;
       checkerboardPixels?: number;
       uvScale?: [number, number];
+      // Monitor surface size in unzoomed canvas px; the unit cornerRadiusPixels
+      // is measured in. Defaults to the texture's dimensions.
+      surfaceSize?: [number, number];
     },
   ): void;
   emptyTex: Tex;
@@ -65,7 +74,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
     new Map<
       HTMLDivElement,
       {
-        command: (viewport: [number, number, number, number]) => void;
+        command: GuestCommand;
         priority: number;
       }
     >(),
@@ -136,7 +145,11 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
         precision mediump float;
         uniform sampler2D tex1;
         uniform vec2 resolution;
+        // Corner radius in unzoomed canvas px — same unit as CSS
+        // border-radius, independent of the texture's resolution.
         uniform float cornerRadiusPixels;
+        // Monitor surface size in unzoomed canvas px.
+        uniform vec2 surfaceSize;
         uniform float checkerboardPixels;
         // Crop applied to the sampled image so it "covers" the monitor without
         // distortion. [1,1] = no crop (the image is stretched to fill, i.e.
@@ -147,7 +160,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
           float cornerAlpha = 1.0;
           if (cornerRadiusPixels > 0.0) {
             vec2 uvFromCorner = 0.5 - abs(uv - 0.5);
-            vec2 pixelsFromCorner = uvFromCorner * resolution;
+            vec2 pixelsFromCorner = uvFromCorner * surfaceSize;
             vec2 pixelsFromCenter = vec2(cornerRadiusPixels) - pixelsFromCorner;
             if (pixelsFromCenter.x > 0.0 && pixelsFromCenter.y > 0.0) {
               float dist = length(pixelsFromCenter);
@@ -180,10 +193,12 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       cornerRadiusPixels,
       checkerboardPixels,
       uvScale,
+      surfaceSize,
     }: DrawArgs & {
       cornerRadiusPixels?: number;
       checkerboardPixels?: number;
       uvScale?: [number, number];
+      surfaceSize?: [number, number];
     }) => {
       drawForMonitorProgram.run({
         targetFramebuffer: targetFramebuffer || null,
@@ -192,6 +207,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
           tex1: ["sampler2D", tex.texture],
           resolution: ["2f", [tex.width, tex.height]],
           cornerRadiusPixels: ["1f", cornerRadiusPixels],
+          surfaceSize: ["2f", surfaceSize ?? [tex.width, tex.height]],
           checkerboardPixels: ["1f", checkerboardPixels],
           uvScale: ["2f", uvScale ?? [1, 1]],
         },
@@ -201,7 +217,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
 
     const setGuestCommand = (
       div: HTMLDivElement,
-      command: null | ((viewport: [number, number, number, number]) => void),
+      command: null | GuestCommand,
       priority = 0,
     ) => {
       if (command) {
@@ -275,7 +291,10 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
         const width = rectCSS.width * dpr;
         const height = rectCSS.height * dpr;
 
-        command([left, bottom, width, height]);
+        command(
+          [left, bottom, width, height],
+          [div.offsetWidth, div.offsetHeight],
+        );
       });
 
       requestAnimationFrame(render);
@@ -317,7 +336,7 @@ export function OmniCanvasGuest({
   priority,
   ...props
 }: {
-  command: (viewport: [number, number, number, number]) => void;
+  command: GuestCommand;
   priority?: number;
 } & React.HTMLAttributes<HTMLDivElement>) {
   const { setGuestCommand } = useContext(OmniCanvasContext);
@@ -345,6 +364,9 @@ export function Monitor({
   tex: Tex;
   className?: string;
   style?: React.CSSProperties;
+  // Corner rounding radius in unzoomed canvas px — same unit as CSS
+  // border-radius on the surrounding node (scales with canvas zoom,
+  // independent of the texture's resolution)
   cornerRadiusPixels?: number;
   checkerboardPixels?: number;
   sizing?: "fill" | "height";
@@ -362,7 +384,10 @@ export function Monitor({
   const { draw, drawForMonitor } = useContext(OmniCanvasContext);
 
   const command = useCallback(
-    (viewport: [number, number, number, number]) => {
+    (
+      viewport: [number, number, number, number],
+      layoutSize: [number, number],
+    ) => {
       let uvScale: [number, number] = [1, 1];
       if (objectFit === "cover") {
         const [, , w, h] = viewport;
@@ -379,6 +404,7 @@ export function Monitor({
           tex,
           viewport,
           cornerRadiusPixels: cornerRadiusPixels ?? 0,
+          surfaceSize: layoutSize,
           checkerboardPixels: checkerboardPixels ?? CHECKER_PIXELS,
           uvScale,
         });

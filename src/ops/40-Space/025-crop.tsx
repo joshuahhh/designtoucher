@@ -156,7 +156,7 @@ export default defineFragOp({
             {!isInPlace && inputTex && (
               <div className="relative" style={{ width: 200 }}>
                 <div className="rounded-sm overflow-hidden">
-                  <Monitor tex={inputTex} cornerRadiusPixels={20} />
+                  <Monitor tex={inputTex} cornerRadiusPixels={3} />
                 </div>
                 <OmniCanvasOverlay className="absolute left-0 top-0 w-full h-full pointer-events-none">
                   <CropGizmo params={params} paramsUP={paramsUP} />

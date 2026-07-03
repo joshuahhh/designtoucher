@@ -244,6 +244,7 @@ export default defineOp({
         <Sentence>
           Median of last{" "}
           <SentenceParamNumber
+            paramKey="numFrames"
             value={props.params.numFrames}
             valueUP={props.paramsUP.numFrames}
             min={1}

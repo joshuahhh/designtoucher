@@ -28,6 +28,7 @@ export default defineFragOp({
           />{" "}
           with size{" "}
           <SentenceParamNumber
+            paramKey="size"
             value={props.params.size}
             valueUP={props.paramsUP.size}
             min={0}

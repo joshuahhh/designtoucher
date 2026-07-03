@@ -9,18 +9,27 @@
 // ] as const;
 
 import { Edge, Node } from "@xyflow/react";
-import { destroyFbo, ensureFboSize, Fbo, newFbo, Tex } from "./mygl.js";
+import {
+  destroyFbo,
+  ensureFboSize,
+  Fbo,
+  isProbablyTex,
+  newFbo,
+  Tex,
+} from "./mygl.js";
 import { OmniCanvasContextType } from "./OmniCanvas.js";
 import {
   AnyOp,
   AnyOpId,
   AnyOpInstance,
+  isParamHandleId,
   makeInputHandleId,
   makeOutputHandleId,
   Op,
   OpInstance,
   parseInputHandleId,
   parseOutputHandleId,
+  parseParamHandleId,
 } from "./ops-core.js";
 import { ops } from "./ops/all-the-ops.js";
 import { toposortFromEdges } from "./toposort.js";
@@ -53,6 +62,46 @@ export function instantiateOp<
 export type OpNodeData = { opId: AnyOpId; params: Record<string, unknown> };
 
 export type OpNode = Node<OpNodeData, "operation">;
+
+/**
+ * Wire type coming out of an output handle. Anything unresolvable (picker
+ * handles, missing nodes) is treated as "tex", the historical default.
+ */
+export function outputTypeForHandle(
+  nodes: Node[],
+  sourceHandle: string | null | undefined,
+): "tex" | "number" {
+  if (!sourceHandle) return "tex";
+  let parsed;
+  try {
+    parsed = parseOutputHandleId(sourceHandle);
+  } catch {
+    return "tex";
+  }
+  const node = nodes.find((n) => n.id === parsed.nodeId);
+  if (!node || node.type !== "operation") return "tex";
+  try {
+    const op = opById((node as OpNode).data.opId);
+    return op.outputTypes?.[parsed.key] ?? "tex";
+  } catch {
+    return "tex";
+  }
+}
+
+/**
+ * Type-check a candidate connection: number outputs only land on param
+ * handles, texture outputs only on input handles. (No coercion for now.)
+ */
+export function isCompatibleConnection(
+  nodes: Node[],
+  sourceHandle: string | null | undefined,
+  targetHandle: string | null | undefined,
+): boolean {
+  const sourceType = outputTypeForHandle(nodes, sourceHandle);
+  return isParamHandleId(targetHandle)
+    ? sourceType === "number"
+    : sourceType === "tex";
+}
 
 // Implicit op that sums N input textures using additive GL blending.
 const implicitSumOp: AnyOp = {
@@ -116,6 +165,12 @@ function augmentForMultiEdges(nodes: OpNode[], edges: Edge[]) {
   }
 
   for (const [targetHandle, group] of byTargetHandle) {
+    // A param handle takes a single driver — replace-on-connect keeps it that
+    // way, but if a stale file has several, the newest edge wins.
+    if (isParamHandleId(targetHandle)) {
+      augEdges.push(group[group.length - 1]);
+      continue;
+    }
     if (group.length <= 1) {
       augEdges.push(...group);
       continue;
@@ -183,7 +238,9 @@ export function runFlow(
     if (!opInstances[node.id]) {
       const op = opById(node.data.opId);
       opInstances[node.id] = instantiateOp(op, ctx, "get-op-by-id");
-      const params = node.data.params;
+      // Backfill params the op has grown since this node was saved, so a
+      // redefined op doesn't see undefined params.
+      const params = { ...op.initParams?.(), ...node.data.params };
       setParams(node.id, params);
       instancesChanged = true;
     }
@@ -221,7 +278,7 @@ export function runFlow(
 
   function assembleInputs(nodeId: string, onTimeOnly: boolean) {
     const inputEdges = (onTimeOnly ? augOnTimeEdges : augEdges).filter(
-      (e) => e.target === nodeId,
+      (e) => e.target === nodeId && !isParamHandleId(e.targetHandle),
     );
 
     return Object.fromEntries(
@@ -239,9 +296,33 @@ export function runFlow(
           );
           return [inputKey, null];
         }
-        return [inputKey, sourceOpInstance.runtime[outputKey] as Tex | null];
+        const value = sourceOpInstance.runtime[outputKey];
+        // Guard against non-texture outputs wired into a texture input (e.g.
+        // a stale saved graph from before an op's output became a number).
+        return [inputKey, isProbablyTex(value) ? value : null];
       }),
     );
+  }
+
+  // Resolve params for a node: the stored constants, overridden by the live
+  // value of any number wire landing on a param handle. Sources ran earlier
+  // this frame (param edges participate in the toposort), so values are fresh.
+  function assembleParams(node: OpNode): Record<string, unknown> {
+    let params = node.data.params;
+    for (const edge of augEdges) {
+      if (edge.target !== node.id || !isParamHandleId(edge.targetHandle))
+        continue;
+      const { key: paramKey } = parseParamHandleId(edge.targetHandle);
+      const { nodeId: sourceNodeId, key: outputKey } = parseOutputHandleId(
+        edge.sourceHandle!,
+      );
+      const value = opInstances[sourceNodeId]?.runtime[outputKey];
+      if (typeof value === "number") {
+        if (params === node.data.params) params = { ...params };
+        params[paramKey] = value;
+      }
+    }
+    return params;
   }
 
   // run operations in sorted order
@@ -253,7 +334,7 @@ export function runFlow(
 
     try {
       const inputs = assembleInputs(nodeId, true);
-      instance.run({ inputs, params: node.data.params, ctx });
+      instance.run({ inputs, params: assembleParams(node), ctx });
     } catch (error) {
       console.error(`Error running node ${nodeId}:`, error);
     }
@@ -268,7 +349,7 @@ export function runFlow(
 
       opInstance.runLate({
         inputs: assembleInputs(nodeId, false),
-        params: node.data.params,
+        params: assembleParams(node),
         ctx,
       });
     } catch (error) {

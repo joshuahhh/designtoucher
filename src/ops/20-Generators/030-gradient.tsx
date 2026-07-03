@@ -19,6 +19,7 @@ export default defineFragOp({
         <Sentence>
           Make <b>gradient</b> with angle{" "}
           <SentenceParamNumber
+            paramKey="angle"
             value={props.params.angle}
             valueUP={props.paramsUP.angle}
             min={0}

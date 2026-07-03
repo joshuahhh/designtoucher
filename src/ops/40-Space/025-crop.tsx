@@ -100,6 +100,7 @@ export default defineFragOp({
 
     const paramRow = (
       label: string,
+      paramKey: string,
       value: number,
       valueUP: UpdateProxy<number>,
     ) => (
@@ -108,6 +109,7 @@ export default defineFragOp({
           {label}
         </span>
         <SentenceParamNumber
+          paramKey={paramKey}
           value={value}
           valueUP={valueUP}
           min={0}
@@ -131,10 +133,10 @@ export default defineFragOp({
           <div className="flex flex-col gap-0.5 text-xs font-['Varela_Round']">
             <div className="flex items-center gap-1 rounded bg-black/5 px-1 py-0.5">
               <div className="flex flex-col gap-0.5">
-                {paramRow("left", params.x1, paramsUP.x1)}
-                {paramRow("right", params.x2, paramsUP.x2)}
-                {paramRow("top", params.y1, paramsUP.y1)}
-                {paramRow("bottom", params.y2, paramsUP.y2)}
+                {paramRow("left", "x1", params.x1, paramsUP.x1)}
+                {paramRow("right", "x2", params.x2, paramsUP.x2)}
+                {paramRow("top", "y1", params.y1, paramsUP.y1)}
+                {paramRow("bottom", "y2", params.y2, paramsUP.y2)}
               </div>
               <button
                 type="button"

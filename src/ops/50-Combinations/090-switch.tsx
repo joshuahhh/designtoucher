@@ -21,6 +21,7 @@ export default defineOp({
           <props.InputHandle inputKey="tex2" />{" "}
           <props.InputHandle inputKey="tex3" />{" "}
           <SentenceParamNumber
+            paramKey="inputIndex"
             value={props.params.inputIndex}
             valueUP={props.paramsUP.inputIndex}
             min={0}

@@ -22,6 +22,7 @@ export default defineFragOp({
         <Sentence>
           <props.InputHandle inputKey="texture" /> Vibrance{" "}
           <SentenceParamNumber
+            paramKey="amount"
             value={props.params.amount}
             valueUP={props.paramsUP.amount}
             min={-1}

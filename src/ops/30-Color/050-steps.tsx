@@ -19,6 +19,7 @@ export default defineFragOp({
         <Sentence>
           Break color channels of <props.InputHandle inputKey="tex1" /> into{" "}
           <SentenceParamNumber
+            paramKey="steps"
             value={props.params.steps}
             valueUP={props.paramsUP.steps}
             min={1}

@@ -17,6 +17,7 @@ export default defineFragOp({
           Blend <props.InputHandle inputKey="tex1" /> and{" "}
           <props.InputHandle inputKey="tex2" /> at{" "}
           <SentenceParamNumber
+            paramKey="ratio"
             value={props.params.ratio}
             valueUP={props.paramsUP.ratio}
             min={0}

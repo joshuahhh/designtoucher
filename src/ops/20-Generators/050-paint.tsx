@@ -380,6 +380,7 @@ export default defineOp({
           <div className="flex items-center gap-1 self-stretch rounded border border-gray-300 bg-gray-100 px-1">
             <span className="select-none text-[10px] text-gray-400">size</span>
             <SentenceParamNumber
+              paramKey="brushSize"
               value={params.brushSize}
               valueUP={paramsUP.brushSize}
               min={1}

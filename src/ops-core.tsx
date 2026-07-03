@@ -18,13 +18,14 @@ import React, {
   useCallback,
   useContext,
   useLayoutEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { ChromePicker } from "react-color";
 import { LuPanelRight, LuPanelRightClose } from "react-icons/lu";
 import { UpdateProxy } from "update-proxy";
-import { Tex } from "./mygl.js";
+import { isProbablyTex, Tex } from "./mygl.js";
 import {
   Monitor,
   OmniCanvasContext,
@@ -65,6 +66,11 @@ export type Op<
     OutputHandle: typeof OutputHandle<OutputKey<Runtime>>;
   }) => React.ReactNode;
   outputKeys?: string[];
+  /**
+   * Wire type of each output, used to validate connections. Outputs default
+   * to "tex"; numops declare e.g. `outputTypes: { out: "number" }`.
+   */
+  outputTypes?: Record<string, "tex" | "number">;
   searchHints?: string[];
 };
 export type AnyOp = Op<
@@ -325,9 +331,10 @@ export const InputHandle = <InputKey extends string>({
     [sourceInstance],
   );
   useSyncExternalStore(subscribe, () => sourceInstance?.getRevision() ?? 0);
-  const sourceOutput = sourceInstance
-    ? (sourceInstance.runtime[sourceHandleParsed!.key] as Tex | null)
+  const rawSourceOutput = sourceInstance
+    ? sourceInstance.runtime[sourceHandleParsed!.key]
     : null;
+  const sourceOutput = isProbablyTex(rawSourceOutput) ? rawSourceOutput : null;
 
   const className = clsx(
     sharedHandleClasses,
@@ -432,8 +439,20 @@ function decimalsForStep(step: number): number {
 // Display a param value with a fixed number of decimals (so its width stays
 // stable during drags and float artifacts like 0.70100000000001 never show).
 // Strips a stray leading "-" from negative-zero results like "-0.000".
+// Use this for continuously-changing values (wire-driven), where a stable
+// width matters more than exactness.
 function formatParamValue(value: number, step: number): string {
   return value.toFixed(decimalsForStep(step)).replace(/^-(?=0(\.0+)?$)/, "");
+}
+
+// For stored constants: like formatParamValue, but a typed-in value finer
+// than the step (e.g. 0.005 with step 0.01) shows exactly instead of being
+// rounded away. toFixed(6) still hides float junk like 0.30000000000000004.
+function formatParamValueExact(value: number, step: number): string {
+  const fixed = formatParamValue(value, step);
+  return Number(fixed) === +value.toFixed(6)
+    ? fixed
+    : String(+value.toFixed(6));
 }
 
 // The widest string the field can show across [min, max] at this step: the
@@ -460,29 +479,95 @@ export const SentenceParamNumber = ({
   min,
   max,
   step,
+  paramKey,
 }: {
   value: number;
   valueUP: UpdateProxy<number>;
   min: number;
   max: number;
   step: number;
+  /**
+   * Key of this param in the op's params object. When given, the number chip
+   * doubles as a drop target: a number wire landing on it drives the param
+   * (replacing the stored constant while connected).
+   */
+  paramKey?: string;
 }) => {
   const [dragging, setDragging] = useState(false);
 
   const updateNodeInternals = useUpdateNodeInternals();
   const nodeId = useNodeId();
 
+  // If a number wire is connected to this param, resolve its live value by
+  // subscribing to the source op instance (same pattern as InputHandle).
+  const paramHandleId =
+    nodeId && paramKey ? makeParamHandleId(nodeId, paramKey) : null;
+  const edges = useEdges();
+  const drivingEdge = paramHandleId
+    ? (edges.find((e) => e.targetHandle === paramHandleId) ?? null)
+    : null;
+  const opInstances = useContext(OpInstancesContext);
+  const sourceHandleParsed =
+    drivingEdge && parseOutputHandleId(drivingEdge.sourceHandle!);
+  const sourceInstance = sourceHandleParsed
+    ? (opInstances[sourceHandleParsed.nodeId] ?? null)
+    : null;
+  const subscribeToSource = useCallback(
+    (cb: () => void) => sourceInstance?.subscribe(cb) ?? (() => {}),
+    [sourceInstance],
+  );
+  useSyncExternalStore(
+    subscribeToSource,
+    () => sourceInstance?.getRevision() ?? 0,
+  );
+  const rawDriven = sourceInstance
+    ? sourceInstance.runtime[sourceHandleParsed!.key]
+    : null;
+  const drivenValue = typeof rawDriven === "number" ? rawDriven : null;
+  const driven = drivenValue !== null;
+
   useLayoutEffect(() => {
     if (nodeId) {
       void dragging; // force a re-render when dragging changes
+      void driven; // handle geometry can change when a wire lands
       updateNodeInternals(nodeId);
     }
-  }, [dragging, nodeId, updateNodeInternals]);
+  }, [dragging, driven, nodeId, updateNodeInternals]);
 
   const takeSnapshot = useContext(TakeSnapshotContext);
 
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverDisabled, setPopoverDisabled] = useState(false);
+
+  // Double-click opens keyboard entry — the escape hatch for values that are
+  // impractical to scrub to (fine precision, or outside the drag range).
+  // Typed values are not clamped to [min, max] and not snapped to step.
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+  // Guards against commit running twice (Enter triggers a blur as the input
+  // unmounts) and suppresses the blur-commit after Escape.
+  const editDoneRef = useRef(false);
+
+  const startEditing = () => {
+    setPopoverOpen(false);
+    setEditText(String(value));
+    editDoneRef.current = false;
+    setEditing(true);
+  };
+  const commitEdit = () => {
+    if (editDoneRef.current) return;
+    editDoneRef.current = true;
+    const parsed = parseFloat(editText);
+    if (isFinite(parsed) && parsed !== value) {
+      takeSnapshot();
+      valueUP.$set(parsed);
+    }
+    setEditing(false);
+  };
+  const cancelEdit = () => {
+    editDoneRef.current = true;
+    setEditing(false);
+  };
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLSpanElement>) => {
@@ -523,32 +608,66 @@ export const SentenceParamNumber = ({
     [max, min, step, value, valueUP, takeSnapshot],
   );
 
-  return (
+  const chip = (
     <Popover.Root
-      open={popoverOpen}
+      open={popoverOpen && !driven && !editing}
       onOpenChange={(open) => {
-        if (!popoverDisabled) {
+        if (!popoverDisabled && !driven && !editing) {
           setPopoverOpen(open);
         }
       }}
     >
       <Popover.Trigger>
         <StableWidthSpan
-          widest={widestParamValue(min, max, step)}
-          className={clsx(
-            "tabular-nums cursor-ew-resize select-none rounded px-1 font-semibold transition-colors",
-            "text-center",
-            dragging
-              ? "bg-blue-500 text-white ring-1 ring-blue-600"
-              : "bg-blue-100 text-blue-700 hover:bg-blue-200",
+          // Reserve room for the widest scrubbable value — but a typed-in or
+          // wire-driven value can exceed the scrub range, so let the actual
+          // display win when it's wider (instead of bleeding out of the pill).
+          widest={((reserve, shown) =>
+            shown.length > reserve.length ? shown : reserve)(
+            widestParamValue(min, max, step),
+            formatParamValue(driven ? drivenValue : value, step),
           )}
-          onPointerDown={onPointerDown}
-          onDoubleClick={() => {
-            takeSnapshot();
-            valueUP.$set(0);
-          }}
+          className={clsx(
+            // Violet is the category color for numbers throughout the UI.
+            "tabular-nums select-none rounded px-1 font-semibold transition-colors",
+            "text-center",
+            driven
+              ? "bg-violet-100 text-violet-700"
+              : editing
+                ? "bg-violet-100 text-violet-700 ring-1 ring-violet-400"
+                : dragging
+                  ? "cursor-ew-resize bg-violet-500 text-white ring-1 ring-violet-600"
+                  : "cursor-ew-resize bg-violet-100 text-violet-700 hover:bg-violet-200",
+          )}
+          onPointerDown={driven || editing ? undefined : onPointerDown}
+          onDoubleClick={driven || editing ? undefined : startEditing}
         >
-          {formatParamValue(value, step)}
+          {editing ? (
+            <input
+              className="nodrag w-full cursor-text border-0 bg-transparent p-0 text-center text-inherit outline-none [font:inherit]"
+              type="text"
+              inputMode="decimal"
+              value={editText}
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+              onChange={(e) => setEditText(e.target.value)}
+              onBlur={commitEdit}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") commitEdit();
+                else if (e.key === "Escape") cancelEdit();
+              }}
+            />
+          ) : driven ? (
+            // Wavy underline marks an automated (wire-driven) value. It has
+            // to sit on this inner span: text decorations don't reach into
+            // StableWidthSpan's absolutely-positioned content span.
+            <span className="underline decoration-wavy decoration-violet-400 underline-offset-2">
+              {formatParamValue(drivenValue, step)}
+            </span>
+          ) : (
+            formatParamValueExact(value, step)
+          )}
         </StableWidthSpan>
       </Popover.Trigger>
       <MyPopoverContent>
@@ -574,6 +693,27 @@ export const SentenceParamNumber = ({
         </div>
       </MyPopoverContent>
     </Popover.Root>
+  );
+
+  if (!paramHandleId) return chip;
+
+  // The chip itself is the drop target for number wires. Connections can't
+  // *start* here (that would fight the scrub gesture), only land here.
+  return (
+    <Handle
+      type="target"
+      position={Position.Top}
+      id={paramHandleId}
+      isConnectableStart={false}
+      className={clsx(
+        "nodrag pointer-events-auto",
+        "inline-flex rounded !bg-transparent",
+        // light up while a compatible wire is being dragged
+        "[&.connectionindicator]:ring-2 [&.connectionindicator]:ring-violet-400",
+      )}
+    >
+      {chip}
+    </Handle>
   );
 };
 
@@ -766,9 +906,10 @@ export function useInputTex(inputKey: string): Tex | null {
   );
   useSyncExternalStore(subscribe, () => sourceInstance?.getRevision() ?? 0);
 
-  return sourceInstance
-    ? (sourceInstance.runtime[sourceHandleParsed!.key] as Tex | null)
+  const raw = sourceInstance
+    ? sourceInstance.runtime[sourceHandleParsed!.key]
     : null;
+  return isProbablyTex(raw) ? raw : null;
 }
 
 export const TakeSnapshotContext = createContext<() => void>(() => {});
@@ -876,10 +1017,108 @@ export const OutputHandle = <OutputKey extends string>({
   );
 };
 
+const SPARK_SAMPLES = 100;
+const SPARK_W = 48;
+const SPARK_H = 14;
+
+const Sparkline = ({ values }: { values: number[] }) => {
+  if (values.length < 2) {
+    return <svg width={SPARK_W} height={SPARK_H} />;
+  }
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const range = max - min;
+  const points = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * SPARK_W;
+      const y =
+        range === 0 ? SPARK_H / 2 : 1 + (SPARK_H - 2) * (1 - (v - min) / range);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg
+      width={SPARK_W}
+      height={SPARK_H}
+      className="overflow-visible text-violet-500"
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+};
+
+// Output handle for number-valued outputs: shows the live value plus a
+// sparkline of its recent history, and is the drag source for number wires.
+export const NumberOutputHandle = ({
+  outputKey,
+  position: positionProp,
+}: {
+  outputKey: string;
+  position?: Position;
+}) => {
+  const nodeId = useNodeId();
+  const opInstances = useContext(OpInstancesContext);
+  const instance = nodeId !== null ? opInstances[nodeId] : null;
+  const subscribe = useCallback(
+    (cb: () => void) => instance?.subscribe(cb) ?? (() => {}),
+    [instance],
+  );
+  useSyncExternalStore(subscribe, () => instance?.getRevision() ?? 0);
+
+  const raw = instance ? instance.runtime[outputKey] : null;
+  const value = typeof raw === "number" ? raw : null;
+
+  // Rolling history for the sparkline. We sample on render (one render per
+  // runtime change), skipping repeats so a constant signal doesn't scroll.
+  const historyRef = useRef<number[]>([]);
+  if (value !== null) {
+    const h = historyRef.current;
+    if (h.length === 0 || h[h.length - 1] !== value) {
+      h.push(value);
+      if (h.length > SPARK_SAMPLES) h.shift();
+    }
+  }
+
+  if (!nodeId) return null;
+
+  return (
+    <Handle
+      type="source"
+      position={positionProp ?? Position.Bottom}
+      id={makeOutputHandleId(nodeId, outputKey)}
+      className={clsx(
+        sharedHandleClasses,
+        "inline-flex items-center gap-1.5 px-1.5 py-0.5",
+        "rounded-md border-2 border-solid border-black hover:border-violet-300",
+        "!bg-violet-100",
+      )}
+    >
+      <Sparkline values={historyRef.current} />
+      <span className="min-w-[5ch] text-center text-xs font-['Varela_Round'] font-semibold tabular-nums text-violet-700">
+        {value !== null ? value.toFixed(2) : "–"}
+      </span>
+    </Handle>
+  );
+};
+
 // we have a great new convention for handles!
-// the handleId is nodeId:input:key or nodeId:output:key
+// the handleId is nodeId:input:key, nodeId:output:key, or nodeId:param:key
 // where key is any old thing the node wants to use
 // (no using :s in the key, natch)
+//
+// :input: handles carry textures; :param: handles carry numbers, and land on
+// the number chips rendered by SentenceParamNumber.
 
 export function makeInputHandleId(nodeId: string, key: string): string {
   return `${nodeId}:input:${key}`;
@@ -902,4 +1141,20 @@ export function parseOutputHandleId(handleId: string): {
   const match = handleId.match(/^(.+):output:(.+)$/);
   if (!match) throw new Error(`Invalid output handleId: ${handleId}`);
   return { nodeId: match[1], key: match[2] };
+}
+export function makeParamHandleId(nodeId: string, key: string): string {
+  return `${nodeId}:param:${key}`;
+}
+export function parseParamHandleId(handleId: string): {
+  nodeId: string;
+  key: string;
+} {
+  const match = handleId.match(/^(.+):param:(.+)$/);
+  if (!match) throw new Error(`Invalid param handleId: ${handleId}`);
+  return { nodeId: match[1], key: match[2] };
+}
+export function isParamHandleId(
+  handleId: string | null | undefined,
+): handleId is string {
+  return !!handleId && /^(.+):param:(.+)$/.test(handleId);
 }

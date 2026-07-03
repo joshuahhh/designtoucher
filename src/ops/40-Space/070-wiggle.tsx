@@ -19,6 +19,7 @@ export default defineFragOp({
         <Sentence>
           Wiggle <props.InputHandle inputKey="tex1" /> with strength{" "}
           <SentenceParamNumber
+            paramKey="strength"
             value={props.params.strength}
             valueUP={props.paramsUP.strength}
             min={0}
@@ -27,6 +28,7 @@ export default defineFragOp({
           />{" "}
           and size{" "}
           <SentenceParamNumber
+            paramKey="size"
             value={props.params.size}
             valueUP={props.paramsUP.size}
             min={0}

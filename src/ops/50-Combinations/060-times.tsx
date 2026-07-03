@@ -17,6 +17,7 @@ export default defineFragOp({
           Math: <props.InputHandle inputKey="tex1" /> ✕{" "}
           <props.InputHandle inputKey="tex2" /> ( ✕{" "}
           <SentenceParamNumber
+            paramKey="alpha"
             value={props.params.alpha}
             valueUP={props.paramsUP.alpha}
             min={0}

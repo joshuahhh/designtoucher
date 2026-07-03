@@ -45,6 +45,7 @@ export default defineFragOp({
           <div className="flex flex-col gap-0.5 text-xs font-['Varela_Round']">
             <ParamRow label="angle">
               <SentenceParamNumber
+                paramKey="angle"
                 value={params.angle}
                 valueUP={paramsUP.angle}
                 min={0}
@@ -55,6 +56,7 @@ export default defineFragOp({
             </ParamRow>
             <ParamRow label="scale">
               <SentenceParamNumber
+                paramKey="scale"
                 value={params.scale}
                 valueUP={paramsUP.scale}
                 min={0.01}
@@ -64,6 +66,7 @@ export default defineFragOp({
             </ParamRow>
             <ParamRow label="offset">
               <SentenceParamNumber
+                paramKey="offset"
                 value={params.offset}
                 valueUP={paramsUP.offset}
                 min={-2}
@@ -73,6 +76,7 @@ export default defineFragOp({
             </ParamRow>
             <ParamRow label="saturation">
               <SentenceParamNumber
+                paramKey="saturation"
                 value={params.saturation}
                 valueUP={paramsUP.saturation}
                 min={0}

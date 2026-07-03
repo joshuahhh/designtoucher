@@ -23,6 +23,7 @@ export default defineFragOp({
         <Sentence>
           <props.InputHandle inputKey="texture" /> Brightness{" "}
           <SentenceParamNumber
+            paramKey="brightness"
             value={props.params.brightness}
             valueUP={props.paramsUP.brightness}
             min={-1}
@@ -31,6 +32,7 @@ export default defineFragOp({
           />
           , Contrast{" "}
           <SentenceParamNumber
+            paramKey="contrast"
             value={props.params.contrast}
             valueUP={props.paramsUP.contrast}
             min={-1}

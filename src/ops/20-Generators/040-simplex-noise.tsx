@@ -23,6 +23,7 @@ export default defineFragOp({
         <Sentence>
           Make <b>simplex noise</b> with strength{" "}
           <SentenceParamNumber
+            paramKey="strength"
             value={props.params.strength}
             valueUP={props.paramsUP.strength}
             min={0}
@@ -31,14 +32,16 @@ export default defineFragOp({
           />{" "}
           , size{" "}
           <SentenceParamNumber
+            paramKey="size"
             value={props.params.size}
             valueUP={props.paramsUP.size}
             min={0.01}
-            max={0.1}
+            max={2}
             step={0.001}
           />{" "}
           , version{" "}
           <SentenceParamNumber
+            paramKey="version"
             value={props.params.version}
             valueUP={props.paramsUP.version}
             min={0}

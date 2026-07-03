@@ -19,6 +19,7 @@ export default defineFragOp({
         <Sentence>
           Displace <props.InputHandle key="tex1" inputKey="tex1" /> by X:{" "}
           <SentenceParamNumber
+            paramKey="x"
             value={props.params.x}
             valueUP={props.paramsUP.x}
             min={-1}
@@ -27,6 +28,7 @@ export default defineFragOp({
           />{" "}
           Y:{" "}
           <SentenceParamNumber
+            paramKey="y"
             value={props.params.y}
             valueUP={props.paramsUP.y}
             min={-1}

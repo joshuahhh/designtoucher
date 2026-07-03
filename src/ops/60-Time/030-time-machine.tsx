@@ -128,6 +128,7 @@ export default defineOp({
         <Sentence>
           Delay <props.InputHandle inputKey="tex1" /> up to{" "}
           <SentenceParamNumber
+            paramKey="numFrames"
             value={props.params.numFrames}
             valueUP={props.paramsUP.numFrames}
             min={1}

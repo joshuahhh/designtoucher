@@ -71,6 +71,7 @@ export default defineOp({
         <Sentence>
           Delay <props.InputHandle inputKey="tex1" /> by{" "}
           <SentenceParamNumber
+            paramKey="framesOfDelay"
             value={props.params.framesOfDelay}
             valueUP={props.paramsUP.framesOfDelay}
             min={1}

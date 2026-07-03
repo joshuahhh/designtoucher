@@ -23,6 +23,7 @@ export default defineFragOp({
         <Sentence>
           Kaleidoscope <props.InputHandle inputKey="tex1" /> with{" "}
           <SentenceParamNumber
+            paramKey="n"
             value={props.params.n}
             valueUP={props.paramsUP.n}
             min={2}

@@ -77,6 +77,7 @@ export default defineFragOp({
               <div className="flex flex-col gap-0.5">
                 <Axis label="X">
                   <SentenceParamNumber
+                    paramKey="scaleX"
                     value={params.scaleX}
                     valueUP={paramsUP.scaleX}
                     min={-4}
@@ -86,6 +87,7 @@ export default defineFragOp({
                 </Axis>
                 <Axis label="Y">
                   <SentenceParamNumber
+                    paramKey="scaleY"
                     value={params.scaleY}
                     valueUP={paramsUP.scaleY}
                     min={-4}
@@ -102,6 +104,7 @@ export default defineFragOp({
               resetDisabled={params.angle === 0}
             >
               <SentenceParamNumber
+                paramKey="angle"
                 value={params.angle}
                 valueUP={paramsUP.angle}
                 min={-180}
@@ -119,6 +122,7 @@ export default defineFragOp({
               <div className="flex flex-col gap-0.5">
                 <Axis label="X">
                   <SentenceParamNumber
+                    paramKey="tx"
                     value={params.tx}
                     valueUP={paramsUP.tx}
                     min={-1}
@@ -128,6 +132,7 @@ export default defineFragOp({
                 </Axis>
                 <Axis label="Y">
                   <SentenceParamNumber
+                    paramKey="ty"
                     value={params.ty}
                     valueUP={paramsUP.ty}
                     min={-1}

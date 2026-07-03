@@ -71,6 +71,7 @@ import {
   AnyOpId,
   AnyOpInstance,
   InputHandle,
+  isParamHandleId,
   makeInputHandleId,
   makeOutputHandleId,
   OpInstancesContext,
@@ -85,7 +86,13 @@ import {
   TakeSnapshotContext,
   usePreviewTex,
 } from "./ops-core.js";
-import { opById, OpNode, runFlow } from "./ops-flow.js";
+import {
+  isCompatibleConnection,
+  opById,
+  OpNode,
+  outputTypeForHandle,
+  runFlow,
+} from "./ops-flow.js";
 import { ops, OpWithMetadata } from "./ops/all-the-ops.js";
 import {
   ClipboardPayload,
@@ -354,11 +361,25 @@ const remapHandleId = (
   idMap: Map<string, string>,
 ): string | null => {
   if (!handleId) return null;
-  const match = handleId.match(/^(.+):(input|output):(.+)$/);
+  const match = handleId.match(/^(.+):(input|output|param):(.+)$/);
   if (!match) return handleId;
   const newNodeId = idMap.get(match[1]) ?? match[1];
   return `${newNodeId}:${match[2]}:${match[3]}`;
 };
+
+// A param handle holds at most one wire: when a new connection lands on an
+// occupied param, the newest edge (last in the array) replaces the old one.
+function keepNewestParamEdges(edges: Edge[]): Edge[] {
+  const newest = new Map<string, Edge>();
+  for (const e of edges) {
+    if (isParamHandleId(e.targetHandle)) newest.set(e.targetHandle, e);
+  }
+  if (newest.size === 0) return edges;
+  const filtered = edges.filter(
+    (e) => !isParamHandleId(e.targetHandle) || newest.get(e.targetHandle) === e,
+  );
+  return filtered.length === edges.length ? edges : filtered;
+}
 
 // Clone a copied selection with fresh ids: every node gets a new id, edge
 // endpoints and handle ids are remapped through that id map, and the whole
@@ -942,20 +963,23 @@ function useConnectionFeedforward(
       flowUP.edges.$((edges) => {
         if (!edges.some((e) => e.data?.provisional)) return edges;
         // Drop loop-creating previews; commit the rest by clearing the flag.
-        return edges
-          .filter((e) => !(e.data?.provisional && e.data?.cyclic))
-          .map((e) =>
-            e.data?.provisional
-              ? {
-                  ...e,
-                  data: {
-                    ...e.data,
-                    provisional: undefined,
-                    cyclic: undefined,
-                  },
-                }
-              : e,
-          );
+        // A committed param edge replaces any older wire on the same param.
+        return keepNewestParamEdges(
+          edges
+            .filter((e) => !(e.data?.provisional && e.data?.cyclic))
+            .map((e) =>
+              e.data?.provisional
+                ? {
+                    ...e,
+                    data: {
+                      ...e.data,
+                      provisional: undefined,
+                      cyclic: undefined,
+                    },
+                  }
+                : e,
+            ),
+        );
       });
       provisionalRef.current = null;
       snapshotTakenRef.current = false;
@@ -1041,6 +1065,19 @@ function useConnectionFeedforward(
           }
         }
       }
+    }
+
+    // Type gate: number wires only land on param chips, textures only on
+    // texture inputs. An incompatible candidate gets no preview edge.
+    if (
+      target &&
+      !isCompatibleConnection(
+        getNodes(),
+        target.sourceHandle,
+        target.targetHandle,
+      )
+    ) {
+      target = null;
     }
 
     const prev = provisionalRef.current;
@@ -1345,6 +1382,19 @@ const FlowInnerNormalMode = ({
 
   const onConnect = useCallback(
     (params: Connection) => {
+      // Refuse type-mismatched connections (number wires only into param
+      // chips, textures only into texture inputs).
+      if (
+        !isCompatibleConnection(
+          flowRef.current?.nodes ?? [],
+          params.sourceHandle,
+          params.targetHandle,
+        )
+      ) {
+        provisionalRef.current = null;
+        feedforwardSnapshotTakenRef.current = false;
+        return;
+      }
       // Refuse connections that would create a loop. The cyclic preview edge (if
       // any) is left for the feedforward cleanup to remove on drag-end.
       const baseEdges = (flowRef.current?.edges ?? []).filter(
@@ -1364,8 +1414,9 @@ const FlowInnerNormalMode = ({
       }
       provisionalRef.current = null;
       feedforwardSnapshotTakenRef.current = false;
-      // All handles accept multiple connections (multi-edges get implicitly summed).
-      flowUP.edges.$((edges) => addEdge(params, edges));
+      // Texture handles accept multiple connections (multi-edges get implicitly
+      // summed); a param handle keeps only its newest wire.
+      flowUP.edges.$((edges) => keepNewestParamEdges(addEdge(params, edges)));
     },
     [flowUP.edges, takeSnapshot, flowRef],
   );
@@ -1466,6 +1517,15 @@ const FlowInnerNormalMode = ({
         }
       }
 
+      // Number wires land only on param chips (handled by the feedforward /
+      // handle drops) — no picker or body-drop fallbacks for them.
+      if (
+        mode === "input" &&
+        outputTypeForHandle(getNodes(), fromHandle.id) === "number"
+      ) {
+        return;
+      }
+
       const { clientX, clientY } =
         "changedTouches" in event ? event.changedTouches[0] : event;
 
@@ -1561,7 +1621,10 @@ const FlowInnerNormalMode = ({
             const firstHandle = internal?.internals.handleBounds?.target?.[0];
             if (firstHandle?.id) targetHandle = firstHandle.id;
           }
-          if (targetHandle) {
+          if (
+            targetHandle &&
+            isCompatibleConnection(rfNodes, fromHandle.id, targetHandle)
+          ) {
             flowUP.edges.$((edges) =>
               addEdge(
                 {
@@ -1585,7 +1648,10 @@ const FlowInnerNormalMode = ({
             const firstHandle = internal?.internals.handleBounds?.source?.[0];
             if (firstHandle?.id) sourceHandle = firstHandle.id;
           }
-          if (sourceHandle) {
+          if (
+            sourceHandle &&
+            isCompatibleConnection(rfNodes, sourceHandle, fromHandle.id)
+          ) {
             flowUP.edges.$((edges) =>
               addEdge(
                 {
@@ -1796,20 +1862,39 @@ const FlowInnerNormalMode = ({
       : null;
     return flow.edges.map((e) => {
       // TODO: we should prob make a custom edge at some point
-      const { nodeId, key } = parseInputHandleId(e.targetHandle!);
-      const node = flow.nodes.find((n) => n.id === nodeId);
-      const op = node?.type === "operation" ? opById(node.data.opId) : null;
-      const isLate = op?.inputKeysLate?.includes(key);
+      let isLate = false;
+      if (!isParamHandleId(e.targetHandle)) {
+        const { nodeId, key } = parseInputHandleId(e.targetHandle!);
+        const node = flow.nodes.find((n) => n.id === nodeId);
+        const op = node?.type === "operation" ? opById(node.data.opId) : null;
+        isLate = op?.inputKeysLate?.includes(key) ?? false;
+      }
       return {
         ...e,
         className: clsx({
           "[stroke-dasharray:5,5]": isLate,
+          // Number wires are violet, the category color for numbers. (The
+          // per-edge var still loses to selected/cyclic/loop styling.)
+          "[--xy-edge-stroke-default:theme(colors.violet.600)]":
+            isParamHandleId(e.targetHandle),
           "cyclic-edge": e.data?.provisional && e.data?.cyclic,
           "loop-edge": loopEdgeIds?.has(e.id),
         }),
       };
     });
   }, [flow.edges, flow.nodes]);
+
+  // Native xyflow validity: makes snapping and the .connectionindicator
+  // highlight type-aware (number wires light up param chips, not tex inputs).
+  const isValidConnection = useCallback(
+    (conn: Edge | Connection) =>
+      isCompatibleConnection(
+        flowRef.current?.nodes ?? [],
+        conn.sourceHandle,
+        conn.targetHandle,
+      ),
+    [flowRef],
+  );
 
   return (
     <TakeSnapshotContext.Provider value={takeSnapshot}>
@@ -1823,6 +1908,7 @@ const FlowInnerNormalMode = ({
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onConnectEnd={onConnectEnd}
+              isValidConnection={isValidConnection}
               onNodeDragStart={onNodeDragStart}
               onNodeDrag={onNodeDrag}
               onNodeDragStop={onNodeDragStop}

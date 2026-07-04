@@ -960,27 +960,31 @@ function useConnectionFeedforward(
 
   useEffect(() => {
     if (!inProgress) {
-      flowUP.edges.$((edges) => {
-        if (!edges.some((e) => e.data?.provisional)) return edges;
-        // Drop loop-creating previews; commit the rest by clearing the flag.
-        // A committed param edge replaces any older wire on the same param.
-        return keepNewestParamEdges(
-          edges
-            .filter((e) => !(e.data?.provisional && e.data?.cyclic))
-            .map((e) =>
-              e.data?.provisional
-                ? {
-                    ...e,
-                    data: {
-                      ...e.data,
-                      provisional: undefined,
-                      cyclic: undefined,
-                    },
-                  }
-                : e,
-            ),
-        );
-      });
+      // Only touch flow state if there's actually something to clean up —
+      // an unconditional setFlow here makes a fresh flow object even when
+      // edges are unchanged, re-rendering the app in an endless loop.
+      if (flowRef.current?.edges.some((e) => e.data?.provisional)) {
+        flowUP.edges.$((edges) => {
+          // Drop loop-creating previews; commit the rest by clearing the flag.
+          // A committed param edge replaces any older wire on the same param.
+          return keepNewestParamEdges(
+            edges
+              .filter((e) => !(e.data?.provisional && e.data?.cyclic))
+              .map((e) =>
+                e.data?.provisional
+                  ? {
+                      ...e,
+                      data: {
+                        ...e.data,
+                        provisional: undefined,
+                        cyclic: undefined,
+                      },
+                    }
+                  : e,
+              ),
+          );
+        });
+      }
       provisionalRef.current = null;
       snapshotTakenRef.current = false;
       preDragEdgesRef.current = null;

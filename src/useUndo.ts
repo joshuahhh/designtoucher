@@ -1,6 +1,7 @@
 import { Edge } from "@xyflow/react";
 import { Dispatch, SetStateAction, useCallback, useRef } from "react";
 import { Flow } from "./Flow.js";
+import { useRefForCallback } from "./useRefForCallback.js";
 
 type FlowNode = Flow["nodes"][number];
 
@@ -18,6 +19,9 @@ function snapshotFromFlow(flow: Flow): FlowSnapshot {
 export function useUndo(flow: Flow, setFlow: Dispatch<SetStateAction<Flow>>) {
   const pastRef = useRef<FlowSnapshot[]>([]);
   const futureRef = useRef<FlowSnapshot[]>([]);
+  // Stable callbacks: anything that depends on `flow` directly gets rebuilt on
+  // every flow change, which re-triggers effects that list these as deps.
+  const flowRef = useRefForCallback(flow);
 
   const pushSnapshot = useCallback((snapshot: FlowSnapshot) => {
     pastRef.current = [...pastRef.current.slice(-(MAX_HISTORY - 1)), snapshot];
@@ -25,8 +29,8 @@ export function useUndo(flow: Flow, setFlow: Dispatch<SetStateAction<Flow>>) {
   }, []);
 
   const takeSnapshot = useCallback(() => {
-    pushSnapshot(snapshotFromFlow(flow));
-  }, [flow, pushSnapshot]);
+    pushSnapshot(snapshotFromFlow(flowRef.current));
+  }, [flowRef, pushSnapshot]);
 
   const undo = useCallback(() => {
     const past = pastRef.current;
@@ -34,14 +38,17 @@ export function useUndo(flow: Flow, setFlow: Dispatch<SetStateAction<Flow>>) {
 
     const previous = past[past.length - 1];
     pastRef.current = past.slice(0, -1);
-    futureRef.current = [...futureRef.current, snapshotFromFlow(flow)];
+    futureRef.current = [
+      ...futureRef.current,
+      snapshotFromFlow(flowRef.current),
+    ];
 
     setFlow((prev) => ({
       ...prev,
       nodes: previous.nodes,
       edges: previous.edges,
     }));
-  }, [flow, setFlow]);
+  }, [flowRef, setFlow]);
 
   const redo = useCallback(() => {
     const future = futureRef.current;
@@ -49,14 +56,14 @@ export function useUndo(flow: Flow, setFlow: Dispatch<SetStateAction<Flow>>) {
 
     const next = future[future.length - 1];
     futureRef.current = future.slice(0, -1);
-    pastRef.current = [...pastRef.current, snapshotFromFlow(flow)];
+    pastRef.current = [...pastRef.current, snapshotFromFlow(flowRef.current)];
 
     setFlow((prev) => ({
       ...prev,
       nodes: next.nodes,
       edges: next.edges,
     }));
-  }, [flow, setFlow]);
+  }, [flowRef, setFlow]);
 
   return { takeSnapshot, pushSnapshot, undo, redo };
 }

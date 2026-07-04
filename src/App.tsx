@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useMemo } from "react";
 import { use100vh } from "react-div-100vh";
+import { FpsMeter } from "./FpsMeter.js";
 import { Flow, initialFlow } from "./lib.js";
 import { clearProjectFromURL, getProjectFromURL } from "./share.js";
 import { useIDB } from "./useIDB.js";
@@ -33,6 +34,8 @@ export const App = () => {
       style={{ height }}
     >
       <Flow flow={flow} setFlow={setFlow} phoneCapture={phoneCapture} />
+
+      <FpsMeter />
     </div>
   );
 };

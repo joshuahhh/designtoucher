@@ -76,7 +76,9 @@ export type ClipboardPayload = {
 
 // Don't hijack copy/paste when the user is interacting with a real text
 // field (inputs, textareas, or anything opting out via .nocopypaste).
-function shouldIgnoreClipboardEvent(target: EventTarget | null): boolean {
+export function shouldIgnoreClipboardEvent(
+  target: EventTarget | null,
+): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.classList.contains("nocopypaste")) return true;
   if (target.isContentEditable) return true;
@@ -84,7 +86,7 @@ function shouldIgnoreClipboardEvent(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
-function parseClipboard(text: string): ClipboardPayload | null {
+export function parseClipboard(text: string): ClipboardPayload | null {
   if (!text) return null;
   try {
     const parsed = JSON.parse(text) as Partial<ClipboardPayload>;

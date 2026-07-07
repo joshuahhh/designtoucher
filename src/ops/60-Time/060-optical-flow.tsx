@@ -123,8 +123,10 @@ export default defineOp({
           vy = (sumIxIx * (-sumIyIt) - sumIxIy * (-sumIxIt)) / det;
         }
 
+        // vy is negated: the solve works in texture coords (v axis points
+        // up), but the output uses screen convention — down is positive.
         vx = clamp(vx * sensitivity * 0.1 + 0.5, 0.0, 1.0);
-        vy = clamp(vy * sensitivity * 0.1 + 0.5, 0.0, 1.0);
+        vy = clamp(-vy * sensitivity * 0.1 + 0.5, 0.0, 1.0);
 
         gl_FragColor = vec4(vx, vy, 0.5, 1.0);
       }

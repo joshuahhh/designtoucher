@@ -120,18 +120,18 @@ export default defineOp({
       }
 
       flip.run!({
-        runtime: runtime.hflipOp.runtime,
+        runtime: runtime.hflipOp.getRuntimeOrThrow(),
         inputs: { tex1: runtime.tex },
         params: { horizontal: true },
         ctx,
         notify() {},
       });
 
-      runtime.out = (runtime.hflipOp.runtime as any).out as Tex;
+      runtime.out = (runtime.hflipOp.getRuntimeOrThrow() as any).out as Tex;
     } else {
       if (runtime.hflipOp) {
         flip.destroy!({
-          runtime: runtime.hflipOp.runtime,
+          runtime: runtime.hflipOp.getRuntimeOrThrow(),
           ctx,
         });
         runtime.hflipOp = null;

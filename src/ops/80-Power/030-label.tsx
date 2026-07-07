@@ -16,6 +16,8 @@ export default defineOp({
     return { text: "Label here" };
   },
 
+  initRuntime: () => ({}),
+
   Render(props) {
     const params = props.params as unknown as LabelParams;
     const paramsUP = props.paramsUP as unknown as UpdateProxy<LabelParams>;

@@ -47,7 +47,7 @@ export default defineOp({
       });
       const opInstance = instantiateOp(op, ctx, "constant-op");
       runtime.compiled = { opInstance: anyOpInstance(opInstance), fragBody };
-      runtime.out = opInstance.runtime.out;
+      runtime.out = opInstance.getRuntimeOrThrow().out;
     }
 
     runtime.compiled.opInstance.run({ ctx, inputs: { tex1: tex }, params: {} });

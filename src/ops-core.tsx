@@ -42,7 +42,7 @@ export type Op<
   inputKeys?: InputKey[];
   inputKeysLate?: InputKey[];
   initParams?: () => Params;
-  initRuntime?: (ctx: OmniCanvasContextType, notify: () => void) => Runtime;
+  initRuntime: (ctx: OmniCanvasContextType, notify: () => void) => Runtime;
   run?: (props: {
     runtime: Runtime;
     inputs: Record<InputKey, Tex | null>;
@@ -150,9 +150,9 @@ class OpErrorBoundary extends Component<
   override render() {
     if (this.state.error) {
       return (
-        <div className="text-[10px] p-1 text-red-400">
+        <div className="text-[10px] p-1 text-red-400 max-w-[200px]">
           <div className="font-bold">{this.props.opId}: error</div>
-          <div className="text-gray-400 truncate">
+          <div className="text-gray-400 whitespace-pre-wrap break-words">
             {this.state.error.message}
           </div>
           <button
@@ -173,7 +173,22 @@ export class OpInstance<
   InputKey extends string,
   Params extends Record<string, unknown>,
 > {
-  public runtime: Runtime;
+  public state:
+    | { tag: "ok"; runtime: Runtime }
+    | { tag: "error"; error: Error };
+
+  getRuntime(): Runtime | null {
+    return this.state.tag === "ok" ? this.state.runtime : null;
+  }
+
+  /**
+   * The runtime, or (if init failed) rethrows the init error. For parent ops
+   * that compose sub-instances: a sub-op's failure propagates to the parent.
+   */
+  getRuntimeOrThrow(): Runtime {
+    if (this.state.tag === "error") throw this.state.error;
+    return this.state.runtime;
+  }
 
   private _revision = 0;
   private _listeners = new Set<() => void>();
@@ -204,7 +219,14 @@ export class OpInstance<
     ctx: OmniCanvasContextType,
   ) {
     const op = this.getOp();
-    this.runtime = op.initRuntime?.(ctx, this.notify) ?? ({} as Runtime);
+    try {
+      const runtime = op.initRuntime(ctx, this.notify);
+      this.state = { tag: "ok", runtime };
+    } catch (e) {
+      const error = e instanceof Error ? e : new Error(String(e));
+      this.state = { tag: "error", error };
+      console.error(`initRuntime failed for op "${op.id}":`, e);
+    }
 
     const instance = this;
     this.Render = memo(function OpInstanceRender(
@@ -215,11 +237,22 @@ export class OpInstance<
     ) {
       useSyncExternalStore(instance.subscribe, instance.getRevision);
       const op = instance.getOp();
+      const { state } = instance;
+      if (state.tag === "error") {
+        return (
+          <div className="text-[10px] p-1 text-red-400 max-w-[200px]">
+            <div className="font-bold">{op.id}: init error</div>
+            <div className="text-gray-400 whitespace-pre-wrap break-words">
+              {state.error.message}
+            </div>
+          </div>
+        );
+      }
       return (
         <OpErrorBoundary opId={op.id}>
           <OpRenderInner
             opRender={op.Render}
-            runtime={instance.runtime}
+            runtime={state.runtime}
             {...props}
           />
         </OpErrorBoundary>
@@ -228,8 +261,10 @@ export class OpInstance<
   }
 
   private _notifyIfRuntimeChanged(before: Record<string, unknown>) {
-    for (const key of Object.keys(this.runtime)) {
-      if (this.runtime[key] !== before[key]) {
+    const { state } = this;
+    if (state.tag === "error") return;
+    for (const key of Object.keys(state.runtime)) {
+      if (state.runtime[key] !== before[key]) {
         this.notify();
         return;
       }
@@ -237,20 +272,26 @@ export class OpInstance<
   }
 
   run(props: OpInstanceMethodProps<Runtime, InputKey, Params, "run">) {
-    const before = { ...this.runtime };
+    const { state } = this;
+    if (state.tag === "error") return;
+    const before = { ...state.runtime };
     const op = this.getOp();
-    op.run?.({ ...props, runtime: this.runtime, notify: this.notify });
+    op.run?.({ ...props, runtime: state.runtime, notify: this.notify });
     this._notifyIfRuntimeChanged(before);
   }
   runLate(props: OpInstanceMethodProps<Runtime, InputKey, Params, "runLate">) {
-    const before = { ...this.runtime };
+    const { state } = this;
+    if (state.tag === "error") return;
+    const before = { ...state.runtime };
     const op = this.getOp();
-    op.runLate?.({ ...props, runtime: this.runtime, notify: this.notify });
+    op.runLate?.({ ...props, runtime: state.runtime, notify: this.notify });
     this._notifyIfRuntimeChanged(before);
   }
   destroy(props: OpInstanceMethodProps<Runtime, InputKey, Params, "destroy">) {
+    const { state } = this;
+    if (state.tag === "error") return;
     const op = this.getOp();
-    return op.destroy?.({ runtime: this.runtime, ...props });
+    return op.destroy?.({ runtime: state.runtime, ...props });
   }
 }
 
@@ -331,9 +372,8 @@ export const InputHandle = <InputKey extends string>({
     [sourceInstance],
   );
   useSyncExternalStore(subscribe, () => sourceInstance?.getRevision() ?? 0);
-  const rawSourceOutput = sourceInstance
-    ? sourceInstance.runtime[sourceHandleParsed!.key]
-    : null;
+  const rawSourceOutput =
+    sourceInstance?.getRuntime()?.[sourceHandleParsed!.key] ?? null;
   const sourceOutput = isProbablyTex(rawSourceOutput) ? rawSourceOutput : null;
 
   const className = clsx(
@@ -520,9 +560,8 @@ export const SentenceParamNumber = ({
     subscribeToSource,
     () => sourceInstance?.getRevision() ?? 0,
   );
-  const rawDriven = sourceInstance
-    ? sourceInstance.runtime[sourceHandleParsed!.key]
-    : null;
+  const rawDriven =
+    sourceInstance?.getRuntime()?.[sourceHandleParsed!.key] ?? null;
   const drivenValue = typeof rawDriven === "number" ? rawDriven : null;
   const driven = drivenValue !== null;
 
@@ -883,7 +922,7 @@ export function usePreviewTex(target: PreviewTarget | null): Tex | null {
   );
   useSyncExternalStore(subscribe, () => instance?.getRevision() ?? 0);
   return instance && target
-    ? ((instance.runtime[target.outputKey] as Tex | null) ?? null)
+    ? ((instance.getRuntime()?.[target.outputKey] as Tex | null) ?? null)
     : null;
 }
 
@@ -906,9 +945,7 @@ export function useInputTex(inputKey: string): Tex | null {
   );
   useSyncExternalStore(subscribe, () => sourceInstance?.getRevision() ?? 0);
 
-  const raw = sourceInstance
-    ? sourceInstance.runtime[sourceHandleParsed!.key]
-    : null;
+  const raw = sourceInstance?.getRuntime()?.[sourceHandleParsed!.key] ?? null;
   return isProbablyTex(raw) ? raw : null;
 }
 
@@ -946,7 +983,7 @@ export const OutputHandle = <OutputKey extends string>({
   useSyncExternalStore(subscribe, () => instance?.getRevision() ?? 0);
 
   const output = instance
-    ? (instance.runtime[outputKey] as Tex | null)
+    ? (instance.getRuntime()?.[outputKey] as Tex | null)
     : undefined;
 
   if (!nodeId) {
@@ -1076,7 +1113,7 @@ export const NumberOutputHandle = ({
   );
   useSyncExternalStore(subscribe, () => instance?.getRevision() ?? 0);
 
-  const raw = instance ? instance.runtime[outputKey] : null;
+  const raw = instance?.getRuntime()?.[outputKey] ?? null;
   const value = typeof raw === "number" ? raw : null;
 
   // Rolling history for the sparkline. We sample on render (one render per

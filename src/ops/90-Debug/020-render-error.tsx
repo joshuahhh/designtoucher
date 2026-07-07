@@ -6,6 +6,8 @@ export default defineOp({
   inputKeys: [] as string[],
   outputKeys: [],
 
+  initRuntime: () => ({}),
+
   Render() {
     const [explode, setExplode] = useState(false);
     if (explode) {

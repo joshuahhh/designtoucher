@@ -296,7 +296,7 @@ export function runFlow(
           );
           return [inputKey, null];
         }
-        const value = sourceOpInstance.runtime[outputKey];
+        const value = sourceOpInstance.getRuntime()?.[outputKey];
         // Guard against non-texture outputs wired into a texture input (e.g.
         // a stale saved graph from before an op's output became a number).
         return [inputKey, isProbablyTex(value) ? value : null];
@@ -316,7 +316,7 @@ export function runFlow(
       const { nodeId: sourceNodeId, key: outputKey } = parseOutputHandleId(
         edge.sourceHandle!,
       );
-      const value = opInstances[sourceNodeId]?.runtime[outputKey];
+      const value = opInstances[sourceNodeId]?.getRuntime()?.[outputKey];
       if (typeof value === "number") {
         if (params === node.data.params) params = { ...params };
         params[paramKey] = value;

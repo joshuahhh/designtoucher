@@ -30,9 +30,9 @@ export default defineOp({
     );
     return {
       channelOpInstances,
-      outR: channelOpInstances[0].runtime.out,
-      outG: channelOpInstances[1].runtime.out,
-      outB: channelOpInstances[2].runtime.out,
+      outR: channelOpInstances[0].getRuntimeOrThrow().out,
+      outG: channelOpInstances[1].getRuntimeOrThrow().out,
+      outB: channelOpInstances[2].getRuntimeOrThrow().out,
     };
   },
   run({ inputs, params, runtime, ctx }) {

@@ -140,7 +140,11 @@ export const OpNodeView = memo(function OpNodeView(props: NodeProps<OpNode>) {
   const instance = opInstances[props.id];
 
   if (!instance) {
-    return null;
+    return (
+      <div className="border rounded-md bg-gray-100 p-2 border-gray-300">
+        <div className="text-[10px] text-gray-400">{data.opId}</div>
+      </div>
+    );
   }
 
   return (

@@ -9,9 +9,9 @@ export default defineFragOp({
     vec3 texGColor = vec3(texture2D(texG, uv));
     vec3 texBColor = vec3(texture2D(texB, uv));
     gl_FragColor = vec4(
-      texRColor.r + texRColor.g + texRColor.b,
-      texGColor.r + texGColor.g + texGColor.b,
-      texBColor.r + texBColor.g + texBColor.b,
+      max(texRColor.r, max(texRColor.g, texRColor.b)),
+      max(texGColor.r, max(texGColor.g, texGColor.b)),
+      max(texBColor.r, max(texBColor.g, texBColor.b)),
       1.0
     );
   `,

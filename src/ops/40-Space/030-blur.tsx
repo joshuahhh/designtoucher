@@ -51,7 +51,7 @@ export default defineOp({
     return {
       lineBlurX,
       lineBlurY,
-      out: lineBlurY.runtime.out,
+      out: lineBlurY.getRuntimeOrThrow().out,
     };
   },
   run({ inputs, params, runtime, ctx }) {
@@ -71,7 +71,7 @@ export default defineOp({
     });
     runtime.lineBlurY.run({
       ctx,
-      inputs: { tex1: runtime.lineBlurX.runtime.out },
+      inputs: { tex1: runtime.lineBlurX.getRuntimeOrThrow().out },
       params: { deltaX: 0, deltaY },
     });
   },

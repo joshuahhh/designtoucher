@@ -11,5 +11,5 @@ export const initialFlow: Flow = {
     },
   ],
   edges: [],
-  viewport: { x: 100, y: 100, zoom: 2 },
+  viewport: { x: 700, y: 250, zoom: 2 },
 };

@@ -1013,7 +1013,11 @@ export const OutputHandle = <OutputKey extends string>({
       >
         {showPreview ? (
           output ? (
-            <div className="-m-[1px]">
+            <div
+              className="-m-[1px]"
+              draggable={false}
+              onDragStart={(e) => e.preventDefault()}
+            >
               <Monitor tex={output} cornerRadiusPixels={3} />
             </div>
           ) : (

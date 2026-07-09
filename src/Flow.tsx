@@ -862,17 +862,39 @@ type ProvisionalConnection = {
 };
 
 /**
+ * Filter out edges that target a late input handle — these don't participate
+ * in the dependency graph (they read from the previous frame), so they
+ * shouldn't count when checking for cycles.
+ */
+function excludeLateEdges(edges: Edge[], nodes: Node[]): Edge[] {
+  return edges.filter((e) => {
+    if (!e.targetHandle || isParamHandleId(e.targetHandle)) return true;
+    const { nodeId, key } = parseInputHandleId(e.targetHandle);
+    const node = nodes.find((n) => n.id === nodeId);
+    const op =
+      node?.type === "operation" ? opById((node as OpNode).data.opId) : null;
+    return !(op?.inputKeysLate?.includes(key) ?? false);
+  });
+}
+
+/**
  * Would adding a data-flow edge source→target create a cycle among `edges`?
  * Data flows source→target, so a loop forms iff `target` can already reach
  * `source` going downstream — the new edge would close that path.
+ *
+ * Late edges (dashed lines) are excluded — they read from the previous frame
+ * and don't form real data-flow cycles.
  */
 function wouldCreateCycle(
   source: string,
   target: string,
   edges: Edge[],
+  nodes: Node[],
 ): boolean {
   if (source === target) return true;
-  return getTransitiveDownstream(target, edges).has(source);
+  return getTransitiveDownstream(target, excludeLateEdges(edges, nodes)).has(
+    source,
+  );
 }
 
 /**
@@ -1128,6 +1150,7 @@ function useConnectionFeedforward(
           target.source,
           target.target,
           preDragEdgesRef.current!,
+          getNodes(),
         );
         // A cyclic preview will be rejected on drop, so don't snapshot for it —
         // that would leave a no-op entry in the undo history.
@@ -1411,7 +1434,12 @@ const FlowInnerNormalMode = ({
       if (
         params.source &&
         params.target &&
-        wouldCreateCycle(params.source, params.target, baseEdges)
+        wouldCreateCycle(
+          params.source,
+          params.target,
+          baseEdges,
+          flowRef.current?.nodes ?? [],
+        )
       ) {
         provisionalRef.current = null;
         feedforwardSnapshotTakenRef.current = false;
@@ -1611,7 +1639,12 @@ const FlowInnerNormalMode = ({
         const candSource = mode === "input" ? fromHandle.nodeId : hitOpNode.id;
         const candTarget = mode === "input" ? hitOpNode.id : fromHandle.nodeId;
         if (
-          wouldCreateCycle(candSource, candTarget, flowRef.current?.edges ?? [])
+          wouldCreateCycle(
+            candSource,
+            candTarget,
+            flowRef.current?.edges ?? [],
+            flowRef.current?.nodes ?? [],
+          )
         ) {
           return;
         }

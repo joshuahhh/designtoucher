@@ -1,0 +1,172 @@
+{
+  "nodes": [
+    {
+      "id": "n5feddfec90a838",
+      "type": "operation",
+      "position": {
+        "x": 43.54423030263078,
+        "y": -340.32805245224654
+      },
+      "data": {
+        "opId": "cam",
+        "params": {
+          "deviceId": null
+        }
+      },
+      "selected": false,
+      "dragging": false,
+      "measured": {
+        "width": 218,
+        "height": 154
+      }
+    },
+    {
+      "id": "n44561707e0379",
+      "type": "operation",
+      "position": {
+        "x": 80.88262186602665,
+        "y": -106.84305270339453
+      },
+      "data": {
+        "opId": "crop",
+        "params": {
+          "x1": 0.5,
+          "y1": 0,
+          "x2": 1,
+          "y2": 1,
+          "mode": 0
+        }
+      },
+      "selected": false,
+      "dragging": false,
+      "measured": {
+        "width": 337,
+        "height": 154
+      }
+    },
+    {
+      "id": "ndad4b1af7dce98",
+      "type": "operation",
+      "position": {
+        "x": -352.3707716348738,
+        "y": -4.510462174610353
+      },
+      "data": {
+        "opId": "feedback-buffer",
+        "params": {}
+      },
+      "selected": false,
+      "dragging": false,
+      "measured": {
+        "width": 218,
+        "height": 154
+      }
+    },
+    {
+      "id": "n4a2b5540ed89b8",
+      "type": "operation",
+      "position": {
+        "x": 121.23320926773965,
+        "y": 98.66432668278432
+      },
+      "data": {
+        "opId": "layers",
+        "params": {
+          "order": [
+            0,
+            2
+          ],
+          "nextId": 3,
+          "attrs": {
+            "0": {
+              "opacity": 1,
+              "blendMode": "normal"
+            },
+            "2": {
+              "opacity": 1,
+              "blendMode": "normal"
+            }
+          }
+        }
+      },
+      "selected": false,
+      "dragging": false,
+      "measured": {
+        "width": 326,
+        "height": 153
+      }
+    },
+    {
+      "id": "n976169a01daea",
+      "type": "operation",
+      "position": {
+        "x": -350.05002992280413,
+        "y": 257.9843692705997
+      },
+      "data": {
+        "opId": "transform",
+        "params": {
+          "scaleX": 1,
+          "scaleY": 1,
+          "angle": 0,
+          "tx": -0.002,
+          "ty": 0
+        }
+      },
+      "selected": false,
+      "dragging": false,
+      "measured": {
+        "width": 359,
+        "height": 154
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "xy-edge__n5feddfec90a838n5feddfec90a838:output:out-n44561707e0379n44561707e0379:input:tex1",
+      "source": "n5feddfec90a838",
+      "sourceHandle": "n5feddfec90a838:output:out",
+      "target": "n44561707e0379",
+      "targetHandle": "n44561707e0379:input:tex1",
+      "selected": false
+    },
+    {
+      "id": "xy-edge__ndad4b1af7dce98ndad4b1af7dce98:output:out-n976169a01daean976169a01daea:input:tex1",
+      "source": "ndad4b1af7dce98",
+      "sourceHandle": "ndad4b1af7dce98:output:out",
+      "target": "n976169a01daea",
+      "targetHandle": "n976169a01daea:input:tex1",
+      "selected": false
+    },
+    {
+      "id": "xy-edge__n4a2b5540ed89b8n4a2b5540ed89b8:output:out-ndad4b1af7dce98ndad4b1af7dce98:input:in",
+      "source": "n4a2b5540ed89b8",
+      "sourceHandle": "n4a2b5540ed89b8:output:out",
+      "target": "ndad4b1af7dce98",
+      "targetHandle": "ndad4b1af7dce98:input:in",
+      "selected": false
+    },
+    {
+      "id": "xy-edge__n44561707e0379n44561707e0379:output:out-n4a2b5540ed89b8n4a2b5540ed89b8:input:layer_0",
+      "source": "n44561707e0379",
+      "sourceHandle": "n44561707e0379:output:out",
+      "target": "n4a2b5540ed89b8",
+      "targetHandle": "n4a2b5540ed89b8:input:layer_0",
+      "selected": false
+    },
+    {
+      "source": "n976169a01daea",
+      "sourceHandle": "n976169a01daea:output:out",
+      "target": "n4a2b5540ed89b8",
+      "targetHandle": "n4a2b5540ed89b8:input:layer_2",
+      "data": {},
+      "id": "xy-edge__n976169a01daean976169a01daea:output:out-n4a2b5540ed89b8n4a2b5540ed89b8:input:layer_2",
+      "selected": false
+    }
+  ],
+  "viewport": {
+    "x": 467.2996916226198,
+    "y": 449.2643565692922,
+    "zoom": 0.7494998008777752
+  }
+}

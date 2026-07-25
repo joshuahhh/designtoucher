@@ -1203,7 +1203,24 @@ const FlowInnerNormalMode = ({
   const flowRef = useRefForCallback(flow);
   const flowUP = up(setFlow);
 
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded_] = useState(false);
+  const SIDEBAR_W = 288; // w-72
+  const setIsSidebarExpanded: typeof setIsSidebarExpanded_ = useCallback(
+    (val) => {
+      setIsSidebarExpanded_((prev) => {
+        const next = typeof val === "function" ? val(prev) : val;
+        if (next !== prev) {
+          const dx = next ? -SIDEBAR_W : SIDEBAR_W;
+          setFlow((f) => ({
+            ...f,
+            viewport: { ...f.viewport, x: f.viewport.x + dx },
+          }));
+        }
+        return next;
+      });
+    },
+    [setFlow],
+  );
   const [draggedOpId, setDraggedOpId] = useState<AnyOpId | null>(null);
 
   const provisionalRef = useRef<ProvisionalConnection | null>(null);
@@ -1948,6 +1965,12 @@ const FlowInnerNormalMode = ({
     <TakeSnapshotContext.Provider value={takeSnapshot}>
       <TransformPickerContext.Provider value={transformPicker}>
         <div className="w-full h-full flex">
+          <Sidebar
+            isSidebarExpanded={isSidebarExpanded}
+            setDraggedOpId={setDraggedOpId}
+            loadFlow={loadFlow}
+            ctx={ctx}
+          />
           <div className="flex-1 relative">
             <ReactFlow
               nodes={flow.nodes}
@@ -1991,12 +2014,6 @@ const FlowInnerNormalMode = ({
               </OmniCanvasOverlay>
             </ReactFlow>
           </div>
-          <Sidebar
-            isSidebarExpanded={isSidebarExpanded}
-            setDraggedOpId={setDraggedOpId}
-            loadFlow={loadFlow}
-            ctx={ctx}
-          />
         </div>
       </TransformPickerContext.Provider>
     </TakeSnapshotContext.Provider>
@@ -2018,7 +2035,7 @@ const Toolbar = memo(function Toolbar({
   const hasSelection = selectedNodes.length > 0 || selectedEdges.length > 0;
 
   return (
-    <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 select-none">
+    <div className="absolute top-4 left-4 z-10 flex gap-2 select-none">
       <Menu flow={flow} loadFlow={loadFlow} phoneCapture={phoneCapture} />
       {hasSelection && (
         <button
@@ -2043,7 +2060,7 @@ const SidebarToggleButton = memo(function SidebarToggleButton({
   return (
     <button
       onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-      className="absolute top-4 right-4 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 transition-colors"
+      className="absolute top-4 left-14 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 transition-colors select-none"
     >
       {isSidebarExpanded ? (
         <svg
@@ -2056,7 +2073,7 @@ const SidebarToggleButton = memo(function SidebarToggleButton({
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M9 5l7 7-7 7"
+            d="M15 19l-7-7 7-7"
           />
         </svg>
       ) : (
@@ -2070,7 +2087,7 @@ const SidebarToggleButton = memo(function SidebarToggleButton({
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M15 19l-7-7 7-7"
+            d="M9 5l7 7-7 7"
           />
         </svg>
       )}
@@ -2144,6 +2161,7 @@ const Sidebar = memo(
       [setDraggedOpId],
     );
 
+    const opsInGroups = useMemo(() => putOpsIntoGroups(ops), []);
     const [searchInput, setSearchInput] = useState("");
     const searchQuery = useMemo(
       () => searchInput.toLowerCase().trim(),
@@ -2177,63 +2195,57 @@ const Sidebar = memo(
       }
     }, [isSidebarExpanded, searchInputDiv]);
 
-    const transition = clsx("transition-all duration-300 ease-in-out");
-
     return (
       <>
-        {/* this guy takes up the room */}
-        <div className={clsx(isSidebarExpanded ? "w-72" : "w-0", transition)} />
-        {/* we position the overlay separately, and staticly (for perf) */}
-        <OmniCanvasOverlay className="absolute top-0 right-0 bottom-0 w-72 pointer-events-none">
-          {/* Clip the slide so the collapsed (translate-x-full) panel stays
-              hidden within this 72-wide box instead of spilling to the right —
-              important in split mode, where "to the right" is the preview. */}
-          <div className="w-full h-full overflow-hidden pointer-events-none">
-            {/* this part slides in & out */}
-            <div
-              className={clsx(
-                isSidebarExpanded ? "translate-x-0" : "translate-x-full",
-                transition,
-                "bg-gray-50 border-l border-gray-200 pt-4 px-4 h-full flex flex-col pointer-events-auto",
-              )}
-            >
+        <div
+          className={clsx(
+            isSidebarExpanded ? "w-72" : "w-0",
+            "shrink-0 bg-gray-50 overflow-hidden",
+          )}
+        />
+        <OmniCanvasOverlay
+          className={clsx(
+            "absolute top-0 left-0 bottom-0 w-72 overflow-hidden",
+            "transition-transform duration-300 ease-in-out",
+            isSidebarExpanded ? "translate-x-0" : "-translate-x-full",
+          )}
+        >
+          <div className="bg-gray-50 border-r border-gray-200 pt-4 px-4 h-full flex flex-col pointer-events-auto">
+            <div className="flex items-center gap-2 mb-2">
               <h3 className="text-lg font-semibold text-gray-800">
                 Components
               </h3>
-              <TextField.Root
-                ref={setSearchInputDiv}
-                className="mt-2 mb-4 shrink-0"
-                placeholder="Search for a component…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-              >
+            </div>
+            <TextField.Root
+              ref={setSearchInputDiv}
+              className="mt-2 mb-4 shrink-0"
+              placeholder="Search for a component…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            >
+              <TextField.Slot>
+                <FaMagnifyingGlass className="w-3 h-3 text-gray-500" />
+              </TextField.Slot>
+              {searchInput && (
                 <TextField.Slot>
-                  <FaMagnifyingGlass className="w-3 h-3 text-gray-500" />
+                  <button onClick={() => setSearchInput("")}>
+                    <FaX className="w-3 h-3 text-gray-500" />
+                  </button>
                 </TextField.Slot>
-                {searchInput && (
-                  <TextField.Slot>
-                    <button onClick={() => setSearchInput("")}>
-                      <FaX className="w-3 h-3 text-gray-500" />
-                    </button>
-                  </TextField.Slot>
-                )}
-              </TextField.Root>
-              <div className="overflow-auto flex flex-col">
-                <OpList
-                  opsInGroups={putOpsIntoGroups(ops)}
-                  searchQuery={searchQuery}
-                  renderOpWrapper={renderOpWrapper}
-                  InputHandle={InputHandle}
-                  OutputHandle={OutputHandle}
-                  groupClassName="my-4"
-                  groupHeadingClassName="text-sm text-gray-600 mb-2 font-bold"
-                  gapClassName="gap-2"
-                />
-                <ExamplesSection
-                  loadFlow={loadFlow}
-                  searchQuery={searchQuery}
-                />
-              </div>
+              )}
+            </TextField.Root>
+            <div className="overflow-auto flex flex-col">
+              <OpList
+                opsInGroups={opsInGroups}
+                searchQuery={searchQuery}
+                renderOpWrapper={renderOpWrapper}
+                InputHandle={InputHandle}
+                OutputHandle={OutputHandle}
+                groupClassName="my-4"
+                groupHeadingClassName="text-sm text-gray-600 mb-2 font-bold"
+                gapClassName="gap-2"
+              />
+              <ExamplesSection loadFlow={loadFlow} searchQuery={searchQuery} />
             </div>
           </div>
         </OmniCanvasOverlay>

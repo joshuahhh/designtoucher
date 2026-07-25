@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { destroyTex, ensureTexSize, newTex } from "../../mygl.js";
 import { defineOp, Sentence, SentenceButton } from "../../ops-core.js";
 import { idbGet, idbSet } from "../../useIDB.js";
@@ -10,6 +11,173 @@ function makeVideo(src: string): HTMLVideoElement {
   video.muted = true;
   video.play();
   return video;
+}
+
+async function webmToMp4(
+  webmBlob: Blob,
+  onProgress?: (ratio: number) => void,
+): Promise<Blob> {
+  console.log(
+    "[transcode] starting, input size:",
+    (webmBlob.size / 1024 / 1024).toFixed(1) + "MB",
+  );
+  const t0 = performance.now();
+
+  const {
+    Conversion,
+    Input,
+    Output,
+    BlobSource,
+    BufferTarget,
+    Mp4OutputFormat,
+    WEBM,
+  } = await import("mediabunny");
+
+  console.log("[transcode] mediabunny loaded");
+
+  const input = new Input({
+    source: new BlobSource(webmBlob),
+    formats: [WEBM],
+  });
+  const target = new BufferTarget();
+  const output = new Output({
+    format: new Mp4OutputFormat({ fastStart: "in-memory" }),
+    target,
+  });
+
+  const conversion = await Conversion.init({
+    input,
+    output,
+    video: { codec: "avc" },
+    audio: { discard: true },
+  });
+
+  if (!conversion.isValid) {
+    console.log("[transcode] discarded tracks:", conversion.discardedTracks);
+    throw new Error("Conversion is not valid");
+  }
+
+  conversion.onProgress = (progress) => {
+    console.log("[transcode] progress:", (progress * 100).toFixed(1) + "%");
+    onProgress?.(progress);
+  };
+
+  console.log("[transcode] running conversion...");
+  await conversion.execute();
+
+  console.log(
+    "[transcode] done in",
+    ((performance.now() - t0) / 1000).toFixed(1) + "s",
+  );
+
+  const bytes = target.buffer!;
+  return new Blob([new Uint8Array(bytes)], { type: "video/mp4" });
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+type SaveState =
+  | { kind: "idle" }
+  | { kind: "menu" }
+  | { kind: "transcoding"; progress: number }
+  | { kind: "error" };
+
+function SaveButton({ blobKey }: { blobKey: string | null }) {
+  const [state, setState] = useState<SaveState>({ kind: "idle" });
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (state.kind !== "menu") return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setState({ kind: "idle" });
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [state.kind]);
+
+  const saveWebm = async () => {
+    if (!blobKey) return;
+    const blob = await idbGet<Blob>(`video:${blobKey}`);
+    if (blob) downloadBlob(blob, "recording.webm");
+    setState({ kind: "idle" });
+  };
+
+  const saveMp4 = async () => {
+    if (!blobKey) return;
+    setState({ kind: "transcoding", progress: 0 });
+    try {
+      const webmBlob = await idbGet<Blob>(`video:${blobKey}`);
+      if (!webmBlob) {
+        setState({ kind: "error" });
+        return;
+      }
+      const mp4Blob = await webmToMp4(webmBlob, (p) =>
+        setState({ kind: "transcoding", progress: p }),
+      );
+      downloadBlob(mp4Blob, "recording.mp4");
+      setState({ kind: "idle" });
+    } catch (e) {
+      console.log("transcode failed", e);
+      setState({ kind: "error" });
+    }
+  };
+
+  if (state.kind === "transcoding") {
+    const pct = Math.round(state.progress * 100);
+    return (
+      <SentenceButton disabled className="relative overflow-hidden">
+        <span
+          className="absolute inset-0 bg-blue-500/20 transition-[width] duration-300"
+          style={{ width: `${pct}%` }}
+        />
+        <span className="relative">{pct}%</span>
+      </SentenceButton>
+    );
+  }
+
+  if (state.kind === "error") {
+    return (
+      <SentenceButton
+        onClick={() => setState({ kind: "menu" })}
+        className="text-red-500"
+      >
+        Retry
+      </SentenceButton>
+    );
+  }
+
+  return (
+    <span className="relative inline-block" ref={menuRef}>
+      <SentenceButton onClick={() => setState({ kind: "menu" })}>
+        Save
+      </SentenceButton>
+      {state.kind === "menu" && (
+        <div className="absolute bottom-full left-0 mb-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 overflow-hidden text-xs whitespace-nowrap">
+          <button
+            className="block w-full px-3 py-1.5 text-left hover:bg-gray-100"
+            onClick={saveWebm}
+          >
+            .webm
+          </button>
+          <button
+            className="block w-full px-3 py-1.5 text-left hover:bg-gray-100"
+            onClick={saveMp4}
+          >
+            .mp4
+          </button>
+        </div>
+      )}
+    </span>
+  );
 }
 
 export default defineOp({
@@ -251,6 +419,7 @@ export default defineOp({
               {props.params.blobKey && (
                 <>
                   {" "}
+                  <SaveButton blobKey={props.params.blobKey} />{" "}
                   <button
                     className="text-red-400 hover:text-red-600 text-xs"
                     onClick={() => {

@@ -34,6 +34,7 @@
     "lygia": "^1.3.3",
     "lz-string": "^1.5.0",
     "marked": "^18.0.5",
+    "mediabunny": "^1.51.0",
     "peerjs": "^1.5.5",
     "perfect-freehand": "^1.2.2",
     "qrcode.react": "^4.2.0",

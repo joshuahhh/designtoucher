@@ -2000,15 +2000,13 @@ const FlowInnerNormalMode = ({
                 <div className="contents pointer-events-auto">
                   <MiniMap zoomable pannable />
                   <Controls className="bg-gray-50" />
-                  <SidebarToggleButton
-                    isSidebarExpanded={isSidebarExpanded}
-                    setIsSidebarExpanded={setIsSidebarExpanded}
-                  />
                   <Toolbar
                     onDelete={deleteSelected}
                     flow={flow}
                     loadFlow={loadFlow}
                     phoneCapture={phoneCapture}
+                    isSidebarExpanded={isSidebarExpanded}
+                    setIsSidebarExpanded={setIsSidebarExpanded}
                   />
                 </div>
               </OmniCanvasOverlay>
@@ -2025,17 +2023,25 @@ const Toolbar = memo(function Toolbar({
   flow,
   loadFlow,
   phoneCapture,
+  isSidebarExpanded,
+  setIsSidebarExpanded,
 }: {
   onDelete: () => void;
   flow: Flow;
   loadFlow: (flow: Flow) => void;
   phoneCapture: PhoneCaptureState;
+  isSidebarExpanded: boolean;
+  setIsSidebarExpanded: Dispatch<SetStateAction<boolean>>;
 }) {
   const { selectedNodes, selectedEdges } = useReactFlowSelection<Node, Edge>();
   const hasSelection = selectedNodes.length > 0 || selectedEdges.length > 0;
 
   return (
     <div className="absolute top-4 left-4 z-10 flex gap-2 select-none">
+      <SidebarToggleButton
+        isSidebarExpanded={isSidebarExpanded}
+        setIsSidebarExpanded={setIsSidebarExpanded}
+      />
       <Menu flow={flow} loadFlow={loadFlow} phoneCapture={phoneCapture} />
       {hasSelection && (
         <button
@@ -2060,7 +2066,7 @@ const SidebarToggleButton = memo(function SidebarToggleButton({
   return (
     <button
       onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-      className="absolute top-4 left-14 z-10 bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 transition-colors select-none"
+      className="bg-white border border-gray-300 rounded-md p-2 shadow-sm hover:bg-gray-50 transition-colors"
     >
       {isSidebarExpanded ? (
         <svg

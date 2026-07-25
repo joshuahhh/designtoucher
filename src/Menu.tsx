@@ -153,22 +153,21 @@ export const Menu = memo(function Menu({
 
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-48 z-50">
-          <button onClick={handlePhoneCamera} className={itemClass}>
-            <FaCamera className="w-3.5 h-3.5 shrink-0" /> Phone Camera
+          <button onClick={handleNew} className={itemClass}>
+            <FaFile className="w-3.5 h-3.5 shrink-0" /> New
+          </button>
+          <button onClick={handleLoad} className={itemClass}>
+            <FaUpload className="w-3.5 h-3.5 shrink-0" /> Open File
+          </button>
+          <button onClick={handleSave} className={itemClass}>
+            <FaDownload className="w-3.5 h-3.5 shrink-0" /> Save File
           </button>
           <div className="border-t border-gray-200 my-1" />
           <button onClick={handleShare} className={itemClass}>
             <FaLink className="w-3.5 h-3.5 shrink-0" /> Share Link
           </button>
-          <button onClick={handleSave} className={itemClass}>
-            <FaDownload className="w-3.5 h-3.5 shrink-0" /> Save File
-          </button>
-          <button onClick={handleLoad} className={itemClass}>
-            <FaUpload className="w-3.5 h-3.5 shrink-0" /> Open File
-          </button>
-          <div className="border-t border-gray-200 my-1" />
-          <button onClick={handleNew} className={itemClass}>
-            <FaFile className="w-3.5 h-3.5 shrink-0" /> New
+          <button onClick={handlePhoneCamera} className={itemClass}>
+            <FaCamera className="w-3.5 h-3.5 shrink-0" /> Phone Camera
           </button>
         </div>
       )}

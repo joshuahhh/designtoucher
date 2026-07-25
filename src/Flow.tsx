@@ -861,20 +861,20 @@ type ProvisionalConnection = {
   cyclic?: boolean;
 };
 
-/**
- * Filter out edges that target a late input handle — these don't participate
- * in the dependency graph (they read from the previous frame), so they
- * shouldn't count when checking for cycles.
- */
+function isLateHandle(
+  targetHandle: string | null | undefined,
+  nodes: Node[],
+): boolean {
+  if (!targetHandle || isParamHandleId(targetHandle)) return false;
+  const { nodeId, key } = parseInputHandleId(targetHandle);
+  const node = nodes.find((n) => n.id === nodeId);
+  const op =
+    node?.type === "operation" ? opById((node as OpNode).data.opId) : null;
+  return op?.inputKeysLate?.includes(key) ?? false;
+}
+
 function excludeLateEdges(edges: Edge[], nodes: Node[]): Edge[] {
-  return edges.filter((e) => {
-    if (!e.targetHandle || isParamHandleId(e.targetHandle)) return true;
-    const { nodeId, key } = parseInputHandleId(e.targetHandle);
-    const node = nodes.find((n) => n.id === nodeId);
-    const op =
-      node?.type === "operation" ? opById((node as OpNode).data.opId) : null;
-    return !(op?.inputKeysLate?.includes(key) ?? false);
-  });
+  return edges.filter((e) => !isLateHandle(e.targetHandle, nodes));
 }
 
 /**
@@ -883,14 +883,17 @@ function excludeLateEdges(edges: Edge[], nodes: Node[]): Edge[] {
  * `source` going downstream — the new edge would close that path.
  *
  * Late edges (dashed lines) are excluded — they read from the previous frame
- * and don't form real data-flow cycles.
+ * and don't form real data-flow cycles. This includes the proposed edge itself:
+ * if `targetHandle` points to a late input, the edge can never form a cycle.
  */
 function wouldCreateCycle(
   source: string,
   target: string,
   edges: Edge[],
   nodes: Node[],
+  targetHandle?: string | null,
 ): boolean {
+  if (targetHandle && isLateHandle(targetHandle, nodes)) return false;
   if (source === target) return true;
   return getTransitiveDownstream(target, excludeLateEdges(edges, nodes)).has(
     source,
@@ -1151,6 +1154,7 @@ function useConnectionFeedforward(
           target.target,
           preDragEdgesRef.current!,
           getNodes(),
+          target.targetHandle,
         );
         // A cyclic preview will be rejected on drop, so don't snapshot for it —
         // that would leave a no-op entry in the undo history.
@@ -1439,6 +1443,7 @@ const FlowInnerNormalMode = ({
           params.target,
           baseEdges,
           flowRef.current?.nodes ?? [],
+          params.targetHandle,
         )
       ) {
         provisionalRef.current = null;
@@ -1635,20 +1640,8 @@ const FlowInnerNormalMode = ({
       }) as OpNode | undefined;
 
       if (hitOpNode) {
-        // Refuse a body-drop connection that would create a loop.
-        const candSource = mode === "input" ? fromHandle.nodeId : hitOpNode.id;
-        const candTarget = mode === "input" ? hitOpNode.id : fromHandle.nodeId;
-        if (
-          wouldCreateCycle(
-            candSource,
-            candTarget,
-            flowRef.current?.edges ?? [],
-            flowRef.current?.nodes ?? [],
-          )
-        ) {
-          return;
-        }
         const hitOp = opById(hitOpNode.data.opId);
+        const rfEdges = flowRef.current?.edges ?? [];
         if (mode === "input") {
           let targetHandle: string | undefined;
           const allInputKeys = [
@@ -1664,7 +1657,14 @@ const FlowInnerNormalMode = ({
           }
           if (
             targetHandle &&
-            isCompatibleConnection(rfNodes, fromHandle.id, targetHandle)
+            isCompatibleConnection(rfNodes, fromHandle.id, targetHandle) &&
+            !wouldCreateCycle(
+              fromHandle.nodeId,
+              hitOpNode.id,
+              rfEdges,
+              rfNodes,
+              targetHandle,
+            )
           ) {
             flowUP.edges.$((edges) =>
               addEdge(
@@ -1691,7 +1691,14 @@ const FlowInnerNormalMode = ({
           }
           if (
             sourceHandle &&
-            isCompatibleConnection(rfNodes, sourceHandle, fromHandle.id)
+            isCompatibleConnection(rfNodes, sourceHandle, fromHandle.id) &&
+            !wouldCreateCycle(
+              hitOpNode.id,
+              fromHandle.nodeId,
+              rfEdges,
+              rfNodes,
+              fromHandle.id,
+            )
           ) {
             flowUP.edges.$((edges) =>
               addEdge(

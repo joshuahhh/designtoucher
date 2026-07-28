@@ -237,7 +237,7 @@ export default defineOp({
         runtime.recordFb = gl.createFramebuffer()!;
       }
 
-      // Read pixels from input texture
+      // Bind input texture as framebuffer source
       gl.bindFramebuffer(gl.FRAMEBUFFER, runtime.recordFb);
       gl.framebufferTexture2D(
         gl.FRAMEBUFFER,
@@ -246,19 +246,8 @@ export default defineOp({
         input.texture,
         0,
       );
-      const pixels = new Uint8ClampedArray(input.width * input.height * 4);
-      gl.readPixels(
-        0,
-        0,
-        input.width,
-        input.height,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        pixels,
-      );
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-      // Feed recording canvas if recording
+      // Feed recording canvas if recording (needs readPixels for CPU-side canvas)
       if (runtime.recording) {
         const canvas = runtime.recordCanvas;
         const ctx2d = runtime.recordCanvasCtx;
@@ -267,6 +256,16 @@ export default defineOp({
             canvas.width = input.width;
             canvas.height = input.height;
           }
+          const pixels = new Uint8ClampedArray(input.width * input.height * 4);
+          gl.readPixels(
+            0,
+            0,
+            input.width,
+            input.height,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            pixels,
+          );
           // Flip Y (WebGL bottom-up -> canvas top-down)
           const imageData = new ImageData(input.width, input.height);
           const rowSize = input.width * 4;
@@ -283,21 +282,21 @@ export default defineOp({
         }
       }
 
-      // Copy to output texture
+      // GPU-side copy: read from framebuffer directly into output texture
       ensureTexSize(runtime.out, input.width, input.height);
       gl.bindTexture(gl.TEXTURE_2D, runtime.out.texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texImage2D(
+      gl.copyTexSubImage2D(
         gl.TEXTURE_2D,
         0,
-        gl.RGBA,
+        0,
+        0,
+        0,
+        0,
         input.width,
         input.height,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        pixels,
       );
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
     // Playback: upload video frame to output
     else if (runtime.video && runtime.video.readyState >= 2) {

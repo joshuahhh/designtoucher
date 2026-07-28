@@ -359,3 +359,126 @@ export function runFlow(
 
   return instancesChanged;
 }
+
+/**
+ * Compute ephemeral "proximity" edges: when two op nodes are positioned
+ * close together (one above-left of the other), infer a connection from
+ * the source's first tex output to the target's first unconnected tex input.
+ *
+ * Rules:
+ * - Source must be above and/or to the left of target (within gap thresholds).
+ * - Target's first inputKey must have no real edge already connected to it.
+ * - Source must have a tex output (not number-only).
+ * - A proximity edge must not create a cycle in the on-time graph.
+ * - When multiple candidates could feed into a target, pick the closest one.
+ */
+export function computeProximityEdges(
+  nodes: OpNode[],
+  realEdges: Edge[],
+): Edge[] {
+  const MAX_GAP = 40;
+  const MAX_OVERLAP = 60;
+
+  const proximityEdges: Edge[] = [];
+
+  const connectedInputs = new Set<string>();
+  for (const e of realEdges) {
+    if (e.targetHandle && !isParamHandleId(e.targetHandle)) {
+      connectedInputs.add(e.targetHandle);
+    }
+  }
+
+  for (const target of nodes) {
+    const targetOp = opById(target.data.opId);
+    const firstInputKey = targetOp.inputKeys?.[0];
+    if (!firstInputKey) continue;
+
+    const targetHandleId = makeInputHandleId(target.id, firstInputKey);
+    if (connectedInputs.has(targetHandleId)) continue;
+
+    const tw = target.measured?.width ?? 160;
+    const th = target.measured?.height ?? 60;
+    const tLeft = target.position.x - tw / 2;
+    const tTop = target.position.y - th / 2;
+
+    let bestSource: OpNode | null = null;
+    let bestDist = Infinity;
+
+    for (const source of nodes) {
+      if (source.id === target.id) continue;
+
+      const sourceOp = opById(source.data.opId);
+      const firstOutputKey = (sourceOp.outputKeys ?? ["out"])[0];
+      const outputType = sourceOp.outputTypes?.[firstOutputKey] ?? "tex";
+      if (outputType !== "tex") continue;
+
+      const sw = source.measured?.width ?? 160;
+      const sh = source.measured?.height ?? 60;
+      const sRight = source.position.x + sw / 2;
+      const sBottom = source.position.y + sh / 2;
+
+      const gapY = tTop - sBottom;
+      const gapX = tLeft - sRight;
+
+      const overlapX =
+        Math.min(source.position.x + sw / 2, target.position.x + tw / 2) -
+        Math.max(source.position.x - sw / 2, target.position.x - tw / 2);
+      const overlapY =
+        Math.min(source.position.y + sh / 2, target.position.y + th / 2) -
+        Math.max(source.position.y - sh / 2, target.position.y - th / 2);
+
+      const verticallyStacked =
+        gapY >= -MAX_OVERLAP && gapY <= MAX_GAP && overlapX > 0;
+      const horizontallyChained =
+        gapX >= -MAX_OVERLAP && gapX <= MAX_GAP && overlapY > 0;
+
+      if (!verticallyStacked && !horizontallyChained) continue;
+
+      const dx = target.position.x - source.position.x;
+      const dy = target.position.y - source.position.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestSource = source;
+      }
+    }
+
+    if (!bestSource) continue;
+
+    const sourceOp = opById(bestSource.data.opId);
+    const firstOutputKey = (sourceOp.outputKeys ?? ["out"])[0];
+    const sourceHandleId = makeOutputHandleId(bestSource.id, firstOutputKey);
+
+    const candidateEdge: Edge = {
+      id: `__proximity_${bestSource.id}_${target.id}`,
+      source: bestSource.id,
+      target: target.id,
+      sourceHandle: sourceHandleId,
+      targetHandle: targetHandleId,
+      data: { proximity: true },
+    };
+
+    const allEdges = [...realEdges, ...proximityEdges, candidateEdge];
+    const lateHandles = new Set<string>();
+    for (const n of nodes) {
+      const op = opById(n.data.opId);
+      for (const k of op.inputKeysLate ?? []) {
+        lateHandles.add(makeInputHandleId(n.id, k));
+      }
+    }
+    const onTimeEdges = allEdges.filter(
+      (e) => !lateHandles.has(e.targetHandle!),
+    );
+    const nodeIds = nodes.map((n) => n.id);
+    const edgePairs = onTimeEdges.map(
+      (e) => [e.target, e.source] as [string, string],
+    );
+    const sorted = toposortFromEdges(nodeIds, edgePairs);
+    if (sorted.cyclic.size > 0) continue;
+
+    proximityEdges.push(candidateEdge);
+  }
+
+  return proximityEdges;
+}

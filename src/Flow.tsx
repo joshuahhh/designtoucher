@@ -87,6 +87,7 @@ import {
   usePreviewTex,
 } from "./ops-core.js";
 import {
+  computeProximityEdges,
   isCompatibleConnection,
   opById,
   OpNode,
@@ -456,9 +457,11 @@ const FlowInner = ({
         const opEdges = flowRef.current.edges.filter(
           (e) => opNodeIds.has(e.source) && opNodeIds.has(e.target),
         );
+        const proxEdges = computeProximityEdges(opNodes, opEdges);
+        const allEdges = [...opEdges, ...proxEdges];
         const instancesChanged = runFlow(
           opNodes,
-          opEdges,
+          allEdges,
           opInstancesRef.current,
           ctx,
           (nodeId, params) => {
@@ -1912,6 +1915,17 @@ const FlowInnerNormalMode = ({
 
   useCopyPaste({ getSelection, onPaste });
 
+  const proximityEdges = useMemo(() => {
+    const opNodes = flow.nodes.filter(
+      (n): n is OpNode => n.type === "operation",
+    );
+    const opNodeIds = new Set(opNodes.map((n) => n.id));
+    const opEdges = flow.edges.filter(
+      (e) => opNodeIds.has(e.source) && opNodeIds.has(e.target),
+    );
+    return computeProximityEdges(opNodes, opEdges);
+  }, [flow.nodes, flow.edges]);
+
   const styledEdges = useMemo(() => {
     // While a loop-creating wire is being previewed, also highlight the existing
     // edges that close the loop.
@@ -1925,8 +1939,10 @@ const FlowInnerNormalMode = ({
           flow.edges.filter((e) => e.id !== cyclicProvisional.id),
         )
       : null;
-    return flow.edges.map((e) => {
+    const allEdges = [...flow.edges, ...proximityEdges];
+    return allEdges.map((e) => {
       // TODO: we should prob make a custom edge at some point
+      const isProximity = !!e.data?.proximity;
       let isLate = false;
       if (!isParamHandleId(e.targetHandle)) {
         const { nodeId, key } = parseInputHandleId(e.targetHandle!);
@@ -1936,18 +1952,20 @@ const FlowInnerNormalMode = ({
       }
       return {
         ...e,
+        selectable: !isProximity,
+        deletable: !isProximity,
+        focusable: !isProximity,
         className: clsx({
           "[stroke-dasharray:5,5]": isLate,
-          // Number wires are violet, the category color for numbers. (The
-          // per-edge var still loses to selected/cyclic/loop styling.)
           "[--xy-edge-stroke-default:theme(colors.violet.600)]":
             isParamHandleId(e.targetHandle),
           "cyclic-edge": e.data?.provisional && e.data?.cyclic,
           "loop-edge": loopEdgeIds?.has(e.id),
+          "proximity-edge": isProximity,
         }),
       };
     });
-  }, [flow.edges, flow.nodes]);
+  }, [flow.edges, flow.nodes, proximityEdges]);
 
   // Native xyflow validity: makes snapping and the .connectionindicator
   // highlight type-aware (number wires light up param chips, not tex inputs).

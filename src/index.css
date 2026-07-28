@@ -120,3 +120,13 @@ textarea,
   stroke-width: 3;
   filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.55));
 }
+
+/* Proximity (ephemeral) edges: faint solid line. */
+.react-flow__edge.proximity-edge .react-flow__edge-path {
+  stroke: #888;
+  stroke-width: 1;
+  opacity: 0.3;
+}
+.react-flow__edge.proximity-edge .react-flow__edge-interaction {
+  pointer-events: none;
+}

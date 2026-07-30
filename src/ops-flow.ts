@@ -428,10 +428,10 @@ export function computeProximityEdges(
         Math.min(source.position.y + sh / 2, target.position.y + th / 2) -
         Math.max(source.position.y - sh / 2, target.position.y - th / 2);
 
-      const verticallyStacked =
-        gapY >= -MAX_OVERLAP && gapY <= MAX_GAP && overlapX > 0;
-      // The vertical bar is inset from the nodes' corners, so require enough
+      // Both bars are inset from the nodes' corners, so require enough
       // overlap that the inset bar is non-empty.
+      const verticallyStacked =
+        gapY >= -MAX_OVERLAP && gapY <= MAX_GAP && overlapX > 2 * BAR_PADDING;
       const horizontallyChained =
         gapX >= -MAX_OVERLAP && gapX <= MAX_GAP && overlapY > 2 * BAR_PADDING;
 

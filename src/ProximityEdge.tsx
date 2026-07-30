@@ -64,8 +64,20 @@ export function ProximityEdge({
     const wantedLeft = Math.min(sourceX, targetX) - BAR_END_PADDING;
     const wantedRight = Math.max(sourceX, targetX) + BAR_END_PADDING;
 
-    const barX1 = Math.max(overlapLeft, wantedLeft);
-    const barX2 = Math.min(overlapRight, wantedRight);
+    let barX1 = Math.max(overlapLeft, wantedLeft);
+    let barX2 = Math.min(overlapRight, wantedRight);
+    if (barX2 < barX1) {
+      // The wanted span lies entirely outside the inset overlap — slide it
+      // to the nearest end of the overlap instead of going negative.
+      const w = Math.min(wantedRight - wantedLeft, overlapRight - overlapLeft);
+      if (wantedRight < overlapLeft) {
+        barX1 = overlapLeft;
+        barX2 = overlapLeft + w;
+      } else {
+        barX2 = overlapRight;
+        barX1 = overlapRight - w;
+      }
+    }
 
     // Normal bezier connector (same shape as regular edges), drawn on top of
     // the bar in a darker color so it stays visible.

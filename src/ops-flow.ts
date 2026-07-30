@@ -32,6 +32,7 @@ import {
   parseParamHandleId,
 } from "./ops-core.js";
 import { ops } from "./ops/all-the-ops.js";
+import { BAR_PADDING } from "./ProximityEdge.js";
 import { toposortFromEdges } from "./toposort.js";
 
 export function opById(id: string): AnyOp {
@@ -377,7 +378,7 @@ export function computeProximityEdges(
   realEdges: Edge[],
 ): Edge[] {
   const MAX_GAP = 40;
-  const MAX_OVERLAP = 60;
+  const MAX_OVERLAP = 0;
 
   const proximityEdges: Edge[] = [];
 
@@ -429,8 +430,10 @@ export function computeProximityEdges(
 
       const verticallyStacked =
         gapY >= -MAX_OVERLAP && gapY <= MAX_GAP && overlapX > 0;
+      // The vertical bar is inset from the nodes' corners, so require enough
+      // overlap that the inset bar is non-empty.
       const horizontallyChained =
-        gapX >= -MAX_OVERLAP && gapX <= MAX_GAP && overlapY > 0;
+        gapX >= -MAX_OVERLAP && gapX <= MAX_GAP && overlapY > 2 * BAR_PADDING;
 
       if (!verticallyStacked && !horizontallyChained) continue;
 
@@ -450,13 +453,31 @@ export function computeProximityEdges(
     const firstOutputKey = (sourceOp.outputKeys ?? ["out"])[0];
     const sourceHandleId = makeOutputHandleId(bestSource.id, firstOutputKey);
 
+    const sw = bestSource.measured?.width ?? 160;
+    const sh = bestSource.measured?.height ?? 60;
+    const sRight = bestSource.position.x + sw / 2;
+    const sBottom = bestSource.position.y + sh / 2;
+    const sLeft = bestSource.position.x - sw / 2;
+    const sTop = bestSource.position.y - sh / 2;
+
+    const gapY = tTop - sBottom;
+    const gapX = tLeft - sRight;
+    const overlapX =
+      Math.min(sRight, target.position.x + tw / 2) -
+      Math.max(sLeft, target.position.x - tw / 2);
+    const isVertical = gapY >= -MAX_OVERLAP && gapY <= MAX_GAP && overlapX > 0;
+
     const candidateEdge: Edge = {
       id: `__proximity_${bestSource.id}_${target.id}`,
       source: bestSource.id,
       target: target.id,
       sourceHandle: sourceHandleId,
       targetHandle: targetHandleId,
-      data: { proximity: true },
+      type: "proximity",
+      data: {
+        proximity: true,
+        orientation: isVertical ? "vertical" : "horizontal",
+      },
     };
 
     const allEdges = [...realEdges, ...proximityEdges, candidateEdge];

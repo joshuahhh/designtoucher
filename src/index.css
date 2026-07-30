@@ -130,3 +130,15 @@ textarea,
 .react-flow__edge.proximity-edge .react-flow__edge-interaction {
   pointer-events: none;
 }
+
+/* Proximity edges fade in on mount and fade out (via inline opacity) when
+   flagged as exiting. Duration matches PROXIMITY_EXIT_MS in Flow.tsx. */
+.proximity-edge-fade {
+  animation: proximity-fade-in 200ms ease;
+  transition: opacity 200ms ease;
+}
+@keyframes proximity-fade-in {
+  from {
+    opacity: 0;
+  }
+}

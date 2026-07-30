@@ -32,12 +32,10 @@ export function ProximityEdge({
 
   const orientation = data?.orientation as "vertical" | "horizontal";
 
-  // Fade in on mount (CSS animation); fade out when flagged as exiting by
-  // useLingeringProximityEdges (opacity transition).
-  const groupProps = {
-    className: "proximity-edge-fade",
-    style: { opacity: data?.exiting ? 0 : 1 },
-  };
+  // Fade in on mount (CSS animation). No exit animation: an exiting edge
+  // would keep tracking live node positions into geometries the proximity
+  // rules no longer guarantee are valid.
+  const groupProps = { className: "proximity-edge-fade" };
 
   const sw = sourceNode.measured.width ?? 160;
   const sh = sourceNode.measured.height ?? 60;

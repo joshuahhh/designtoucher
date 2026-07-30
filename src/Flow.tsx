@@ -326,53 +326,6 @@ const edgeTypes = {
   proximity: ProximityEdge,
 };
 
-// Keep just-removed proximity edges in the list briefly, flagged with
-// data.exiting, so ProximityEdge can fade them out before they unmount.
-// The exiting set is merged during render (not in an effect) — otherwise
-// there's one committed render with the edge absent, React unmounts it, and
-// the fade-out never shows.
-const PROXIMITY_EXIT_MS = 200;
-function useLingeringProximityEdges(edges: Edge[]): Edge[] {
-  const exitingRef = useRef(
-    new Map<string, { edge: Edge; expiresAt: number }>(),
-  );
-  const prevEdgesRef = useRef<Edge[]>([]);
-  const [, bumpForPrune] = useState(0);
-
-  const now = performance.now();
-  const currentIds = new Set(edges.map((e) => e.id));
-
-  for (const e of prevEdgesRef.current) {
-    if (!currentIds.has(e.id) && !exitingRef.current.has(e.id)) {
-      exitingRef.current.set(e.id, {
-        edge: { ...e, data: { ...e.data, exiting: true } },
-        expiresAt: now + PROXIMITY_EXIT_MS,
-      });
-    }
-  }
-  for (const [id, entry] of exitingRef.current) {
-    if (currentIds.has(id) || entry.expiresAt <= now) {
-      exitingRef.current.delete(id);
-    }
-  }
-  prevEdgesRef.current = edges;
-
-  // Schedule a rerender to prune the exiting set once fades finish.
-  useEffect(() => {
-    if (exitingRef.current.size === 0) return;
-    const soonest = Math.min(
-      ...[...exitingRef.current.values()].map((e) => e.expiresAt),
-    );
-    const t = setTimeout(
-      () => bumpForPrune((c) => c + 1),
-      Math.max(soonest - performance.now(), 0) + 10,
-    );
-    return () => clearTimeout(t);
-  });
-
-  return [...edges, ...[...exitingRef.current.values()].map((e) => e.edge)];
-}
-
 export const Flow = ({
   flow,
   setFlow,
@@ -1978,8 +1931,6 @@ const FlowInnerNormalMode = ({
     return computeProximityEdges(opNodes, opEdges);
   }, [flow.nodes, flow.edges]);
 
-  const proximityEdgesWithExiting = useLingeringProximityEdges(proximityEdges);
-
   const styledEdges = useMemo(() => {
     // While a loop-creating wire is being previewed, also highlight the existing
     // edges that close the loop.
@@ -1993,7 +1944,7 @@ const FlowInnerNormalMode = ({
           flow.edges.filter((e) => e.id !== cyclicProvisional.id),
         )
       : null;
-    const allEdges = [...flow.edges, ...proximityEdgesWithExiting];
+    const allEdges = [...flow.edges, ...proximityEdges];
     return allEdges.map((e) => {
       // TODO: we should prob make a custom edge at some point
       const isProximity = !!e.data?.proximity;
@@ -2019,7 +1970,7 @@ const FlowInnerNormalMode = ({
         }),
       };
     });
-  }, [flow.edges, flow.nodes, proximityEdgesWithExiting]);
+  }, [flow.edges, flow.nodes, proximityEdges]);
 
   // Native xyflow validity: makes snapping and the .connectionindicator
   // highlight type-aware (number wires light up param chips, not tex inputs).

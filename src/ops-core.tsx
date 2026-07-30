@@ -357,11 +357,7 @@ export const InputHandle = <InputKey extends string>({
 
   // figure out if we're downstream of a node (possibly multiple)
   const edges = useEdges();
-  // Exiting proximity edges linger briefly to fade out; the preview
-  // should drop at the instant of disconnect, not when the fade ends.
-  const matchingEdges = edges.filter(
-    (e) => e.targetHandle === handleId && !e.data?.exiting,
-  );
+  const matchingEdges = edges.filter((e) => e.targetHandle === handleId);
   const edgeCount = matchingEdges.length;
   const edge = matchingEdges[0] ?? null;
   const opInstances = useContext(OpInstancesContext);
@@ -935,8 +931,7 @@ export function useInputTex(inputKey: string): Tex | null {
   const nodeId = useNodeId()!;
   const handleId = makeInputHandleId(nodeId, inputKey);
   const edges = useEdges();
-  const edge =
-    edges.find((e) => e.targetHandle === handleId && !e.data?.exiting) ?? null;
+  const edge = edges.find((e) => e.targetHandle === handleId) ?? null;
   const opInstances = useContext(OpInstancesContext);
 
   const sourceHandleParsed = edge && parseOutputHandleId(edge.sourceHandle!);

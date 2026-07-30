@@ -10,6 +10,9 @@ const EDGE_OPACITY_DARK = 0.6;
 export const BAR_PADDING = 4;
 // How far the bar extends past the connector endpoints along its length
 const BAR_END_PADDING = 16;
+// Radius of the concave "surface tension" fillets where the bar meets the
+// node outlines. Automatically shrinks for short/thin bars.
+const BAR_FILLET = 10;
 
 export function ProximityEdge({
   source,
@@ -75,16 +78,29 @@ export function ProximityEdge({
       targetPosition,
     });
 
+    // Meniscus-shaped bar: full-width contact along both node faces, flat
+    // ends inset by the fillet, concave fillets flaring back out to the
+    // faces. The flare along the bar clamps to a quarter of its length (so
+    // at least half the bar always remains) and the fillet depth clamps to
+    // half the gap, keeping short bars proportional instead of pinched.
+    const fx = Math.max(0, Math.min(BAR_FILLET, (barX2 - barX1) / 4));
+    const fy = Math.max(0, Math.min(BAR_FILLET, (barBottom - barTop) / 2));
+    const barPathD = [
+      `M ${barX1} ${barTop}`,
+      `L ${barX2} ${barTop}`,
+      `Q ${barX2 - fx} ${barTop} ${barX2 - fx} ${barTop + fy}`,
+      `L ${barX2 - fx} ${barBottom - fy}`,
+      `Q ${barX2 - fx} ${barBottom} ${barX2} ${barBottom}`,
+      `L ${barX1} ${barBottom}`,
+      `Q ${barX1 + fx} ${barBottom} ${barX1 + fx} ${barBottom - fy}`,
+      `L ${barX1 + fx} ${barTop + fy}`,
+      `Q ${barX1 + fx} ${barTop} ${barX1} ${barTop}`,
+      `Z`,
+    ].join(" ");
+
     return (
       <g {...groupProps}>
-        <rect
-          x={barX1}
-          y={barTop}
-          width={barX2 - barX1}
-          height={Math.max(barBottom - barTop, 0)}
-          fill={BAR_COLOR}
-          opacity={BAR_OPACITY}
-        />
+        <path d={barPathD} fill={BAR_COLOR} opacity={BAR_OPACITY} />
         <path
           d={pathD}
           fill="none"
@@ -136,16 +152,28 @@ export function ProximityEdge({
       `C ${barMidX} ${targetY - rTop}, ${targetX} ${targetY - rTop}, ${targetX} ${targetY}`,
     ].join(" ");
 
+    // Meniscus-shaped bar: full-height contact along both node faces, flat
+    // ends inset by the fillet, concave fillets flaring back out to the
+    // faces. The flare along the bar clamps to a quarter of its length (so
+    // at least half the bar always remains) and the fillet depth clamps to
+    // half the gap, keeping short bars proportional instead of pinched.
+    const fy = Math.max(0, Math.min(BAR_FILLET, (barY2 - barY1) / 4));
+    const fx = Math.max(0, Math.min(BAR_FILLET, (barRight - barLeft) / 2));
+    const barPathD = [
+      `M ${barLeft} ${barY1}`,
+      `Q ${barLeft} ${barY1 + fy} ${barLeft + fx} ${barY1 + fy}`,
+      `L ${barRight - fx} ${barY1 + fy}`,
+      `Q ${barRight} ${barY1 + fy} ${barRight} ${barY1}`,
+      `L ${barRight} ${barY2}`,
+      `Q ${barRight} ${barY2 - fy} ${barRight - fx} ${barY2 - fy}`,
+      `L ${barLeft + fx} ${barY2 - fy}`,
+      `Q ${barLeft} ${barY2 - fy} ${barLeft} ${barY2}`,
+      `Z`,
+    ].join(" ");
+
     return (
       <g {...groupProps}>
-        <rect
-          x={barLeft}
-          y={barY1}
-          width={Math.max(barRight - barLeft, 0)}
-          height={barY2 - barY1}
-          fill={BAR_COLOR}
-          opacity={BAR_OPACITY}
-        />
+        <path d={barPathD} fill={BAR_COLOR} opacity={BAR_OPACITY} />
         <path
           d={pathD}
           fill="none"

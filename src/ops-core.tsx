@@ -763,6 +763,7 @@ export const MyPopoverContent = (
       size="1"
       container={overlayDiv}
       className="pointer-events-auto overflow-visible"
+      onKeyDown={(e) => e.stopPropagation()}
       arrowPadding={10}
     >
       {props.children}

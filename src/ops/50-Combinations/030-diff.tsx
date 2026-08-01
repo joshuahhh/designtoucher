@@ -13,7 +13,7 @@ export default defineFragOp({
     return (
       <>
         <Sentence>
-          Math: |<props.InputHandle inputKey="tex1" /> -
+          Math: |<props.InputHandle inputKey="tex1" /> -{" "}
           <props.InputHandle inputKey="tex2" />|
         </Sentence>
         <props.OutputHandle outputKey="out" />

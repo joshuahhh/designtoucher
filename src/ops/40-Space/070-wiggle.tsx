@@ -7,10 +7,11 @@ export default defineFragOp({
   initParams: () => ({
     strength: 0.025,
     size: 0.03,
+    phase: 0,
   }),
   // TODO: booleans end up as floats in the shader
   fragBody: `
-    vec2 uvFlip = uv + vec2(sin(uv.y / size) * strength, cos(uv.x / size) * strength);
+    vec2 uvFlip = uv + vec2(sin(uv.y / size + phase) * strength, cos(uv.x / size + phase) * strength);
     gl_FragColor = texture2D(tex1, uvFlip);
   `,
   Render(props) {
@@ -25,8 +26,8 @@ export default defineFragOp({
             min={0}
             max={0.5}
             step={0.001}
-          />{" "}
-          and size{" "}
+          />
+          , size{" "}
           <SentenceParamNumber
             paramKey="size"
             value={props.params.size}
@@ -34,6 +35,15 @@ export default defineFragOp({
             min={0}
             max={0.5}
             step={0.001}
+          />
+          , and phase{" "}
+          <SentenceParamNumber
+            paramKey="phase"
+            value={props.params.phase}
+            valueUP={props.paramsUP.phase}
+            min={-Math.PI}
+            max={Math.PI}
+            step={0.01}
           />
         </Sentence>
         <props.OutputHandle outputKey="out" />

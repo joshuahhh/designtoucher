@@ -169,7 +169,7 @@ export const OpNodeView = memo(function OpNodeView(props: NodeProps<OpNode>) {
       />
       <div
         data-drag-mode="downstream"
-        className="absolute right-1 bottom-0 translate-y-1/2 h-2.5 w-5 bg-gray-400 hover:bg-orange-400 rounded-sm cursor-grab active:cursor-grabbing opacity-0 group-hover/node:opacity-40 hover:!opacity-100 transition-opacity"
+        className="absolute right-1 bottom-0 translate-y-1/2 h-2.5 w-5 bg-gray-400 hover:bg-blue-400 rounded-sm cursor-grab active:cursor-grabbing opacity-0 group-hover/node:opacity-40 hover:!opacity-100 transition-opacity"
         title="Drag with downstream"
       />
       <instance.Render params={data.params} paramsUP={dataUP.params} />
@@ -1338,6 +1338,17 @@ const FlowInnerNormalMode = ({
     [flowUP.edges],
   );
 
+  const proximityEdges = useMemo(() => {
+    const opNodes = flow.nodes.filter(
+      (n): n is OpNode => n.type === "operation",
+    );
+    const opNodeIds = new Set(opNodes.map((n) => n.id));
+    const opEdges = flow.edges.filter(
+      (e) => opNodeIds.has(e.source) && opNodeIds.has(e.target),
+    );
+    return computeProximityEdges(opNodes, opEdges);
+  }, [flow.nodes, flow.edges]);
+
   // Group drag: drag a node along with all upstream or downstream nodes
   const groupDragRef = useRef<{
     groupNodeIds: Set<string>;
@@ -1351,32 +1362,40 @@ const FlowInnerNormalMode = ({
     edges: Flow["edges"];
   } | null>(null);
 
+  // Capture drag mode on mousedown, because by the time onNodeDragStart fires
+  // (after the drag threshold), event.target may no longer be the handle.
+  const pendingDragModeRef = useRef<"upstream" | "downstream" | null>(null);
+  const onPointerDownCapture = useCallback((e: React.PointerEvent) => {
+    let target = e.target as HTMLElement | null;
+    pendingDragModeRef.current = null;
+    while (target) {
+      const mode = target.dataset?.dragMode;
+      if (mode === "upstream" || mode === "downstream") {
+        pendingDragModeRef.current = mode;
+        break;
+      }
+      if (target.classList.contains("react-flow__node")) break;
+      target = target.parentElement;
+    }
+  }, []);
+
   const onNodeDragStart = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       preDragSnapshotRef.current = { nodes: flow.nodes, edges: flow.edges };
 
-      // Walk up from event target to find a data-drag-mode attribute
-      let target = _event.target as HTMLElement | null;
-      let dragMode: "upstream" | "downstream" | null = null;
-      while (target) {
-        const mode = target.dataset?.dragMode;
-        if (mode === "upstream" || mode === "downstream") {
-          dragMode = mode;
-          break;
-        }
-        if (target.classList.contains("react-flow__node")) break;
-        target = target.parentElement;
-      }
+      const dragMode = pendingDragModeRef.current;
+      pendingDragModeRef.current = null;
 
       if (!dragMode) {
         groupDragRef.current = null;
         return;
       }
 
+      const allEdges = [...flow.edges, ...proximityEdges];
       const groupNodeIds =
         dragMode === "upstream"
-          ? getTransitiveUpstream(node.id, flow.edges)
-          : getTransitiveDownstream(node.id, flow.edges);
+          ? getTransitiveUpstream(node.id, allEdges)
+          : getTransitiveDownstream(node.id, allEdges);
 
       if (groupNodeIds.size === 0) {
         groupDragRef.current = null;
@@ -1396,7 +1415,7 @@ const FlowInnerNormalMode = ({
         dragNodeStartPos: { x: node.position.x, y: node.position.y },
       };
     },
-    [flow.edges, flow.nodes],
+    [flow.edges, flow.nodes, proximityEdges],
   );
 
   const onNodeDrag = useCallback(
@@ -1920,17 +1939,6 @@ const FlowInnerNormalMode = ({
 
   useCopyPaste({ getSelection, onPaste });
 
-  const proximityEdges = useMemo(() => {
-    const opNodes = flow.nodes.filter(
-      (n): n is OpNode => n.type === "operation",
-    );
-    const opNodeIds = new Set(opNodes.map((n) => n.id));
-    const opEdges = flow.edges.filter(
-      (e) => opNodeIds.has(e.source) && opNodeIds.has(e.target),
-    );
-    return computeProximityEdges(opNodes, opEdges);
-  }, [flow.nodes, flow.edges]);
-
   const styledEdges = useMemo(() => {
     // While a loop-creating wire is being previewed, also highlight the existing
     // edges that close the loop.
@@ -1994,7 +2002,10 @@ const FlowInnerNormalMode = ({
             loadFlow={loadFlow}
             ctx={ctx}
           />
-          <div className="flex-1 relative">
+          <div
+            className="flex-1 relative"
+            onPointerDownCapture={onPointerDownCapture}
+          >
             <ReactFlow
               nodes={flow.nodes}
               edges={styledEdges}

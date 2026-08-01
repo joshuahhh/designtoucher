@@ -24,13 +24,16 @@ export interface DrawArgs {
   tex: Tex;
   viewport?: [number, number, number, number];
   targetFramebuffer?: WebGLFramebuffer;
+  canvasSize?: [number, number];
 }
 
 // viewport: drawn rect in device pixels; layoutSize: the guest div's
-// unzoomed layout size in CSS px (offsetWidth/offsetHeight)
+// unzoomed layout size in CSS px (offsetWidth/offsetHeight);
+// canvasSize: full canvas size in device pixels (for sub-pixel positioning)
 export type GuestCommand = (
   viewport: [number, number, number, number],
   layoutSize: [number, number],
+  canvasSize: [number, number],
 ) => void;
 
 export type OmniCanvasContextType = {
@@ -106,10 +109,17 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       gl,
       `
         attribute vec2 position;
+        uniform vec4 subpixelRect;
+        uniform vec2 canvasSize;
         varying vec2 uv;
         void main() {
           uv = 0.5 * (position + 1.0);
-          gl_Position = vec4(position, 0.0, 1.0);
+          if (canvasSize.x > 0.0) {
+            vec2 pixel = subpixelRect.xy + uv * subpixelRect.zw;
+            gl_Position = vec4(2.0 * pixel / canvasSize - 1.0, 0.0, 1.0);
+          } else {
+            gl_Position = vec4(position, 0.0, 1.0);
+          }
         }
       `,
       `
@@ -122,11 +132,21 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       `,
     );
 
-    const draw = ({ tex, viewport, targetFramebuffer }: DrawArgs) => {
+    const draw = ({
+      tex,
+      viewport,
+      targetFramebuffer,
+      canvasSize,
+    }: DrawArgs) => {
+      const useSubpixel = canvasSize && viewport;
       drawProgram.run({
         targetFramebuffer: targetFramebuffer || null,
-        viewport,
-        uniforms: { tex1: ["sampler2D", tex.texture] },
+        viewport: useSubpixel ? [0, 0, canvasSize[0], canvasSize[1]] : viewport,
+        uniforms: {
+          tex1: ["sampler2D", tex.texture],
+          subpixelRect: ["4f", useSubpixel ? viewport : [0, 0, 0, 0]],
+          canvasSize: ["2f", useSubpixel ? canvasSize : [0, 0]],
+        },
         fullscreen: true,
       });
     };
@@ -135,10 +155,13 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       gl,
       `
         attribute vec2 position;
+        uniform vec4 subpixelRect;
+        uniform vec2 canvasSize;
         varying vec2 uv;
         void main() {
           uv = 0.5 * (position + 1.0);
-          gl_Position = vec4(position, 0.0, 1.0);
+          vec2 pixel = subpixelRect.xy + uv * subpixelRect.zw;
+          gl_Position = vec4(2.0 * pixel / canvasSize - 1.0, 0.0, 1.0);
         }
       `,
       `
@@ -190,11 +213,13 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
       tex,
       viewport,
       targetFramebuffer,
+      canvasSize,
       cornerRadiusPixels,
       checkerboardPixels,
       uvScale,
       surfaceSize,
     }: DrawArgs & {
+      canvasSize: [number, number];
       cornerRadiusPixels?: number;
       checkerboardPixels?: number;
       uvScale?: [number, number];
@@ -202,7 +227,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
     }) => {
       drawForMonitorProgram.run({
         targetFramebuffer: targetFramebuffer || null,
-        viewport,
+        viewport: [0, 0, canvasSize[0], canvasSize[1]],
         uniforms: {
           tex1: ["sampler2D", tex.texture],
           resolution: ["2f", [tex.width, tex.height]],
@@ -210,6 +235,8 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
           surfaceSize: ["2f", surfaceSize ?? [tex.width, tex.height]],
           checkerboardPixels: ["1f", checkerboardPixels],
           uvScale: ["2f", uvScale ?? [1, 1]],
+          subpixelRect: ["4f", viewport ?? [0, 0, 0, 0]],
+          canvasSize: ["2f", canvasSize],
         },
         fullscreen: true,
       });
@@ -294,6 +321,7 @@ export function OmniCanvasHost({ children }: { children: React.ReactNode }) {
         command(
           [left, bottom, width, height],
           [div.offsetWidth, div.offsetHeight],
+          [w, h],
         );
       });
 
@@ -387,6 +415,7 @@ export function Monitor({
     (
       viewport: [number, number, number, number],
       layoutSize: [number, number],
+      canvasSize: [number, number],
     ) => {
       let uvScale: [number, number] = [1, 1];
       if (objectFit === "cover") {
@@ -403,13 +432,14 @@ export function Monitor({
         drawForMonitor({
           tex,
           viewport,
+          canvasSize,
           cornerRadiusPixels: cornerRadiusPixels ?? 0,
           surfaceSize: layoutSize,
           checkerboardPixels: checkerboardPixels ?? CHECKER_PIXELS,
           uvScale,
         });
       } else {
-        draw({ tex, viewport });
+        draw({ tex, viewport, canvasSize });
       }
     },
     [

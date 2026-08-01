@@ -615,20 +615,16 @@ export const SentenceParamNumber = ({
       takeSnapshot();
       setDragging(true);
       let moved = false;
-      const startValue = value;
-      const startX = e.clientX;
+      let lastX = e.clientX;
+      let current = value;
       const onPointerMove = (e: PointerEvent) => {
         moved = true;
-        const pixels = e.clientX - startX;
+        const dx = e.clientX - lastX;
+        lastX = e.clientX;
         const changePerPixel = (max - min) / 400;
-        const newValue = Math.min(
-          max,
-          Math.max(
-            min,
-            startValue + Math.round((pixels * changePerPixel) / step) * step,
-          ),
-        );
-        valueUP.$set(+newValue.toFixed(4)); // kill floating-point nonsense
+        current = Math.min(max, Math.max(min, current + dx * changePerPixel));
+        const snapped = Math.round(current / step) * step;
+        valueUP.$set(+snapped.toFixed(4)); // kill floating-point nonsense
       };
       document.addEventListener("pointermove", onPointerMove);
       const onPointerUp = (e: PointerEvent) => {

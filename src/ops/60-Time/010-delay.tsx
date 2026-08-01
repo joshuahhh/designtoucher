@@ -74,7 +74,7 @@ export default defineOp({
             paramKey="framesOfDelay"
             value={props.params.framesOfDelay}
             valueUP={props.paramsUP.framesOfDelay}
-            min={1}
+            min={0}
             max={300}
             step={1}
           />{" "}

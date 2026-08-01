@@ -150,7 +150,9 @@ export default defineOp({
           {/* TODO: figure out these coercions, initting of params, etc. */}
           {cams ? (
             <SentenceParamSelect
-              value={props.params.deviceId!}
+              value={
+                props.params.deviceId ?? props.runtime?.defaultDeviceId ?? ""
+              }
               valueUP={props.paramsUP.deviceId.$as<string>()}
               options={cams.map((cam) => ({
                 label: cam.label,

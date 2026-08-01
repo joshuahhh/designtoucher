@@ -332,7 +332,7 @@ export const Sentence = ({ children }: { children: ReactNode }) => {
 };
 
 export const sharedHandleClasses = clsx(
-  "nodrag rounded-sm transition-all duration-100",
+  "nodrag rounded-[6.5px] transition-all duration-100",
   // React Flow's built-in handle selection styling
   "[&.clickconnecting]:border-blue-400",
   "[&.clickconnecting]:shadow-lg",
@@ -376,23 +376,32 @@ export const InputHandle = <InputKey extends string>({
     sourceInstance?.getRuntime()?.[sourceHandleParsed!.key] ?? null;
   const sourceOutput = isProbablyTex(rawSourceOutput) ? rawSourceOutput : null;
 
-  const className = clsx(
+  // Match the connected 16:9 size: border-2 (2px each side), Monitor has -mx-[0.5px]
+  const borderWidth = 2;
+  const monitorMargin = 0.5;
+  const handleHeight = 16;
+  const innerHeight = handleHeight - borderWidth * 2;
+  const defaultWidth =
+    innerHeight * (16 / 9) - monitorMargin * 2 + borderWidth * 2;
+
+  const handleClassName = clsx(
     sharedHandleClasses,
     "inline-flex border-2 border-solid border-black hover:border-blue-300",
-    {
-      "w-4 h-4 align-text-bottom": !sourceOutput,
-      "h-4 align-text-bottom": sourceOutput,
-    },
+    "h-4 align-text-bottom",
   );
 
-  return !nodeId ? (
-    <div className={className} />
+  const handleStyle = sourceOutput ? undefined : { width: defaultWidth };
+  const reservedStyle = { minWidth: defaultWidth };
+
+  const handle = !nodeId ? (
+    <div className={handleClassName} style={handleStyle} />
   ) : (
     <Handle
       type="target"
       position={positionProp ?? Position.Top}
       id={handleId}
-      className={className}
+      className={handleClassName}
+      style={handleStyle}
     >
       {sourceOutput ? (
         <>
@@ -410,6 +419,15 @@ export const InputHandle = <InputKey extends string>({
         </>
       ) : null}
     </Handle>
+  );
+
+  return (
+    <span
+      className="inline-flex items-center justify-center align-text-bottom"
+      style={reservedStyle}
+    >
+      {handle}
+    </span>
   );
 };
 
@@ -1022,7 +1040,7 @@ export const OutputHandle = <OutputKey extends string>({
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
             >
-              <Monitor tex={output} cornerRadiusPixels={3} />
+              <Monitor tex={output} cornerRadiusPixels={2.5} />
             </div>
           ) : (
             <div

@@ -95,7 +95,7 @@ import {
   runFlow,
 } from "./ops-flow.js";
 import { ops, OpWithMetadata } from "./ops/all-the-ops.js";
-import { ProximityEdge } from "./ProximityEdge.js";
+import { PromoteProximityEdgeContext, ProximityEdge } from "./ProximityEdge.js";
 import {
   ClipboardPayload,
   useCopyPaste,
@@ -442,6 +442,7 @@ const FlowInner = ({
   phoneCapture: PhoneCaptureState;
 }) => {
   const ctx = useContext(OmniCanvasContext);
+  const innerStore = useStoreApi();
 
   const [opInstances, setOpInstances] = useState<Record<string, AnyOpInstance>>(
     {},
@@ -462,7 +463,12 @@ const FlowInner = ({
         const opEdges = flowRef.current.edges.filter(
           (e) => opNodeIds.has(e.source) && opNodeIds.has(e.target),
         );
-        const proxEdges = computeProximityEdges(opNodes, opEdges);
+        const nodeLookup = innerStore.getState().nodeLookup;
+        const proxEdges = computeProximityEdges(
+          opNodes,
+          opEdges,
+          (nodeId) => nodeLookup.get(nodeId)?.internals.handleBounds,
+        );
         const allEdges = [...opEdges, ...proxEdges];
         const instancesChanged = runFlow(
           opNodes,
@@ -482,7 +488,7 @@ const FlowInner = ({
         console.error("runFlow:", e);
       }
     });
-  }, [flowRef, ctx, flowUP, opInstancesRef]);
+  }, [flowRef, ctx, flowUP, opInstancesRef, innerStore]);
 
   // Preview state. A preview shows one op *output* (`target`); `fit` is cover
   // vs contain. The editor and preview share the width via `paneFraction` (the
@@ -1211,6 +1217,23 @@ const FlowInnerNormalMode = ({
   const flowRef = useRefForCallback(flow);
   const flowUP = up(setFlow);
 
+  const promoteProximityEdge = useCallback(
+    (
+      source: string,
+      sourceHandle: string,
+      target: string,
+      targetHandle: string,
+    ) => {
+      takeSnapshot();
+      flowUP.edges.$((edges) =>
+        keepNewestParamEdges(
+          addEdge({ source, sourceHandle, target, targetHandle }, edges),
+        ),
+      );
+    },
+    [flowUP.edges, takeSnapshot],
+  );
+
   const [isSidebarExpanded, setIsSidebarExpanded_] = useState(false);
   const SIDEBAR_W = 288; // w-72
   const setIsSidebarExpanded: typeof setIsSidebarExpanded_ = useCallback(
@@ -1346,8 +1369,13 @@ const FlowInnerNormalMode = ({
     const opEdges = flow.edges.filter(
       (e) => opNodeIds.has(e.source) && opNodeIds.has(e.target),
     );
-    return computeProximityEdges(opNodes, opEdges);
-  }, [flow.nodes, flow.edges]);
+    const nodeLookup = store.getState().nodeLookup;
+    return computeProximityEdges(
+      opNodes,
+      opEdges,
+      (nodeId) => nodeLookup.get(nodeId)?.internals.handleBounds,
+    );
+  }, [flow.nodes, flow.edges, store]);
 
   // Group drag: drag a node along with all upstream or downstream nodes
   const groupDragRef = useRef<{
@@ -2006,46 +2034,48 @@ const FlowInnerNormalMode = ({
             className="flex-1 relative"
             onPointerDownCapture={onPointerDownCapture}
           >
-            <ReactFlow
-              nodes={flow.nodes}
-              edges={styledEdges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onConnectEnd={onConnectEnd}
-              isValidConnection={isValidConnection}
-              onNodeDragStart={onNodeDragStart}
-              onNodeDrag={onNodeDrag}
-              onNodeDragStop={onNodeDragStop}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              maxZoom={10}
-              minZoom={0.1}
-              viewport={flow.viewport}
-              onViewportChange={flowUP.viewport.$set}
-              onDragOver={onDragOver}
-              onDrop={onDrop}
-              nodeOrigin={[0.5, 0.5]}
-              className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
-              onPaneClick={onPaneClick}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background />
-              <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
-                <div className="contents pointer-events-auto">
-                  <MiniMap zoomable pannable />
-                  <Controls className="bg-gray-50" />
-                  <Toolbar
-                    onDelete={deleteSelected}
-                    flow={flow}
-                    loadFlow={loadFlow}
-                    phoneCapture={phoneCapture}
-                    isSidebarExpanded={isSidebarExpanded}
-                    setIsSidebarExpanded={setIsSidebarExpanded}
-                  />
-                </div>
-              </OmniCanvasOverlay>
-            </ReactFlow>
+            <PromoteProximityEdgeContext.Provider value={promoteProximityEdge}>
+              <ReactFlow
+                nodes={flow.nodes}
+                edges={styledEdges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onConnectEnd={onConnectEnd}
+                isValidConnection={isValidConnection}
+                onNodeDragStart={onNodeDragStart}
+                onNodeDrag={onNodeDrag}
+                onNodeDragStop={onNodeDragStop}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                maxZoom={10}
+                minZoom={0.1}
+                viewport={flow.viewport}
+                onViewportChange={flowUP.viewport.$set}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                nodeOrigin={[0.5, 0.5]}
+                className="[--xy-edge-stroke-default:#000] [--xy-edge-stroke-selected:theme(colors.blue.500)]"
+                onPaneClick={onPaneClick}
+                proOptions={{ hideAttribution: true }}
+              >
+                <Background />
+                <OmniCanvasOverlay className="absolute top-0 left-0 w-full h-full">
+                  <div className="contents pointer-events-auto">
+                    <MiniMap zoomable pannable />
+                    <Controls className="bg-gray-50" />
+                    <Toolbar
+                      onDelete={deleteSelected}
+                      flow={flow}
+                      loadFlow={loadFlow}
+                      phoneCapture={phoneCapture}
+                      isSidebarExpanded={isSidebarExpanded}
+                      setIsSidebarExpanded={setIsSidebarExpanded}
+                    />
+                  </div>
+                </OmniCanvasOverlay>
+              </ReactFlow>
+            </PromoteProximityEdgeContext.Provider>
           </div>
         </div>
       </TransformPickerContext.Provider>

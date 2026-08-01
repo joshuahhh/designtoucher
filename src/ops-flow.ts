@@ -32,7 +32,6 @@ import {
   parseParamHandleId,
 } from "./ops-core.js";
 import { ops } from "./ops/all-the-ops.js";
-import { BAR_PADDING } from "./ProximityEdge.js";
 import { toposortFromEdges } from "./toposort.js";
 
 export function opById(id: string): AnyOp {
@@ -361,24 +360,36 @@ export function runFlow(
   return instancesChanged;
 }
 
+export type HandleBounds = {
+  source: Array<{
+    id?: string | null;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> | null;
+  target: Array<{
+    id?: string | null;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> | null;
+};
+
 /**
- * Compute ephemeral "proximity" edges: when two op nodes are positioned
- * close together (one above-left of the other), infer a connection from
- * the source's first tex output to the target's first unconnected tex input.
+ * Compute ephemeral "proximity" edges using "grabby input" logic:
  *
- * Rules:
- * - Source must be above and/or to the left of target (within gap thresholds).
- * - Target's first inputKey must have no real edge already connected to it.
- * - Source must have a tex output (not number-only).
- * - A proximity edge must not create a cycle in the on-time graph.
- * - When multiple candidates could feed into a target, pick the closest one.
+ * Each node has at most one grabby input — the first tex input with no real
+ * edge connected. That input reaches out and grabs the nearest tex output
+ * handle (on a different node) within MAX_DISTANCE, measured handle-to-handle.
  */
 export function computeProximityEdges(
   nodes: OpNode[],
   realEdges: Edge[],
+  getHandleBounds: (nodeId: string) => HandleBounds | undefined,
 ): Edge[] {
-  const MAX_GAP = 40;
-  const MAX_OVERLAP = 0;
+  const MAX_DISTANCE = 100;
 
   const proximityEdges: Edge[] = [];
 
@@ -389,94 +400,109 @@ export function computeProximityEdges(
     }
   }
 
+  type Rect = { x: number; y: number; w: number; h: number };
+
+  function handleAbsRect(
+    node: OpNode,
+    handle: { x: number; y: number; width: number; height: number },
+  ): Rect {
+    const nw = node.measured?.width ?? 160;
+    const nh = node.measured?.height ?? 60;
+    return {
+      x: node.position.x - nw / 2 + handle.x,
+      y: node.position.y - nh / 2 + handle.y,
+      w: handle.width,
+      h: handle.height,
+    };
+  }
+
+  function rectToRectDist(a: Rect, b: Rect): number {
+    const dx = Math.max(0, a.x - (b.x + b.w), b.x - (a.x + a.w));
+    const dy = Math.max(0, a.y - (b.y + b.h), b.y - (a.y + a.h));
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  const defaultRect = (node: OpNode): Rect => ({
+    x: node.position.x,
+    y: node.position.y,
+    w: 0,
+    h: 0,
+  });
+
+  // Pre-collect all tex output handles with their absolute rects
+  const outputHandles: Array<{
+    node: OpNode;
+    handleId: string;
+    rect: Rect;
+  }> = [];
+  for (const node of nodes) {
+    const op = opById(node.data.opId);
+    const outputKeys = op.outputKeys ?? ["out"];
+    const bounds = getHandleBounds(node.id);
+    for (const key of outputKeys) {
+      const outputType = op.outputTypes?.[key] ?? "tex";
+      if (outputType !== "tex") continue;
+      const handleId = makeOutputHandleId(node.id, key);
+      const bound = bounds?.source?.find((h) => h.id === handleId);
+      outputHandles.push({
+        node,
+        handleId,
+        rect: bound ? handleAbsRect(node, bound) : defaultRect(node),
+      });
+    }
+  }
+
   for (const target of nodes) {
     const targetOp = opById(target.data.opId);
-    const firstInputKey = targetOp.inputKeys?.[0];
-    if (!firstInputKey) continue;
+    const allInputKeys = targetOp.inputKeys ?? [];
 
-    const targetHandleId = makeInputHandleId(target.id, firstInputKey);
-    if (connectedInputs.has(targetHandleId)) continue;
+    // Find the first unconnected tex input — the grabby input
+    let grabbyKey: string | undefined;
+    for (const key of allInputKeys) {
+      const handleId = makeInputHandleId(target.id, key);
+      if (!connectedInputs.has(handleId)) {
+        grabbyKey = key;
+        break;
+      }
+    }
+    if (!grabbyKey) continue;
 
-    const tw = target.measured?.width ?? 160;
-    const th = target.measured?.height ?? 60;
-    const tLeft = target.position.x - tw / 2;
-    const tTop = target.position.y - th / 2;
+    const targetHandleId = makeInputHandleId(target.id, grabbyKey);
+    const targetBounds = getHandleBounds(target.id);
+    const targetBound = targetBounds?.target?.find(
+      (h) => h.id === targetHandleId,
+    );
+    const targetRect = targetBound
+      ? handleAbsRect(target, targetBound)
+      : defaultRect(target);
 
-    let bestSource: OpNode | null = null;
+    let bestOutput: (typeof outputHandles)[number] | null = null;
     let bestDist = Infinity;
 
-    for (const source of nodes) {
-      if (source.id === target.id) continue;
+    for (const output of outputHandles) {
+      if (output.node.id === target.id) continue;
 
-      const sourceOp = opById(source.data.opId);
-      const firstOutputKey = (sourceOp.outputKeys ?? ["out"])[0];
-      const outputType = sourceOp.outputTypes?.[firstOutputKey] ?? "tex";
-      if (outputType !== "tex") continue;
+      const dist = rectToRectDist(targetRect, output.rect);
 
-      const sw = source.measured?.width ?? 160;
-      const sh = source.measured?.height ?? 60;
-      const sRight = source.position.x + sw / 2;
-      const sBottom = source.position.y + sh / 2;
-
-      const gapY = tTop - sBottom;
-      const gapX = tLeft - sRight;
-
-      const overlapX =
-        Math.min(source.position.x + sw / 2, target.position.x + tw / 2) -
-        Math.max(source.position.x - sw / 2, target.position.x - tw / 2);
-      const overlapY =
-        Math.min(source.position.y + sh / 2, target.position.y + th / 2) -
-        Math.max(source.position.y - sh / 2, target.position.y - th / 2);
-
-      // Both bars are inset from the nodes' corners, so require enough
-      // overlap that the inset bar is non-empty.
-      const verticallyStacked =
-        gapY >= -MAX_OVERLAP && gapY <= MAX_GAP && overlapX > 2 * BAR_PADDING;
-      const horizontallyChained =
-        gapX >= -MAX_OVERLAP && gapX <= MAX_GAP && overlapY > 2 * BAR_PADDING;
-
-      if (!verticallyStacked && !horizontallyChained) continue;
-
-      const dx = target.position.x - source.position.x;
-      const dy = target.position.y - source.position.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist < bestDist) {
+      if (dist < MAX_DISTANCE && dist < bestDist) {
         bestDist = dist;
-        bestSource = source;
+        bestOutput = output;
       }
     }
 
-    if (!bestSource) continue;
-
-    const sourceOp = opById(bestSource.data.opId);
-    const firstOutputKey = (sourceOp.outputKeys ?? ["out"])[0];
-    const sourceHandleId = makeOutputHandleId(bestSource.id, firstOutputKey);
-
-    const sw = bestSource.measured?.width ?? 160;
-    const sh = bestSource.measured?.height ?? 60;
-    const sRight = bestSource.position.x + sw / 2;
-    const sBottom = bestSource.position.y + sh / 2;
-    const sLeft = bestSource.position.x - sw / 2;
-    const sTop = bestSource.position.y - sh / 2;
-
-    const gapY = tTop - sBottom;
-    const gapX = tLeft - sRight;
-    const overlapX =
-      Math.min(sRight, target.position.x + tw / 2) -
-      Math.max(sLeft, target.position.x - tw / 2);
-    const isVertical = gapY >= -MAX_OVERLAP && gapY <= MAX_GAP && overlapX > 0;
+    if (!bestOutput) continue;
 
     const candidateEdge: Edge = {
-      id: `__proximity_${bestSource.id}_${target.id}`,
-      source: bestSource.id,
+      id: `__proximity_${bestOutput.node.id}_${target.id}`,
+      source: bestOutput.node.id,
       target: target.id,
-      sourceHandle: sourceHandleId,
+      sourceHandle: bestOutput.handleId,
       targetHandle: targetHandleId,
       type: "proximity",
       data: {
         proximity: true,
-        orientation: isVertical ? "vertical" : "horizontal",
+        sourceHandle: bestOutput.handleId,
+        targetHandle: targetHandleId,
       },
     };
 

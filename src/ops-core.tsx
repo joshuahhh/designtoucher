@@ -705,11 +705,15 @@ export const SentenceParamNumber = ({
           )}
         </StableWidthSpan>
       </Popover.Trigger>
-      <MyPopoverContent>
+      <MyPopoverContent
+        className="!bg-violet-100 !border-violet-200 !shadow-lg"
+        arrowClassName="fill-violet-100"
+      >
         <div className="flex flex-row items-center gap-2">
-          <div className="text-xs">{min}</div>
+          <div className="text-xs text-violet-700">{min}</div>
           <div className="w-32">
             <Slider
+              color="violet"
               value={[value]}
               min={min}
               max={max}
@@ -724,7 +728,7 @@ export const SentenceParamNumber = ({
               }}
             />
           </div>
-          <div className="text-xs">{max}</div>
+          <div className="text-xs text-violet-700">{max}</div>
         </div>
       </MyPopoverContent>
     </Popover.Root>
@@ -753,30 +757,33 @@ export const SentenceParamNumber = ({
 };
 
 export const MyPopoverContent = (
-  props: React.ComponentProps<typeof Popover.Content>,
+  props: React.ComponentProps<typeof Popover.Content> & {
+    arrowClassName?: string;
+  },
 ) => {
   const { overlayDiv } = useContext(OmniCanvasContext);
+  const { arrowClassName, ...rest } = props;
   return (
     <Popover.Content
-      {...props}
+      {...rest}
       side="top"
       size="1"
       container={overlayDiv}
-      className="pointer-events-auto overflow-visible"
+      className={clsx("pointer-events-auto overflow-visible", props.className)}
       onKeyDown={(e) => e.stopPropagation()}
       arrowPadding={10}
     >
       {props.children}
-      <MyArrow />
+      <MyArrow className={arrowClassName} />
     </Popover.Content>
   );
 };
 
-export const MyArrow = () => (
+export const MyArrow = ({ className }: { className?: string }) => (
   <PopoverPrimitive.Arrow
     width={20}
     height={10}
-    className="fill-[--color-panel-solid]"
+    className={className ?? "fill-[--color-panel-solid]"}
   />
 );
 

@@ -1047,6 +1047,11 @@ export const OutputHandle = <OutputKey extends string>({
                 {isActive ? <LuPanelRightClose /> : <LuPanelRight />}
               </button>
             )}
+            {isHovered && (
+              <span className="absolute bottom-0.5 left-0.5 text-[8px] text-white/90 leading-none bg-black/50 rounded px-0.5">
+                {output.width}×{output.height}
+              </span>
+            )}
             {children}
           </OmniCanvasOverlay>
         )}

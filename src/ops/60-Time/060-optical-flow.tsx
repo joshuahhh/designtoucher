@@ -26,6 +26,7 @@ export default defineOp({
   initRuntime(ctx) {
     const { gl } = ctx;
 
+    const currFbo = newFbo(gl);
     const prevFbo = newFbo(gl);
     const gradFbo = newFbo(gl);
     const flowFbo = newFbo(gl);
@@ -125,10 +126,10 @@ export default defineOp({
 
         // vy is negated: the solve works in texture coords (v axis points
         // up), but the output uses screen convention — down is positive.
-        vx = clamp(vx * sensitivity * 0.1 + 0.5, 0.0, 1.0);
-        vy = clamp(-vy * sensitivity * 0.1 + 0.5, 0.0, 1.0);
+        vx = clamp(vx * sensitivity * 0.1 + 128.0 / 255.0, 0.0, 1.0);
+        vy = clamp(-vy * sensitivity * 0.1 + 128.0 / 255.0, 0.0, 1.0);
 
-        gl_FragColor = vec4(vx, vy, 0.5, 1.0);
+        gl_FragColor = vec4(vx, vy, 128.0 / 255.0, 1.0);
       }
     `,
     );
@@ -150,6 +151,7 @@ export default defineOp({
     );
 
     return {
+      currFbo,
       prevFbo,
       gradFbo,
       flowFbo,
@@ -158,6 +160,7 @@ export default defineOp({
       gradientProgram,
       flowProgram,
       extractProgram,
+      checkFb: gl.createFramebuffer()!,
       hasPrev: false,
       x: outXFbo.tex,
       y: outYFbo.tex,
@@ -172,15 +175,25 @@ export default defineOp({
     const w = tex.width;
     const h = tex.height;
 
+    ensureFboSize(runtime.currFbo, w, h);
     ensureFboSize(runtime.prevFbo, w, h);
     ensureFboSize(runtime.gradFbo, w, h);
     ensureFboSize(runtime.flowFbo, w, h);
     ensureFboSize(runtime.outXFbo, w, h);
     ensureFboSize(runtime.outYFbo, w, h);
 
+    // Snapshot the input into our own FBO so we have a stable copy —
+    // upstream nodes (e.g. camera) mutate their texture in-place, so
+    // reading `tex` directly would see the same pixels as prevFbo.
+    draw({
+      tex,
+      targetFramebuffer: runtime.currFbo.framebuffer,
+      viewport: [0, 0, w, h],
+    });
+
     if (!runtime.hasPrev) {
       draw({
-        tex,
+        tex: runtime.currFbo.tex,
         targetFramebuffer: runtime.prevFbo.framebuffer,
         viewport: [0, 0, w, h],
       });
@@ -188,13 +201,66 @@ export default defineOp({
       return;
     }
 
+    // Compare a few pixels from currFbo and prevFbo to detect whether
+    // the webcam actually delivered a new frame. When the webcam runs
+    // slower than rAF, most frames are identical — skip those to keep
+    // the last meaningful flow output rather than overwriting with zeros.
+    const SAMPLE_W = 8;
+    const currSample = new Uint8Array(SAMPLE_W * 4);
+    const prevSample = new Uint8Array(SAMPLE_W * 4);
+    const midY = Math.floor(h / 2);
+    const midX = Math.floor(w / 2) - Math.floor(SAMPLE_W / 2);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, runtime.checkFb);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      runtime.currFbo.tex.texture,
+      0,
+    );
+    gl.readPixels(
+      midX,
+      midY,
+      SAMPLE_W,
+      1,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      currSample,
+    );
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      runtime.prevFbo.tex.texture,
+      0,
+    );
+    gl.readPixels(
+      midX,
+      midY,
+      SAMPLE_W,
+      1,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      prevSample,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    let same = true;
+    for (let i = 0; i < currSample.length; i++) {
+      if (currSample[i] !== prevSample[i]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return;
+
     const texel: [number, number] = [1 / w, 1 / h];
 
     runtime.gradientProgram.run({
       targetFramebuffer: runtime.gradFbo.framebuffer,
       viewport: [0, 0, w, h],
       uniforms: {
-        curr: ["sampler2D", tex.texture],
+        curr: ["sampler2D", runtime.currFbo.tex.texture],
         prev: ["sampler2D", runtime.prevFbo.tex.texture],
         texel: ["2f", texel],
       },
@@ -233,19 +299,20 @@ export default defineOp({
       fullscreen: true,
     });
 
-    draw({
-      tex,
-      targetFramebuffer: runtime.prevFbo.framebuffer,
-      viewport: [0, 0, w, h],
-    });
+    // Swap: current snapshot becomes previous for next frame
+    const tmp = runtime.prevFbo;
+    runtime.prevFbo = runtime.currFbo;
+    runtime.currFbo = tmp;
   },
 
   destroy({ runtime }) {
+    destroyFbo(runtime.currFbo);
     destroyFbo(runtime.prevFbo);
     destroyFbo(runtime.gradFbo);
     destroyFbo(runtime.flowFbo);
     destroyFbo(runtime.outXFbo);
     destroyFbo(runtime.outYFbo);
+    runtime.currFbo.gl.deleteFramebuffer(runtime.checkFb);
   },
 
   Render(props) {
